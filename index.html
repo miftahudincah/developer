@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Admin Firebase - Dark Mode</title>
+<title>Login Admin & Dashboard Firebase - Dark Mode</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
@@ -11,8 +11,6 @@
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
   body { background-color: #1f2937; color: #f9fafb; }
   .hidden { display: none; }
-
-  /* Login */
   .login-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
   .login-box { background: #111827; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); width: 100%; max-width: 400px; }
   .login-box h1 { text-align: center; margin-bottom: 30px; color: #f9fafb; font-size: 2rem; }
@@ -21,8 +19,6 @@
   .login-box button { width: 100%; padding: 12px; border: none; border-radius: 6px; background-color: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
   .login-box button:hover { background-color: #1d4ed8; }
   .error { color: #f87171; text-align: center; margin-bottom: 10px; }
-
-  /* Dashboard */
   .container { max-width: 1200px; margin: auto; padding: 30px; }
   h1, h2 { font-weight: 600; margin-bottom: 20px; }
   h1 { text-align: center; color: #f9fafb; font-size: 2rem; }
@@ -41,11 +37,8 @@
   .btn-delete { background-color: #ef4444; color: #fff; }
   .btn-delete:hover { background-color: #b91c1c; }
   .editable { padding: 5px; border-radius: 4px; border: 1px solid #374151; background-color: #1f2937; color: #f9fafb; width: 100%; }
-
-  @media (max-width: 768px) {
-    h1 { font-size: 1.5rem; }
-    th, td { padding: 10px; }
-  }
+  .toggle-active { cursor: pointer; padding: 5px 10px; border-radius: 6px; border: none; background-color: #f59e0b; color: #fff; }
+  .toggle-active.active { background-color: #10b981; }
 </style>
 </head>
 <body>
@@ -104,6 +97,7 @@
       <thead>
         <tr>
           <th>Nama Valid</th>
+          <th>Active</th>
           <th>Aksi</th>
         </tr>
       </thead>
@@ -121,39 +115,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-let validNames = [];
-
 const loginPage = document.getElementById("loginPage");
 const adminPage = document.getElementById("adminPage");
 const tableBody = document.querySelector("#dataTable tbody");
 const validNameTableBody = document.querySelector("#validNameTable tbody");
 const errorMsg = document.getElementById("errorMsg");
 
-// Load valid names dari Firebase
-function loadValidNames() {
-  db.ref("/validNames").on("value", snapshot => {
-    validNames = [];
-    validNameTableBody.innerHTML = "";
-    snapshot.forEach(child => {
-      const key = child.key;
-      const name = child.val();
-      validNames.push(name);
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td><input class="editable" type="text" value="${name}" onchange="ubahValidName('${key}', this.value)" /></td>
-        <td><button class="btn-delete" onclick="hapusValidName('${key}')">Hapus</button></td>
-      `;
-      validNameTableBody.appendChild(row);
-    });
-  });
-}
-
-// Auto-login jika sudah login
+// Auto-login
 if(localStorage.getItem("adminLoggedIn") === "true") {
   showDashboard();
 } else {
   loginPage.classList.remove("hidden");
-  adminPage.classList.add("hidden");
 }
 
 // Login Admin
@@ -198,12 +170,12 @@ function logout() {
   loginPage.classList.remove("hidden");
 }
 
-// Tampilkan Dashboard
+// Dashboard
 function showDashboard() {
   loginPage.classList.add("hidden");
   adminPage.classList.remove("hidden");
   tampilkanDataRealtime();
-  loadValidNames();
+  tampilkanValidNameRealtime();
 }
 
 // CRUD Pengguna
@@ -240,21 +212,27 @@ function tambahPengguna() {
   const role = document.getElementById("newRole").value;
 
   if(!name || !email || !password) return alert("Semua field wajib diisi!");
-  if(!validNames.includes(name)) return alert("Nama tidak valid!");
 
-  const newKey = db.ref("/users").push().key;
-  db.ref("/users/" + newKey).set({ name, email, password, role })
-    .then(() => {
-      document.getElementById("newName").value = "";
-      document.getElementById("newEmail").value = "";
-      document.getElementById("newPassword").value = "";
-      document.getElementById("newRole").value = "user";
-    })
-    .catch(err => alert("Gagal tambah pengguna: " + err));
+  // Validasi nama ada di validNames
+  db.ref("/validNames/" + name).once("value", snap => {
+    const valid = snap.val();
+    if(valid !== true && valid !== "true") {
+      alert("Nama tidak valid atau tidak aktif.");
+      return;
+    }
+
+    const newKey = db.ref("/users").push().key;
+    db.ref("/users/" + newKey).set({ name, email, password, role })
+      .then(() => {
+        document.getElementById("newName").value = "";
+        document.getElementById("newEmail").value = "";
+        document.getElementById("newPassword").value = "";
+        document.getElementById("newRole").value = "user";
+      });
+  });
 }
 
 function ubahNama(key, newName) {
-  if(!validNames.includes(newName)) return alert("Nama tidak valid!");
   db.ref("/users/" + key + "/name").set(newName)
     .catch(err => alert("Gagal ubah nama: " + err));
 }
@@ -271,28 +249,52 @@ function hapusPengguna(key) {
   }
 }
 
-// CRUD Valid Name
+// CRUD Valid Names
+function tampilkanValidNameRealtime() {
+  db.ref("/validNames").once("value").then(snapshot => {
+    validNameTableBody.innerHTML = "";
+    snapshot.forEach(child => {
+      const name = child.key;
+      const active = child.val() === true || child.val() === "true";
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${name}</td>
+        <td>
+          <button class="toggle-active ${active ? 'active' : ''}" onclick="toggleActive('${name}', ${active})">
+            ${active ? 'Active' : 'Inactive'}
+          </button>
+        </td>
+        <td><button class="btn-delete" onclick="hapusValidName('${name}')">Hapus</button></td>
+      `;
+      validNameTableBody.appendChild(row);
+    });
+  });
+}
+
 function tambahValidName() {
   const name = document.getElementById("newValidName").value.trim();
   if(!name) return alert("Nama Valid wajib diisi!");
-  const newKey = db.ref("/validNames").push().key;
-  db.ref("/validNames/" + newKey).set(name)
-    .then(() => document.getElementById("newValidName").value = "")
+  db.ref("/validNames/" + name).set(true)
+    .then(() => {
+      document.getElementById("newValidName").value = "";
+      tampilkanValidNameRealtime();
+    })
     .catch(err => alert("Gagal tambah valid name: " + err));
 }
 
-function ubahValidName(key, newName) {
-  db.ref("/validNames/" + key).set(newName)
-    .catch(err => alert("Gagal ubah valid name: " + err));
-}
-
-function hapusValidName(key) {
+function hapusValidName(name) {
   if(confirm("Yakin ingin menghapus valid name ini?")) {
-    db.ref("/validNames/" + key).remove()
+    db.ref("/validNames/" + name).remove()
+      .then(() => tampilkanValidNameRealtime())
       .catch(err => alert("Gagal hapus valid name: " + err));
   }
 }
-</script>
 
+function toggleActive(name, current) {
+  db.ref("/validNames/" + name).set(!current)
+    .then(() => tampilkanValidNameRealtime())
+    .catch(err => alert("Gagal toggle active: " + err));
+}
+</script>
 </body>
 </html>
