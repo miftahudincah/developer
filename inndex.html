@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Admin Firebase - Dark Mode</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+  body { background-color: #1f2937; color: #f9fafb; }
+  .hidden { display: none; }
+
+  /* Login */
+  .login-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
+  .login-box { background: #111827; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); width: 100%; max-width: 400px; }
+  .login-box h1 { text-align: center; margin-bottom: 30px; color: #f9fafb; font-size: 2rem; }
+  .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #374151; background-color: #1f2937; color: #f9fafb; }
+  .login-box input::placeholder { color: #9ca3af; }
+  .login-box button { width: 100%; padding: 12px; border: none; border-radius: 6px; background-color: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
+  .login-box button:hover { background-color: #1d4ed8; }
+  .error { color: #f87171; text-align: center; margin-bottom: 10px; }
+
+  /* Dashboard */
+  .container { max-width: 1200px; margin: auto; padding: 30px; }
+  h1, h2 { font-weight: 600; margin-bottom: 20px; }
+  h1 { text-align: center; color: #f9fafb; font-size: 2rem; }
+  h2 { color: #fff; margin-top: 30px; }
+  .form-group { display: flex; margin-bottom: 15px; gap: 10px; flex-wrap: wrap; }
+  .form-group input, .form-group select { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid #374151; background-color: #1f2937; color: #f9fafb; }
+  .form-group button { padding: 10px 15px; border: none; border-radius: 6px; cursor: pointer; background-color: #10b981; color: #fff; font-weight: 600; }
+  .form-group button:hover { background-color: #059669; }
+  .table-container { overflow-x: auto; background: #111827; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); margin-bottom: 30px; }
+  table { width: 100%; border-collapse: collapse; min-width: 600px; color: #f9fafb; }
+  th, td { padding: 12px 15px; text-align: left; }
+  th { background-color: #2563eb; color: #fff; font-weight: 600; border-bottom: 2px solid #1d4ed8; }
+  tr:nth-child(even) { background-color: #1e293b; }
+  tr:hover { background-color: #2563eb; color: #fff; }
+  td button { margin-right: 5px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem; }
+  .btn-delete { background-color: #ef4444; color: #fff; }
+  .btn-delete:hover { background-color: #b91c1c; }
+  .editable { padding: 5px; border-radius: 4px; border: 1px solid #374151; background-color: #1f2937; color: #f9fafb; width: 100%; }
+
+  @media (max-width: 768px) {
+    h1 { font-size: 1.5rem; }
+    th, td { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN PAGE -->
+<div class="login-container" id="loginPage">
+  <div class="login-box">
+    <h1>Login Admin</h1>
+    <div class="error" id="errorMsg"></div>
+    <input type="email" id="loginEmail" placeholder="Email" />
+    <input type="password" id="loginPassword" placeholder="Password" />
+    <button onclick="loginAdmin()">Login</button>
+  </div>
+</div>
+
+<!-- DASHBOARD PAGE -->
+<div class="container hidden" id="adminPage">
+  <h1>Dashboard & Manajemen Pengguna</h1>
+
+  <!-- Form Tambah Pengguna -->
+  <div class="form-group">
+    <input type="text" id="newName" placeholder="Nama" />
+    <input type="email" id="newEmail" placeholder="Email" />
+    <input type="password" id="newPassword" placeholder="Password" />
+    <select id="newRole">
+      <option value="user">User</option>
+      <option value="admin">Admin</option>
+    </select>
+    <button onclick="tambahPengguna()">Tambah Pengguna</button>
+  </div>
+
+  <!-- Tabel Pengguna -->
+  <div class="table-container">
+    <table id="dataTable">
+      <thead>
+        <tr>
+          <th>Nama</th>
+          <th>Email</th>
+          <th>Password</th>
+          <th>Role</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Manajemen Valid Name -->
+  <h2>Manajemen Valid Name</h2>
+  <div class="form-group">
+    <input type="text" id="newValidName" placeholder="Nama Valid Baru" />
+    <button onclick="tambahValidName()">Tambah Valid Name</button>
+  </div>
+  <div class="table-container">
+    <table id="validNameTable">
+      <thead>
+        <tr>
+          <th>Nama Valid</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <button style="margin-top:20px; background-color:#ef4444;" onclick="logout()">Logout</button>
+</div>
+
+<script>
+const firebaseConfig = {
+  databaseURL: "https://teslo-88f6e-default-rtdb.firebaseio.com/"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let validNames = [];
+
+const loginPage = document.getElementById("loginPage");
+const adminPage = document.getElementById("adminPage");
+const tableBody = document.querySelector("#dataTable tbody");
+const validNameTableBody = document.querySelector("#validNameTable tbody");
+const errorMsg = document.getElementById("errorMsg");
+
+// Load valid names dari Firebase
+function loadValidNames() {
+  db.ref("/validNames").on("value", snapshot => {
+    validNames = [];
+    validNameTableBody.innerHTML = "";
+    snapshot.forEach(child => {
+      const key = child.key;
+      const name = child.val();
+      validNames.push(name);
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><input class="editable" type="text" value="${name}" onchange="ubahValidName('${key}', this.value)" /></td>
+        <td><button class="btn-delete" onclick="hapusValidName('${key}')">Hapus</button></td>
+      `;
+      validNameTableBody.appendChild(row);
+    });
+  });
+}
+
+// Auto-login jika sudah login
+if(localStorage.getItem("adminLoggedIn") === "true") {
+  showDashboard();
+} else {
+  loginPage.classList.remove("hidden");
+  adminPage.classList.add("hidden");
+}
+
+// Login Admin
+function loginAdmin() {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value.trim();
+  errorMsg.textContent = "";
+
+  if(!email || !password) {
+    errorMsg.textContent = "Email dan Password wajib diisi!";
+    return;
+  }
+
+  db.ref("/users").orderByChild("email").equalTo(email).once("value", snapshot => {
+    if(!snapshot.exists()) {
+      errorMsg.textContent = "Email tidak ditemukan!";
+      return;
+    }
+
+    let userData;
+    snapshot.forEach(child => userData = child.val());
+
+    if(userData.password !== password) {
+      errorMsg.textContent = "Password salah!";
+      return;
+    }
+
+    if(userData.role !== "admin") {
+      errorMsg.textContent = "Hanya admin yang bisa masuk!";
+      return;
+    }
+
+    localStorage.setItem("adminLoggedIn", "true");
+    showDashboard();
+  });
+}
+
+// Logout
+function logout() {
+  localStorage.removeItem("adminLoggedIn");
+  adminPage.classList.add("hidden");
+  loginPage.classList.remove("hidden");
+}
+
+// Tampilkan Dashboard
+function showDashboard() {
+  loginPage.classList.add("hidden");
+  adminPage.classList.remove("hidden");
+  tampilkanDataRealtime();
+  loadValidNames();
+}
+
+// CRUD Pengguna
+function tampilkanDataRealtime() {
+  db.ref("/users").on("value", snapshot => {
+    tableBody.innerHTML = "";
+    snapshot.forEach(childSnapshot => {
+      const key = childSnapshot.key;
+      const { name, email, password, role } = childSnapshot.val();
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><input class="editable" type="text" value="${name}" onchange="ubahNama('${key}', this.value)" /></td>
+        <td>${email}</td>
+        <td>${password}</td>
+        <td>
+          <select onchange="ubahRole('${key}', this.value)">
+            <option value="user" ${role === "user" ? "selected" : ""}>User</option>
+            <option value="admin" ${role === "admin" ? "selected" : ""}>Admin</option>
+          </select>
+        </td>
+        <td>
+          <button class="btn-delete" onclick="hapusPengguna('${key}')">Hapus</button>
+        </td>
+      `;
+      tableBody.appendChild(row);
+    });
+  });
+}
+
+function tambahPengguna() {
+  const name = document.getElementById("newName").value.trim();
+  const email = document.getElementById("newEmail").value.trim();
+  const password = document.getElementById("newPassword").value.trim();
+  const role = document.getElementById("newRole").value;
+
+  if(!name || !email || !password) return alert("Semua field wajib diisi!");
+  if(!validNames.includes(name)) return alert("Nama tidak valid!");
+
+  const newKey = db.ref("/users").push().key;
+  db.ref("/users/" + newKey).set({ name, email, password, role })
+    .then(() => {
+      document.getElementById("newName").value = "";
+      document.getElementById("newEmail").value = "";
+      document.getElementById("newPassword").value = "";
+      document.getElementById("newRole").value = "user";
+    })
+    .catch(err => alert("Gagal tambah pengguna: " + err));
+}
+
+function ubahNama(key, newName) {
+  if(!validNames.includes(newName)) return alert("Nama tidak valid!");
+  db.ref("/users/" + key + "/name").set(newName)
+    .catch(err => alert("Gagal ubah nama: " + err));
+}
+
+function ubahRole(key, newRole) {
+  db.ref("/users/" + key + "/role").set(newRole)
+    .catch(err => alert("Gagal ubah role: " + err));
+}
+
+function hapusPengguna(key) {
+  if(confirm("Yakin ingin menghapus pengguna ini?")) {
+    db.ref("/users/" + key).remove()
+      .catch(err => alert("Gagal hapus pengguna: " + err));
+  }
+}
+
+// CRUD Valid Name
+function tambahValidName() {
+  const name = document.getElementById("newValidName").value.trim();
+  if(!name) return alert("Nama Valid wajib diisi!");
+  const newKey = db.ref("/validNames").push().key;
+  db.ref("/validNames/" + newKey).set(name)
+    .then(() => document.getElementById("newValidName").value = "")
+    .catch(err => alert("Gagal tambah valid name: " + err));
+}
+
+function ubahValidName(key, newName) {
+  db.ref("/validNames/" + key).set(newName)
+    .catch(err => alert("Gagal ubah valid name: " + err));
+}
+
+function hapusValidName(key) {
+  if(confirm("Yakin ingin menghapus valid name ini?")) {
+    db.ref("/validNames/" + key).remove()
+      .catch(err => alert("Gagal hapus valid name: " + err));
+  }
+}
+</script>
+
+</body>
+</html>
