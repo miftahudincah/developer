@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Admin</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(135deg, #1f2937, #111827);
+      color: #f9fafb;
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Navbar */
+    .navbar {
+      background: #2563eb;
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .navbar h1 {
+      font-size: 1.3rem;
+      margin: 0;
+    }
+    .navbar button {
+      background: #ef4444;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      color: #fff;
+      transition: 0.3s;
+    }
+    .navbar button:hover {
+      background: #b91c1c;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    h2 {
+      font-weight: 600;
+      margin-bottom: 15px;
+      font-size: 1.5rem;
+      border-left: 5px solid #2563eb;
+      padding-left: 10px;
+    }
+
+    .card {
+      background: #111827;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+      margin-bottom: 30px;
+      transition: transform 0.2s ease-in-out;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+    }
+
+    .form-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .form-group input, .form-group select {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #374151;
+      background-color: #1f2937;
+      color: #f9fafb;
+      transition: 0.3s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: #2563eb;
+      outline: none;
+    }
+    .form-group button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      font-weight: 600;
+      transition: 0.3s;
+    }
+    .form-group button:hover {
+      background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    }
+
+    /* Table */
+    .table-container {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 600px;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+    }
+    th {
+      background-color: #2563eb;
+      color: #fff;
+      font-weight: 600;
+      border-bottom: 2px solid #1d4ed8;
+    }
+    tr:nth-child(even) {
+      background-color: #1e293b;
+    }
+    tr:hover {
+      background-color: #2563eb;
+      color: #fff;
+    }
+    td button {
+      margin-right: 5px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: 0.3s;
+    }
+    .btn-delete {
+      background-color: #ef4444;
+      color: #fff;
+    }
+    .btn-delete:hover {
+      background-color: #b91c1c;
+    }
+    .toggle-active {
+      background-color: #f59e0b;
+      color: #fff;
+    }
+    .toggle-active.active {
+      background-color: #10b981;
+    }
+
+    @media (max-width: 768px) {
+      .form-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <div class="navbar">
+    <h1>Dashboard Admin</h1>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <div class="container">
+
+    <!-- Manajemen Pengguna -->
+    <div class="card">
+      <h2>Manajemen Pengguna</h2>
+      <div class="form-group">
+        <input type="text" id="newName" placeholder="Nama" />
+        <input type="email" id="newEmail" placeholder="Email" />
+        <input type="password" id="newPassword" placeholder="Password" />
+        <select id="newRole">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button onclick="tambahPengguna()">Tambah Pengguna</button>
+      </div>
+      <div class="table-container">
+        <table id="dataTable">
+          <thead>
+            <tr>
+              <th>Nama</th>
+              <th>Email</th>
+              <th>Password</th>
+              <th>Role</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Manajemen Valid Name -->
+    <div class="card">
+      <h2>Manajemen Valid Name</h2>
+      <div class="form-group">
+        <input type="text" id="newValidName" placeholder="Nama Valid Baru" />
+        <button onclick="tambahValidName()">Tambah Valid Name</button>
+      </div>
+      <div class="table-container">
+        <table id="validNameTable">
+          <thead>
+            <tr>
+              <th>Nama Valid</th>
+              <th>Active</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      databaseURL: "https://teslo-88f6e-default-rtdb.firebaseio.com/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const tableBody = document.querySelector("#dataTable tbody");
+    const validNameTableBody = document.querySelector("#validNameTable tbody");
+
+    if(localStorage.getItem("adminLoggedIn") !== "true") {
+      window.location.href = "index.html";
+    }
+
+    function logout() {
+      localStorage.removeItem("adminLoggedIn");
+      window.location.href = "index.html";
+    }
+
+    // ==== CRUD USERS ====
+    function tampilkanDataRealtime() {
+      db.ref("/users").on("value", snapshot => {
+        tableBody.innerHTML = "";
+        snapshot.forEach(childSnapshot => {
+          const key = childSnapshot.key;
+          const { name, email, password, role } = childSnapshot.val();
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td><input class="editable" type="text" value="${name}" onchange="ubahNama('${key}', this.value)" /></td>
+            <td>${email}</td>
+            <td>${password}</td>
+            <td>
+              <select onchange="ubahRole('${key}', this.value)">
+                <option value="user" ${role === "user" ? "selected" : ""}>User</option>
+                <option value="admin" ${role === "admin" ? "selected" : ""}>Admin</option>
+              </select>
+            </td>
+            <td><button class="btn-delete" onclick="hapusPengguna('${key}')">Hapus</button></td>
+          `;
+          tableBody.appendChild(row);
+        });
+      });
+    }
+
+    function tambahPengguna() {
+      const name = document.getElementById("newName").value.trim();
+      const email = document.getElementById("newEmail").value.trim();
+      const password = document.getElementById("newPassword").value.trim();
+      const role = document.getElementById("newRole").value;
+
+      if(!name || !email || !password) return alert("Semua field wajib diisi!");
+
+      db.ref("/validNames/" + name).once("value", snap => {
+        const valid = snap.val();
+        if(valid !== true && valid !== "true") {
+          alert("Nama tidak valid atau tidak aktif.");
+          return;
+        }
+
+        const newKey = db.ref("/users").push().key;
+        db.ref("/users/" + newKey).set({ name, email, password, role })
+          .then(() => {
+            document.getElementById("newName").value = "";
+            document.getElementById("newEmail").value = "";
+            document.getElementById("newPassword").value = "";
+            document.getElementById("newRole").value = "user";
+          });
+      });
+    }
+
+    function ubahNama(key, newName) {
+      db.ref("/users/" + key + "/name").set(newName);
+    }
+
+    function ubahRole(key, newRole) {
+      db.ref("/users/" + key + "/role").set(newRole);
+    }
+
+    function hapusPengguna(key) {
+      if(confirm("Yakin ingin menghapus pengguna ini?")) {
+        db.ref("/users/" + key).remove();
+      }
+    }
+
+    // ==== CRUD VALID NAME ====
+    function tampilkanValidNameRealtime() {
+      db.ref("/validNames").once("value").then(snapshot => {
+        validNameTableBody.innerHTML = "";
+        snapshot.forEach(child => {
+          const name = child.key;
+          const active = child.val() === true || child.val() === "true";
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${name}</td>
+            <td><button class="toggle-active ${active ? 'active' : ''}" onclick="toggleActive('${name}', ${active})">${active ? 'Active' : 'Inactive'}</button></td>
+            <td><button class="btn-delete" onclick="hapusValidName('${name}')">Hapus</button></td>
+          `;
+          validNameTableBody.appendChild(row);
+        });
+      });
+    }
+
+    function tambahValidName() {
+      const name = document.getElementById("newValidName").value.trim();
+      if(!name) return alert("Nama Valid wajib diisi!");
+      db.ref("/validNames/" + name).set(true).then(() => {
+        document.getElementById("newValidName").value = "";
+        tampilkanValidNameRealtime();
+      });
+    }
+
+    function hapusValidName(name) {
+      if(confirm("Yakin ingin menghapus valid name ini?")) {
+        db.ref("/validNames/" + name).remove().then(() => tampilkanValidNameRealtime());
+      }
+    }
+
+    function toggleActive(name, current) {
+      db.ref("/validNames/" + name).set(!current).then(() => tampilkanValidNameRealtime());
+    }
+
+    tampilkanDataRealtime();
+    tampilkanValidNameRealtime();
+  </script>
+</body>
+</html>
