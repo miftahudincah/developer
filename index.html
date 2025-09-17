@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase Users - Edit & Delete Dark Mode</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    table {
+      margin: auto;
+      border-collapse: collapse;
+      width: 80%;
+      background: #1e1e1e;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 12px;
+      border: 1px solid #333;
+      text-align: center;
+    }
+    th {
+      background: #333;
+    }
+    .link-btn, .logout-btn {
+      background: #2196f3;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 5px;
+      display: inline-block;
+      text-decoration: none;
+    }
+    .link-btn:hover, .logout-btn:hover {
+      background: #1976d2;
+    }
+    /* Login box */
+    .login-box {
+      max-width: 300px;
+      margin: 100px auto;
+      background: #1e1e1e;
+      padding: 30px;
+      border-radius: 10px;
+      text-align: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+    .login-box input {
+      width: 90%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #555;
+      border-radius: 6px;
+      background: #2a2a2a;
+      color: #fff;
+      text-align: center;
+    }
+    .login-box button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #4caf50;
+      color: white;
+    }
+    .login-box button:hover {
+      background: #388e3c;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Bagian Login -->
+  <div id="loginSection" class="login-box" style="display:none;">
+    <h2>Login Admin</h2>
+    <input type="text" id="username" placeholder="Username"><br>
+    <input type="password" id="password" placeholder="Password"><br>
+    <button onclick="login()">Login</button>
+  </div>
+
+  <!-- Bagian Data User -->
+  <div id="appSection" style="display:none;">
+    <h2>Data Users Firebase - Edit & Delete Dark Mode</h2>
+
+    <!-- Tombol menuju halaman lain -->
+    <div style="text-align:center; margin-bottom: 20px;">
+      <a href="ValidName.html" class="link-btn">Lihat Valid Names</a>
+      <a href="Relay.html" class="link-btn">Lihat Relay</a>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Email</th>
+          <th>Password</th>
+          <th>Nama</th>
+          <th>Role</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="usersTable">
+        <!-- Data muncul di sini -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <script>
+    // Konfigurasi Firebase
+    const firebaseConfig = {
+      databaseURL: "https://teslo-88f6e-default-rtdb.firebaseio.com/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Cek login saat load
+    if (localStorage.getItem("isLoggedIn") === "true") {
+      document.getElementById("appSection").style.display = "block";
+      loadUsers();
+    } else {
+      document.getElementById("loginSection").style.display = "block";
+    }
+
+    // Fungsi login
+    function login() {
+      const user = document.getElementById('username').value;
+      const pass = document.getElementById('password').value;
+      if (user === 'admin' && pass === '123') {
+        localStorage.setItem("isLoggedIn", "true");
+        document.getElementById("loginSection").style.display = "none";
+        document.getElementById("appSection").style.display = "block";
+        loadUsers();
+      } else {
+        alert("Username atau password salah!");
+      }
+    }
+
+    // Logout
+    function logout() {
+      localStorage.removeItem("isLoggedIn");
+      location.reload();
+    }
+
+    // Load Users
+    function loadUsers() {
+      const table = document.getElementById('usersTable');
+      db.ref('users').once('value').then(snapshot => {
+        table.innerHTML = "";
+        const users = snapshot.val();
+        if (!users) {
+          table.innerHTML = `<tr><td colspan="6">Tidak ada data</td></tr>`;
+          return;
+        }
+        for (let key in users) {
+          const u = users[key];
+          table.innerHTML += `
+            <tr>
+              <td>${key}</td>
+              <td>${u.email || ''}</td>
+              <td>${u.password || ''}</td>
+              <td>${u.name || ''}</td>
+              <td>${u.role || ''}</td>
+              <td>
+                <button onclick="deleteUser('${key}')">Delete</button>
+              </td>
+            </tr>
+          `;
+        }
+      });
+    }
+
+    // Hapus User
+    function deleteUser(key) {
+      if (!confirm("Yakin hapus user " + key + "?")) return;
+      db.ref("users/" + key).remove().then(() => {
+        alert("User berhasil dihapus!");
+        loadUsers();
+      });
+    }
+  </script>
+</body>
+</html>
