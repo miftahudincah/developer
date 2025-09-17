@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Valid Names Firebase</title>
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    h2 {
+      margin-bottom: 20px;
+    }
+
+    table {
+      margin: auto;
+      border-collapse: collapse;
+      width: 80%;
+      background: #1e1e1e;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 12px;
+      border: 1px solid #333;
+    }
+
+    th {
+      background: #333;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      margin: 2px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      color: white;
+      font-weight: bold;
+    }
+
+    .btn-edit {
+      background: #4caf50;
+    }
+
+    .btn-edit:hover {
+      background: #45a049;
+    }
+
+    .btn-delete {
+      background: #f44336;
+    }
+
+    .btn-delete:hover {
+      background: #da190b;
+    }
+
+    .link-btn {
+      background: #2196f3;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .link-btn:hover {
+      background: #1976d2;
+    }
+
+    .add-form {
+      margin-top: 30px;
+    }
+
+    .add-form input {
+      padding: 8px;
+      width: 200px;
+      border-radius: 6px;
+      border: 1px solid #555;
+      background: #1e1e1e;
+      color: #eee;
+    }
+
+    .add-form button {
+      margin-left: 10px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      background: #4caf50;
+      color: white;
+      font-weight: bold;
+    }
+
+    .add-form button:hover {
+      background: #45a049;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Data Valid Names Firebase</h2>
+
+  <!-- Tombol kembali -->
+  <div style="margin-bottom: 20px;">
+    <button onclick="window.location.href='index.html'" class="link-btn">
+      Kembali ke Users
+    </button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Valid</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody id="namesTable">
+      <!-- Data dari Firebase muncul di sini -->
+    </tbody>
+  </table>
+
+  <!-- Form tambah data -->
+  <div class="add-form">
+    <input type="text" id="newKey" placeholder="Masukkan nama baru">
+    <button onclick="addName()">Tambah</button>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <!-- File JS -->
+  <script src="ValidName.js"></script>
+</body>
+</html>
