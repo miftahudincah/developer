@@ -40,14 +40,17 @@
       font-weight: bold;
     }
 
-    .btn-edit { background: #4caf50; }
-    .btn-edit:hover { background: #45a049; }
+    .btn-toggle { background: #2196f3; }
+    .btn-toggle:hover { background: #1976d2; }
+
+    .btn-edit { background: #ff9800; }
+    .btn-edit:hover { background: #e68a00; }
 
     .btn-delete { background: #f44336; }
     .btn-delete:hover { background: #da190b; }
 
     .link-btn {
-      background: #2196f3;
+      background: #4caf50;
       color: white;
       padding: 10px 20px;
       border: none;
@@ -55,7 +58,7 @@
       cursor: pointer;
     }
 
-    .link-btn:hover { background: #1976d2; }
+    .link-btn:hover { background: #45a049; }
 
     .add-form { margin-top: 30px; }
     .add-form input {
@@ -163,8 +166,9 @@
                 <td>${key}</td>
                 <td>${value === true ? "True" : "False"}</td>
                 <td>
-                  <button class="btn-edit" onclick="editName('${key}', ${value})">Edit</button>
-                  <button class="btn-delete" onclick="deleteName('${key}')">Delete</button>
+                  <button class="btn btn-toggle" onclick="toggleValue('${key}', ${value})">Toggle</button>
+                  <button class="btn btn-edit" onclick="editName('${key}', ${value})">Edit Nama</button>
+                  <button class="btn btn-delete" onclick="deleteName('${key}')">Delete</button>
                 </td>
               </tr>
             `;
@@ -192,11 +196,26 @@
         .catch(err => alert("Error: " + err));
     }
 
-    // Edit data (toggle true/false)
-    function editName(key, currentValue) {
+    // Toggle true/false
+    function toggleValue(key, currentValue) {
       const newValue = !currentValue;
       db.ref("validNames/" + key).set(newValue)
         .then(() => alert(`Data ${key} berhasil diubah ke ${newValue}`))
+        .catch(err => alert("Error: " + err));
+    }
+
+    // Edit nama/key
+    function editName(oldKey, currentValue) {
+      const newKey = prompt("Masukkan nama baru untuk: " + oldKey, oldKey);
+      if (!newKey || newKey === oldKey) return;
+
+      // copy ke key baru
+      db.ref("validNames/" + newKey).set(currentValue)
+        .then(() => {
+          // hapus key lama
+          return db.ref("validNames/" + oldKey).remove();
+        })
+        .then(() => alert(`Nama ${oldKey} berhasil diubah menjadi ${newKey}`))
         .catch(err => alert("Error: " + err));
     }
 
