@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Chat Firebase</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+    }
+    h2 {
+      margin-bottom: 10px;
+    }
+    button {
+      background: #3498db;
+      border: none;
+      padding: 6px 10px;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #2980b9;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      background: #1e1e1e;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #333;
+    }
+    tr:nth-child(even) {
+      background: #2a2a2a;
+    }
+    .form-box {
+      margin-bottom: 15px;
+      display: flex;
+      gap: 10px;
+    }
+    .form-box input {
+      padding: 6px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background: #1e1e1e;
+      color: #fff;
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <h2>Data Chat Firebase</h2>
+  <button onclick="goDashboard()">Kembali ke Dashboard</button>
+  <button onclick="logout()">Logout</button>
+
+  <div class="form-box">
+    <input type="text" id="userInput" placeholder="User">
+    <input type="text" id="pesanInput" placeholder="Pesan">
+    <button onclick="tambahChat()">Tambah Chat</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Pesan</th>
+        <th>Waktu</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody id="chatTable">
+      <tr><td colspan="4">Memuat data...</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <script>
+    // Proteksi login
+    if (localStorage.getItem("loggedIn") !== "true") {
+      window.location.href = "index.html";
+    }
+
+    // Konfigurasi Firebase
+    const firebaseConfig = {
+      databaseURL: "https://teslo-88f6e-default-rtdb.firebaseio.com/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const chatTable = document.getElementById("chatTable");
+
+    // Fungsi kembali ke dashboard
+    function goDashboard() {
+      window.location.href = "dashboard.html";
+    }
+
+    // Fungsi logout
+    function logout() {
+      localStorage.removeItem("loggedIn");
+      window.location.href = "index.html";
+    }
+
+    // Tambah chat baru
+    function tambahChat() {
+      const user = document.getElementById("userInput").value.trim();
+      const pesan = document.getElementById("pesanInput").value.trim();
+      if (!user || !pesan) return alert("Isi User dan Pesan!");
+
+      const waktu = new Date().toLocaleString();
+      const newRef = db.ref("chat/global").push();
+      newRef.set({ userName: user, text: pesan, time: waktu });
+
+      document.getElementById("pesanInput").value = "";
+    }
+
+    // Hapus chat
+    function hapusChat(id) {
+      if (confirm("Yakin hapus chat ini?")) {
+        db.ref("chat/global/" + id).remove();
+      }
+    }
+
+    // Edit chat
+    function editChat(id, oldPesan) {
+      const pesanBaru = prompt("Edit pesan:", oldPesan);
+      if (pesanBaru !== null && pesanBaru.trim() !== "") {
+        db.ref("chat/global/" + id).update({ text: pesanBaru });
+      }
+    }
+
+    // Load data chat
+    function loadChat() {
+      db.ref("chat/global").on("value", (snapshot) => {
+        chatTable.innerHTML = "";
+        if (snapshot.exists()) {
+          snapshot.forEach((child) => {
+            const data = child.val();
+            const id = child.key;
+            const user = data.userName || "-";
+            const pesan = data.text || "-";
+            const waktu = data.time || "-";
+
+            const row = `
+              <tr>
+                <td>${user}</td>
+                <td>${pesan}</td>
+                <td>${waktu}</td>
+                <td>
+                  <button onclick="editChat('${id}', '${pesan.replace(/'/g, "\\'")}')">Edit</button>
+                  <button onclick="hapusChat('${id}')">Hapus</button>
+                </td>
+              </tr>
+            `;
+            chatTable.innerHTML += row;
+          });
+        } else {
+          chatTable.innerHTML = `<tr><td colspan="4">Belum ada chat</td></tr>`;
+        }
+      });
+    }
+
+    loadChat();
+  </script>
+</body>
+</html>
