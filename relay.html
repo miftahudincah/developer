@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Relay Firebase</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    h2 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    table {
+      margin: auto;
+      border-collapse: collapse;
+      width: 80%;
+      background: #1e1e1e;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 0 10px rgba(0,0,0,0.6);
+    }
+
+    th, td {
+      padding: 12px;
+      border: 1px solid #333;
+      vertical-align: top;
+    }
+
+    th { background: #333; }
+
+    td input, td textarea {
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #666;
+      background: #2a2a2a;
+      color: #fff;
+      width: 95%;
+      box-sizing: border-box;
+      font-weight: bold;
+      font-size: 15px;
+    }
+
+    td input { text-align: center; }
+    td textarea { height: 100px; resize: vertical; white-space: pre-wrap; line-height: 1.4; }
+
+    button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 2px;
+    }
+
+    .update-btn { background: #4caf50; color: #fff; font-weight: bold; }
+    .update-btn:hover { background: #388e3c; }
+
+    .delete-btn { background: #e53935; color: #fff; font-weight: bold; }
+    .delete-btn:hover { background: #b71c1c; }
+
+    .link-btn {
+      background: #2196f3;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+    .link-btn:hover { background: #1976d2; }
+
+    #logoutBtn {
+      background: #e53935;
+      color: #fff;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #logoutBtn:hover { background: #b71c1c; }
+  </style>
+</head>
+<body>
+
+  <h2>
+    Data Relay Firebase
+    <button id="logoutBtn" onclick="logout()">Logout</button>
+  </h2>
+
+  <!-- Tombol kembali -->
+  <div>
+    <button onclick="window.location.href='dashboard.html'" class="link-btn">
+      Kembali ke Users
+    </button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Value</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody id="relayTable">
+      <!-- Data relay muncul di sini -->
+    </tbody>
+  </table>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <script>
+    // === Proteksi halaman ===
+    if(localStorage.getItem('loggedIn') !== 'true') {
+      window.location.href = 'index.html';
+    }
+
+    // Fungsi logout
+    function logout() {
+      localStorage.removeItem('loggedIn');
+      window.location.href = 'index.html';
+    }
+
+    // Konfigurasi Firebase
+    const firebaseConfig = {
+      databaseURL: "https://teslo-88f6e-default-rtdb.firebaseio.com/"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const relayTable = document.getElementById('relayTable');
+
+    // Load data relay
+    db.ref("relay").on("value", (snapshot) => {
+      relayTable.innerHTML = "";
+      if(snapshot.exists()) {
+        snapshot.forEach(child => {
+          const key = child.key;
+          const value = child.val();
+
+          const row = `
+            <tr>
+              <td>${key}</td>
+              <td>
+                <textarea id="val-${key}">${JSON.stringify(value, null, 2)}</textarea>
+              </td>
+              <td>
+                <button class="update-btn" onclick="updateRelay('${key}')">Update</button>
+                <button class="delete-btn" onclick="deleteRelay('${key}')">Delete</button>
+              </td>
+            </tr>
+          `;
+          relayTable.innerHTML += row;
+        });
+      } else {
+        relayTable.innerHTML = `<tr><td colspan="3">Belum ada data</td></tr>`;
+      }
+    });
+
+    // Update data relay
+    function updateRelay(key) {
+      const newValue = document.getElementById(`val-${key}`).value;
+      try {
+        const parsedValue = JSON.parse(newValue); // pastikan JSON valid
+        db.ref("relay/" + key).set(parsedValue)
+          .then(() => alert(`Data ${key} berhasil diupdate`))
+          .catch(err => alert("Error: " + err));
+      } catch (e) {
+        alert("Format JSON tidak valid!\n" + e);
+      }
+    }
+
+    // Hapus data relay
+    function deleteRelay(key) {
+      if(confirm("Yakin ingin menghapus data " + key + "?")) {
+        db.ref("relay/" + key).remove()
+          .then(() => alert(`Data ${key} berhasil dihapus`))
+          .catch(err => alert("Error: " + err));
+      }
+    }
+  </script>
+
+</body>
+</html>

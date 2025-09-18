@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login Admin</title>
+  <style>
+    body {
+      font-family: Arial;
+      background-color: #121212;
+      color: #eee;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    #loginBox {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 8px;
+      width: 300px;
+      text-align: center;
+    }
+
+    #loginBox input {
+      width: 90%;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 5px;
+      border: none;
+      background: #2c2c2c;
+      color: #eee;
+    }
+
+    #loginBox button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      background: #6200ea;
+      color: #fff;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    #loginBox button:hover { background: #3700b3; }
+    #error { color: #ff5252; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <div id="loginBox">
+    <h2>Login Admin</h2>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <p id="error"></p>
+  </div>
+
+  <script>
+    // Fungsi login
+    function login() {
+      const user = document.getElementById('username').value.trim();
+      const pass = document.getElementById('password').value.trim();
+
+      // Username dan password contoh
+      if(user === 'admin' && pass === '123') {
+        // Simpan status login di localStorage
+        localStorage.setItem('loggedIn', 'true');
+        // Redirect ke dashboard
+        window.location.href = 'dashboard.html';
+      } else {
+        document.getElementById('error').innerText = 'Username atau Password salah!';
+      }
+    }
+
+    // Jika user sudah login, redirect ke dashboard langsung
+    if(localStorage.getItem('loggedIn') === 'true') {
+      window.location.href = 'dashboard.html';
+    }
+  </script>
+
+</body>
+</html>
