@@ -278,6 +278,14 @@
     <!-- TAB 1: ATTENDANCE -->
     <div id="tab-attendance" class="tab-content active">
       <div class="controls-bar">
+        <!-- UPDATE: Added Date Filter -->
+        <div class="filter-group">
+          <label>Tanggal:</label>
+          <select id="filterDate" onchange="renderTable()">
+            <option value="all">Semua Tanggal</option>
+          </select>
+        </div>
+        
         <div class="filter-group">
           <label>Kelas:</label>
           <select id="filterKelas" onchange="renderTable()">
@@ -509,6 +517,7 @@
         if (!rawData) {
           tbody.innerHTML = "<tr><td colspan='9' style='text-align:center;'>❌ Tidak ada data absensi</td></tr>";
           allData = [];
+          populateFilters(); // Refresh filters even if empty
           return;
         }
         let tempData = [];
@@ -577,34 +586,64 @@
 
     // --- ATTENDANCE LOGIC ---
     function populateFilters() {
-      const kelasSet = new Set(); const jurusanSet = new Set();
+      const kelasSet = new Set(); 
+      const jurusanSet = new Set();
+      const dateSet = new Set();
+
       allData.forEach(item => {
         if(item.kelas && item.kelas !== '-') kelasSet.add(item.kelas);
         if(item.jurusan && item.jurusan !== '-') jurusanSet.add(item.jurusan);
+        // ADDITION: Collect dates
+        if(item.date && item.date !== '-') dateSet.add(item.date);
       });
+
       const kelasSelect = document.getElementById('filterKelas');
       const jurusanSelect = document.getElementById('filterJurusan');
-      const savedKelas = kelasSelect.value; const savedJurusan = jurusanSelect.value;
+      const dateSelect = document.getElementById('filterDate'); // ADDITION
+      
+      // Save current selection to persist after refresh
+      const savedKelas = kelasSelect.value; 
+      const savedJurusan = jurusanSelect.value;
+      const savedDate = dateSelect.value;
+
+      // Reset options
       kelasSelect.innerHTML = '<option value="all">Semua Kelas</option>';
       jurusanSelect.innerHTML = '<option value="all">Semua Jurusan</option>';
+      dateSelect.innerHTML = '<option value="all">Semua Tanggal</option>'; // ADDITION
+
+      // Populate Class
       Array.from(kelasSet).sort().forEach(k => kelasSelect.innerHTML += `<option value="${k}">${k}</option>`);
+      
+      // Populate Major
       Array.from(jurusanSet).sort().forEach(j => jurusanSelect.innerHTML += `<option value="${j}">${j}</option>`);
+
+      // ADDITION: Populate Dates (Sorted Descending)
+      Array.from(dateSet).sort().reverse().forEach(d => dateSelect.innerHTML += `<option value="${d}">${d}</option>`);
+
+      // Restore selection if it still exists
       if(savedKelas !== 'all' && Array.from(kelasSet).includes(savedKelas)) kelasSelect.value = savedKelas;
       if(savedJurusan !== 'all' && Array.from(jurusanSet).includes(savedJurusan)) jurusanSelect.value = savedJurusan;
+      if(savedDate !== 'all' && Array.from(dateSet).includes(savedDate)) dateSelect.value = savedDate;
     }
 
     window.renderTable = function() {
       const kelasVal = document.getElementById('filterKelas').value;
       const jurusanVal = document.getElementById('filterJurusan').value;
+      const dateVal = document.getElementById('filterDate').value; // ADDITION
+      
       const tbody = document.getElementById('tbody-attendance');
+      
       filteredData = allData.filter(item => {
         return (kelasVal === 'all' || item.kelas === kelasVal) &&
-               (jurusanVal === 'all' || item.jurusan === jurusanVal);
+               (jurusanVal === 'all' || item.jurusan === jurusanVal) &&
+               (dateVal === 'all' || item.date === dateVal); // ADDITION
       });
+
       if (filteredData.length === 0) {
         tbody.innerHTML = "<tr><td colspan='9' style='text-align:center;'>Data tidak ditemukan.</td></tr>";
         return;
       }
+
       let rows = "";
       filteredData.forEach(item => {
         const statusClass = item.status === 'hadir' ? 'hadir' : (item.status === 'pulang' ? 'pulang' : 'pending');
