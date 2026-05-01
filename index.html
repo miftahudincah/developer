@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Admin & Pengaturan Siswa</title>
+<title>Sistem Absensi Sekolah</title>
 <style>
   :root {
     --bg-color: #121212;
@@ -12,7 +12,6 @@
     --primary: #00bcd4;
     --primary-hover: #008ba3;
     --secondary: #ff9800;
-    --secondary-hover: #e65100;
     --danger: #f44336;
     --success: #4caf50;
     --border: #333;
@@ -29,786 +28,705 @@
     flex-direction: column;
   }
 
-  /* --- LOGIN STYLES --- */
-  #login-section {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    background: var(--bg-color);
-    z-index: 1000;
+  /* --- AUTH STYLES --- */
+  #auth-section {
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; position: fixed; top: 0; left: 0; width: 100%;
+    background: var(--bg-color); z-index: 1000; overflow-y: auto;
   }
 
-  .login-card {
-    background: var(--card-bg);
-    padding: 40px;
-    border-radius: 10px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-    width: 300px;
-    text-align: center;
-    border: 1px solid var(--border);
+  .auth-card {
+    background: var(--card-bg); padding: 30px; border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 350px; text-align: center;
+    border: 1px solid var(--border); margin: 20px;
   }
-
-  .login-card h2 { margin-top: 0; color: var(--primary); }
   
-  .form-group { margin-bottom: 15px; text-align: left; }
-  .form-group label { display: block; margin-bottom: 5px; font-size: 0.9rem; }
+  .auth-toggle { margin-top: 15px; font-size: 0.9rem; color: #aaa; }
+  .auth-toggle span { color: var(--primary); cursor: pointer; text-decoration: underline; }
+
+  .google-btn {
+    background-color: #fff; color: #333; margin-top: 10px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .google-btn:hover { background-color: #e0e0e0; }
+
+  .form-group { margin-bottom: 12px; text-align: left; }
+  .form-group label { display: block; margin-bottom: 5px; font-size: 0.85rem; color: #bbb; }
   .form-group input, .form-group select {
-    width: 100%;
-    padding: 10px;
-    box-sizing: border-box;
-    background: #2c2c2c;
-    border: 1px solid var(--border);
-    color: #fff;
-    border-radius: 5px;
+    width: 100%; padding: 10px; box-sizing: border-box;
+    background: #2c2c2c; border: 1px solid var(--border); color: #fff; border-radius: 5px;
   }
+  
+  .btn-auth { width: 100%; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: white; }
+  .btn-primary { background: var(--primary); }
+  .btn-primary:hover { background: var(--primary-hover); }
 
-  .btn-login {
-    width: 100%;
-    padding: 10px;
-    background: var(--primary);
-    color: #fff;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background 0.3s;
-  }
-  .btn-login:hover { background: var(--primary-hover); }
-
-  /* --- DASHBOARD LAYOUT --- */
-  #dashboard-section {
-    display: none;
-    padding: 20px;
-    flex: 1;
-    overflow-y: auto;
-  }
-
+  /* --- DASHBOARD --- */
+  #dashboard-section { display: none; padding: 20px; flex: 1; overflow-y: auto; }
+  
   .header-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--card-bg);
-    padding: 15px 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    border: 1px solid var(--border);
-    flex-wrap: wrap;
-    gap: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--card-bg); padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border); flex-wrap: wrap; gap: 10px;
   }
-
-  .clock-display {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: var(--primary);
-    font-family: 'Courier New', monospace;
+  .clock-display { font-size: 1.2rem; font-weight: bold; color: var(--primary); font-family: 'Courier New', monospace; }
+  .role-badge {
+    background: #333; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;
+    border: 1px solid var(--primary); color: var(--primary); margin-left: 10px;
   }
 
   /* --- TABS --- */
-  .nav-tabs {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
+  .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
   .tab-btn {
-    padding: 10px 20px;
-    background: #2c2c2c;
-    color: #aaa;
-    border: 1px solid var(--border);
-    border-radius: 5px 5px 0 0;
-    cursor: pointer;
-    font-weight: bold;
+    padding: 10px 20px; background: #2c2c2c; color: #aaa; border: 1px solid var(--border);
+    border-radius: 5px 5px 0 0; cursor: pointer; font-weight: bold;
   }
-  .tab-btn.active {
-    background: var(--card-bg);
-    color: var(--primary);
-    border-bottom: 2px solid var(--primary);
-  }
-
+  .tab-btn.active { background: var(--card-bg); color: var(--primary); border-bottom: 2px solid var(--primary); }
   .tab-content { display: none; animation: fadeIn 0.3s; }
   .tab-content.active { display: block; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-  /* --- CONTROLS --- */
+  /* --- CONTROLS & BUTTONS --- */
   .controls-bar {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    align-items: center;
-    background: var(--card-bg);
-    padding: 15px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
+    display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
+    background: var(--card-bg); padding: 15px; border-radius: 8px; border: 1px solid var(--border);
   }
   .filter-group { display: flex; align-items: center; gap: 10px; }
-  
-  .btn-primary {
-    padding: 8px 15px;
-    background: var(--primary);
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 5px;
+  .search-box { flex: 1; min-width: 200px; }
+  .search-box input {
+    padding: 8px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: #2c2c2c; color: #fff; width: 100%; box-sizing: border-box;
   }
-  .btn-primary:hover { background: var(--primary-hover); }
+  .search-box input:focus { outline: none; border-color: var(--primary); }
 
-  .btn-download {
-    padding: 8px 15px;
-    background: var(--success);
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    margin-left: auto;
-  }
-  .btn-download:hover { background: #388e3c; }
-
-  .btn-logout { background: var(--danger); color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer; }
+  .btn-action { padding: 8px 15px; background: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer; }
+  .btn-danger { background: var(--danger); }
+  .btn-success { background: var(--success); }
+  .btn-sm { padding: 5px 10px; font-size: 0.8rem; }
 
   /* --- TABLE --- */
   .table-container { overflow-x: auto; background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border); }
-  table { width: 100%; border-collapse: collapse; min-width: 800px; }
+  table { width: 100%; border-collapse: collapse; min-width: 600px; }
   th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); }
   th { background: #252525; color: var(--primary); position: sticky; top: 0; }
   tr:hover { background: #2a2a2a; }
 
-  .status { padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; }
-  .hadir { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
-  .pulang { background: rgba(244, 67, 54, 0.2); color: #f44336; }
-  .pending { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
-
   .action-btns { display: flex; gap: 5px; }
-  .btn-edit {
-    background: none; border: 1px solid #555; color: #aaa; cursor: pointer;
-    padding: 4px 8px; border-radius: 4px;
-  }
+  .btn-edit { background: none; border: 1px solid #555; color: #aaa; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
   .btn-edit:hover { border-color: var(--primary); color: var(--primary); }
-  .btn-delete {
-    background: none; border: 1px solid #555; color: #aaa; cursor: pointer;
-    padding: 4px 8px; border-radius: 4px;
-  }
+  .btn-delete { background: none; border: 1px solid #555; color: #aaa; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
   .btn-delete:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* --- CONFIG STYLES --- */
+  .config-item {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #252525; padding: 10px 15px; border-radius: 5px; margin-bottom: 8px; border: 1px solid #333;
+  }
 
   /* --- MODAL --- */
   .modal-overlay {
-    display: none;
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.7);
-    z-index: 2000;
-    justify-content: center;
-    align-items: center;
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;
   }
   .modal-box {
-    background: var(--card-bg);
-    padding: 25px;
-    border-radius: 8px;
-    width: 400px;
-    border: 1px solid var(--primary);
-    box-shadow: 0 0 20px rgba(0, 188, 212, 0.2);
+    background: var(--card-bg); padding: 25px; border-radius: 8px; width: 400px;
+    border: 1px solid var(--primary); box-shadow: 0 0 20px rgba(0, 188, 212, 0.2);
   }
   .modal-title { margin-top: 0; color: var(--primary); margin-bottom: 20px; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-  
   .btn-save { background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
   .btn-cancel { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
 
   /* --- TOAST --- */
   .toast {
-    visibility: hidden;
-    min-width: 250px; background-color: #333; color: #fff;
-    text-align: center; border-radius: 4px; padding: 16px;
-    position: fixed; z-index: 3000; left: 50%; bottom: 30px;
+    visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center;
+    border-radius: 4px; padding: 16px; position: fixed; z-index: 3000; left: 50%; bottom: 30px;
     transform: translateX(-50%); border-left: 5px solid var(--primary);
   }
   .toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
   @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
   @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
 
+  .key-box {
+    background: #252525; padding: 15px; border-radius: 5px; margin-top: 10px;
+    border: 1px dashed var(--secondary); display: flex; justify-content: space-between; align-items: center;
+  }
 </style>
 </head>
 <body>
 
-  <!-- LOGIN SECTION -->
-  <div id="login-section">
-    <div class="login-card">
-      <h2>🔐 Login Admin</h2>
-      <form id="loginForm">
-        <div class="form-group">
-          <label>Username</label>
-          <input type="text" id="username" placeholder="admin" required>
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="password" placeholder="1234" required>
-        </div>
-        <button type="submit" class="btn-login">MASUK</button>
+  <!-- AUTH SECTION -->
+  <div id="auth-section">
+    <!-- LOGIN FORM -->
+    <div id="login-card" class="auth-card">
+      <h2>🔐 Login Sistem</h2>
+      <form id="loginForm" onsubmit="handleLoginEmail(event)">
+        <div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="email@sekolah.sch.id" required></div>
+        <div class="form-group"><label>Password</label><input type="password" id="loginPassword" placeholder="******" required></div>
+        <button type="submit" class="btn-auth btn-primary">MASUK</button>
       </form>
+      <button class="btn-auth google-btn" onclick="handleLoginGoogle()">
+        <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.252-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.715H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.378C4.672 5.247 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+        Login Google
+      </button>
+      <div class="auth-toggle">Belum punya akun? <span onclick="toggleAuth('register')">Daftar disini</span></div>
+    </div>
+
+    <!-- REGISTER FORM -->
+    <div id="register-card" class="auth-card" style="display:none;">
+      <h2>📝 Daftar Siswa</h2>
+      <form id="registerForm" onsubmit="handleRegister(event)">
+        <div class="form-group"><label>Nama Lengkap</label><input type="text" id="regNama" placeholder="Nama Anda" required></div>
+        <div class="form-group"><label>Email</label><input type="email" id="regEmail" placeholder="email@sekolah.sch.id" required></div>
+        <div class="form-group"><label>Password</label><input type="password" id="regPassword" placeholder="Minimal 6 karakter" required></div>
+        <div class="form-group"><label>Kelas</label><select id="regKelas" required></select></div>
+        <div class="form-group"><label>Jurusan</label><select id="regJurusan" required></select></div>
+        <div class="form-group"><label>Kode Daftar</label><input type="text" id="regKey" placeholder="Kode dari Guru/Admin" required style="border: 1px solid var(--primary);"></div>
+        <button type="submit" class="btn-auth btn-primary">DAFTAR</button>
+      </form>
+      <div class="auth-toggle">Sudah punya akun? <span onclick="toggleAuth('login')">Login disini</span></div>
     </div>
   </div>
 
   <!-- DASHBOARD SECTION -->
   <div id="dashboard-section">
-    <!-- Header -->
     <div class="header-bar">
       <div>
-        <h2 style="margin:0; color: var(--primary);">📊 Admin Panel</h2>
+        <h2 style="margin:0; color: var(--primary);">📊 Sistem Absensi</h2>
+        <div style="display:flex; align-items:center;">
+            <span id="userProfileDisplay" style="color: #aaa;">Loading...</span>
+            <span id="userRoleDisplay" class="role-badge"></span>
+        </div>
       </div>
       <div style="display: flex; align-items: center; gap: 20px;">
         <div id="clock" class="clock-display">--:--:--</div>
-        <button class="btn-logout" onclick="logout()">Keluar</button>
+        <button class="btn-auth btn-danger" onclick="handleLogout()" style="width:auto; padding: 5px 15px;">Keluar</button>
       </div>
     </div>
 
-    <!-- TABS -->
-    <div class="nav-tabs">
+    <div class="nav-tabs" id="nav-tabs-container">
       <button class="tab-btn active" onclick="switchTab('attendance')">Data Absensi</button>
-      <button class="tab-btn" onclick="switchTab('students')">Daftar Siswa</button>
+      <button class="tab-btn role-guru role-admin" style="display:none;" onclick="switchTab('students')">Data Siswa (FP)</button>
+      <button class="tab-btn role-admin" style="display:none;" onclick="switchTab('users')">Manajemen Pengguna</button>
+      <button class="tab-btn role-guru role-admin" style="display:none;" onclick="switchTab('config')">⚙️ Pengaturan</button>
     </div>
 
     <!-- TAB 1: ATTENDANCE -->
     <div id="tab-attendance" class="tab-content active">
       <div class="controls-bar">
-        <!-- UPDATE: Added Date Filter -->
-        <div class="filter-group">
-          <label>Tanggal:</label>
-          <select id="filterDate" onchange="renderTable()">
-            <option value="all">Semua Tanggal</option>
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label>Kelas:</label>
-          <select id="filterKelas" onchange="renderTable()">
-            <option value="all">Semua Kelas</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Jurusan:</label>
-          <select id="filterJurusan" onchange="renderTable()">
-            <option value="all">Semua Jurusan</option>
-          </select>
-        </div>
-        <button class="btn-download" onclick="downloadExcel()">
-          <span>📥 Download Excel</span>
-        </button>
+        <div class="filter-group role-guru role-admin"><label>Kelas:</label><select id="filterKelas" onchange="renderTable()"></select></div>
+        <div class="filter-group role-guru role-admin"><label>Jurusan:</label><select id="filterJurusan" onchange="renderTable()"></select></div>
+        <div class="filter-group"><label>Tanggal:</label><select id="filterDate" onchange="renderTable()"><option value="all">Semua Tanggal</option></select></div>
+        <div style="margin-left:auto;"><button class="btn-action btn-success role-guru role-admin" onclick="downloadExcel()" style="display:none;">📥 Download</button></div>
       </div>
-
       <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Tanggal</th>
-              <th>ID</th>
-              <th>Nama</th>
-              <th>Kelas</th>
-              <th>Jurusan</th>
-              <th>Check In</th>
-              <th>Check Out</th>
-              <th>Status</th>
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody id="tbody-attendance">
-            <tr><td colspan="9" style="text-align:center;">🔄 Mengambil data...</td></tr>
-          </tbody>
-        </table>
+        <table><thead><tr><th>Tanggal</th><th>ID</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Check In</th><th>Check Out</th><th class="role-guru role-admin" style="display:none;">Aksi</th></tr></thead><tbody id="tbody-attendance"><tr><td colspan="8" style="text-align:center;">🔄 Mengambil data...</td></tr></tbody></table>
       </div>
     </div>
 
-    <!-- TAB 2: STUDENTS (UPDATED TO MINUTES) -->
+    <!-- TAB 2: STUDENTS (FP) -->
     <div id="tab-students" class="tab-content">
-      <!-- Add Form -->
-      <div class="controls-bar">
-        <div class="filter-group">
-          <input type="text" id="newNama" placeholder="Nama Siswa" style="width: 200px;">
+      <div class="controls-bar role-admin role-guru" style="flex-direction: column; align-items: stretch;">
+        <h4 style="margin:0 0 10px 0; color:var(--primary);">Tambah Data Siswa (Fingerprint)</h4>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div class="filter-group"><label>ID FP:</label><input type="number" id="newId" placeholder="ID" style="width: 70px;"></div>
+            <div class="filter-group"><label>Nama:</label><input type="text" id="newNama" placeholder="Nama Siswa" style="width: 200px;"></div>
+            <div class="filter-group"><label>Kelas:</label><select id="newKelas" style="min-width: 80px;"></select></div>
+            <div class="filter-group"><label>Jurusan:</label><select id="newJurusan" style="min-width: 80px;"></select></div>
+            <div class="filter-group"><label>Delay:</label><input type="number" id="newDelay" value="60" style="width: 70px;"></div>
+            <button class="btn-action" onclick="addStudent()"><span>➕ Simpan Siswa</span></button>
         </div>
-        <div class="filter-group">
-          <select id="newKelas" style="min-width: 100px;">
-            <option value="" disabled selected>Pilih Kelas</option>
-            <option value="X">Kelas X</option>
-            <option value="XI">Kelas XI</option>
-            <option value="XII">Kelas XII</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <select id="newJurusan" style="min-width: 100px;">
-            <option value="" disabled selected>Pilih Jurusan</option>
-            <option value="RPL">RPL</option>
-            <option value="TKJ">TKJ</option>
-            <option value="MM">Multimedia</option>
-          </select>
-        </div>
-        <button class="btn-primary" onclick="addStudent()">
-          <span>➕ Tambah Siswa</span>
-        </button>
       </div>
+      <div class="controls-bar role-admin role-guru">
+        <div class="filter-group"><label>Kelas:</label><select id="filterUserKelas" onchange="renderUsersTable()"></select></div>
+        <div class="filter-group"><label>Jurusan:</label><select id="filterUserJurusan" onchange="renderUsersTable()"></select></div>
+        <div class="search-box"><input type="text" id="searchUserName" placeholder="🔍 Cari nama..." oninput="renderUsersTable()"></div>
+      </div>
+      <div class="table-container"><table><thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead><tbody id="tbody-students"><tr><td colspan="6" style="text-align:center;">🔄 Mengambil data...</td></tr></tbody></table></div>
+    </div>
 
-      <!-- Students Table -->
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>ID Firebase</th>
-              <th>Nama Lengkap</th>
-              <th>Kelas</th>
-              <th>Jurusan</th>
-              <th style="color:var(--primary);">Min Checkout (Menit)</th>
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody id="tbody-students">
-            <tr><td colspan="6" style="text-align:center;">🔄 Mengambil data siswa...</td></tr>
-          </tbody>
-        </table>
-      </div>
+    <!-- TAB 3: USERS MANAGEMENT -->
+    <div id="tab-users" class="tab-content">
+        <div class="controls-bar"><h4 style="margin:0; color:var(--primary);">Daftar Pengguna Web</h4></div>
+        <div class="key-box"><div><strong>Generate Kode Pendaftaran</strong><br><small>Admin membuat kode untuk diberikan ke siswa.</small></div><button class="btn-action" onclick="generateKey()">Generate Kode</button></div>
+        <div id="generatedKeyDisplay" style="margin: 10px 0; font-size: 1.2rem; color: var(--secondary); font-weight: bold; display:none;"></div>
+        <div class="table-container" style="margin-top:20px;"><table><thead><tr><th>Email</th><th>Nama</th><th>Role</th><th>Kelas/Jurusan</th><th>Aksi</th></tr></thead><tbody id="tbody-users"><tr><td colspan="5" style="text-align:center;">🔄 Mengambil data...</td></tr></tbody></table></div>
+    </div>
+
+    <!-- TAB 4: PENGATURAN (KELAS & JURUSAN) -->
+    <div id="tab-config" class="tab-content">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!-- KELOLA KELAS -->
+            <div>
+                <h3 style="color:var(--primary); border-bottom: 1px solid #333; padding-bottom:10px;">Atur Kelas</h3>
+                <div class="controls-bar" style="background:transparent; padding:0;">
+                    <input type="text" id="inputNewClass" placeholder="Contoh: 7A, 8B, XII IPA..." style="flex:1;">
+                    <button class="btn-action" onclick="addClass()">Tambah Kelas</button>
+                </div>
+                <div id="listClasses" style="max-height: 300px; overflow-y: auto;">
+                    <!-- Dynamic List -->
+                </div>
+            </div>
+
+            <!-- KELOLA JURUSAN -->
+            <div>
+                <h3 style="color:var(--secondary); border-bottom: 1px solid #333; padding-bottom:10px;">Atur Jurusan</h3>
+                <div class="controls-bar" style="background:transparent; padding:0;">
+                    <input type="text" id="inputNewMajor" placeholder="Contoh: Informatika, Mesin..." style="flex:1;">
+                    <button class="btn-action" onclick="addMajor()">Tambah Jurusan</button>
+                </div>
+                <div id="listMajors" style="max-height: 300px; overflow-y: auto;">
+                    <!-- Dynamic List -->
+                </div>
+            </div>
+        </div>
     </div>
 
   </div>
 
-  <!-- MODAL 1: EDIT CHECKOUT (ATTENDANCE) -->
-  <div id="editCheckoutModal" class="modal-overlay">
-    <div class="modal-box">
-      <h3 class="modal-title">Edit Waktu Pulang</h3>
-      <p id="checkoutInfo" style="color:#aaa; margin-bottom: 15px;"></p>
-      <input type="hidden" id="editDateKey">
-      <input type="hidden" id="editUserId">
-      
-      <div class="form-group">
-        <label>Waktu Check Out Baru</label>
-        <input type="time" id="editCheckoutTime">
-      </div>
-      
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeCheckoutModal()">Batal</button>
-        <button class="btn-save" onclick="saveCheckoutEdit()">Simpan</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL 2: EDIT STUDENT (UPDATED TO MINUTES) -->
+  <!-- MODAL EDIT STUDENT -->
   <div id="editStudentModal" class="modal-overlay">
     <div class="modal-box">
-      <h3 class="modal-title">Edit Data Siswa & Delay</h3>
-      <input type="hidden" id="editStudentKey">
-      
-      <div class="form-group">
-        <label>Nama Siswa</label>
-        <input type="text" id="editStudentNama">
-      </div>
-      
-      <div class="form-group">
-        <label>Kelas</label>
-        <select id="editStudentKelas">
-            <option value="X">X</option>
-            <option value="XI">XI</option>
-            <option value="XII">XII</option>
-        </select>
-      </div>
+      <h3 class="modal-title">Edit Data Siswa</h3>
+      <input type="hidden" id="editStudentId">
+      <div class="form-group"><label>Nama Siswa</label><input type="text" id="editStudentNama"></div>
+      <div class="form-group"><label>Kelas</label><select id="editStudentKelas"></select></div>
+      <div class="form-group"><label>Jurusan</label><select id="editStudentJurusan"></select></div>
+      <div class="form-group"><label style="color:var(--primary); font-weight:bold;">Delay Out (Menit)</label><input type="number" id="editDelay" min="0"></div>
+      <div class="modal-actions"><button class="btn-cancel" onclick="closeStudentModal()">Batal</button><button class="btn-save" onclick="saveStudentEdit()">Simpan</button></div>
+    </div>
+  </div>
 
-      <div class="form-group">
-        <label>Jurusan</label>
-        <select id="editStudentJurusan">
-            <option value="RPL">RPL</option>
-            <option value="TKJ">TKJ</option>
-            <option value="MM">Multimedia</option>
-        </select>
-      </div>
-      
-      <div class="form-group">
-        <label style="color:var(--primary); font-weight:bold;">Min Checkout Delay (Menit)</label>
-        <input type="number" id="editDelay" placeholder="Contoh: 30" min="0">
-        <small style="color:#888;">Berapa menit siswa harus ada sebelum bisa checkout.</small>
-      </div>
-      
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeStudentModal()">Batal</button>
-        <button class="btn-save" onclick="saveStudentEdit()">Simpan Perubahan</button>
-      </div>
+  <!-- MODAL EDIT USER -->
+  <div id="editUserModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 class="modal-title">Edit Pengguna</h3>
+      <input type="hidden" id="editUserId">
+      <div class="form-group"><label>Nama Lengkap</label><input type="text" id="editUserName"></div>
+      <div class="form-group"><label>Role</label><select id="editUserRole"><option value="siswa">Siswa</option><option value="guru">Guru</option><option value="admin">Admin</option></select></div>
+      <div class="modal-actions"><button class="btn-cancel" onclick="closeUserModal()">Batal</button><button class="btn-save" onclick="saveUserEdit()">Simpan</button></div>
     </div>
   </div>
 
   <!-- TOAST -->
-  <div id="toast" class="toast">Pesan notifikasi</div>
+  <div id="toast" class="toast">Pesan</div>
 
-  <!-- FIREBASE & LOGIC SCRIPT -->
+  <!-- FIREBASE & LOGIC -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, onValue, update, push, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, onValue, set, update, remove, get, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBZg9NpbBAg8dKHkCbYf4J_2bpHH2ZJWWI",
       authDomain: "absensi-4389a.firebaseapp.com",
-      databaseURL: "https://absensi-4389a-default-rtdb.firebaseio.com",
+      databaseURL: "https://absensi-4389a-default-rtdb.firebaseio.com/",
       projectId: "absensi-4389a",
       storageBucket: "absensi-4389a.appspot.com",
-      messagingSenderId: "262927639457",
-      appId: "1:262927639457:web:da08d4d809bf46c71ee1e0"
+      messagingSenderId: "123456789", appId: "1:123456789:web:abcdef"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const attendanceRef = ref(db, "attendance");
-    const studentsRef = ref(db, "students");
+    const auth = getAuth(app);
+    const googleProvider = new GoogleAuthProvider();
 
-    let allData = [];
-    let filteredData = [];
-    let allStudents = [];
+    // REFERENCES
+    const absensiRef = ref(db, "absensi"); 
+    const usersRef = ref(db, "users"); // Fingerprint Siswa
+    const webUsersRef = ref(db, "webUsers"); // Auth Users
+    const keysRef = ref(db, "registrationKeys");
+    const configClassesRef = ref(db, "config/classes");
+    const configMajorsRef = ref(db, "config/majors");
 
-    // --- LOGIN ---
-    const loginForm = document.getElementById('loginForm');
-    const loginSection = document.getElementById('login-section');
-    const dashboardSection = document.getElementById('dashboard-section');
+    let allAbsensi = [];
+    let allSiswaFP = [];
+    let allWebUsers = [];
+    let allClasses = []; // Dynamic
+    let allMajors = []; // Dynamic
+    let currentUser = null;
 
-    if(loginForm) {
-      loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const u = document.getElementById('username').value;
-        const p = document.getElementById('password').value;
-
-        if (u === 'admin' && p === '1234') {
-          showToast("✅ Login Berhasil");
-          loginSection.style.display = 'none';
-          dashboardSection.style.display = 'block';
-          startClock();
-          initFirebase();
-        } else {
-          showToast("❌ Username atau Password salah!");
-        }
-      });
-    }
-
-    window.logout = function() { location.reload(); }
-
-    window.switchTab = function(tabName) {
-      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-      document.getElementById(`tab-${tabName}`).classList.add('active');
-      const buttons = document.querySelectorAll('.tab-btn');
-      if(tabName === 'attendance') buttons[0].classList.add('active');
-      if(tabName === 'students') buttons[1].classList.add('active');
-    }
-
-    function startClock() {
-      const clockEl = document.getElementById('clock');
-      setInterval(() => {
-        const now = new Date();
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const dateStr = now.toLocaleDateString('id-ID', options);
-        const timeStr = now.toLocaleTimeString('id-ID', { hour12: false });
-        clockEl.textContent = `${dateStr} | ${timeStr}`;
-      }, 1000);
-    }
-
-    function initFirebase() {
-      // 1. Attendance Listener
-      onValue(attendanceRef, (snapshot) => {
-        const rawData = snapshot.val();
-        const tbody = document.getElementById('tbody-attendance');
-        if (!rawData) {
-          tbody.innerHTML = "<tr><td colspan='9' style='text-align:center;'>❌ Tidak ada data absensi</td></tr>";
-          allData = [];
-          populateFilters(); // Refresh filters even if empty
-          return;
-        }
-        let tempData = [];
-        const keys = Object.keys(rawData);
-        if(keys.length === 0) return;
-
-        const firstKey = keys[0];
-        const isDateFormat = firstKey.includes("-"); 
-
-        if (isDateFormat) {
-          Object.keys(rawData).sort().reverse().forEach(date => {
-            const users = rawData[date];
-            if (users) {
-              Object.keys(users).forEach(id => {
-                const u = users[id] || {};
-                tempData.push({
-                  date: date, id: id, nama: u.nama || "-",
-                  kelas: u.kelas || "-", jurusan: u.jurusan || "-",
-                  check_in: u.check_in_time || "-", check_out: u.check_out_time || "-",
-                  status: (u.status || "-").toLowerCase(),
-                  _pathDate: date, _pathId: id
-                });
-              });
-            }
-          });
-        } else {
-          Object.keys(rawData).forEach(id => {
-            const u = rawData[id] || {};
-            tempData.push({
-              date: "-", id: id, nama: u.nama || "-", kelas: u.kelas || "-", jurusan: u.jurusan || "-",
-              check_in: u.check_in_time || "-", check_out: u.check_out_time || "-",
-              status: (u.status || "-").toLowerCase(),
-              _pathDate: '-', _pathId: id
+    // --- AUTH & INIT ---
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            get(ref(db, "webUsers/" + user.uid)).then((snapshot) => {
+                if (snapshot.exists()) {
+                    currentUser = snapshot.val();
+                    currentUser.uid = user.uid;
+                    currentUser.email = user.email;
+                    initDashboard();
+                } else {
+                    currentUser = { uid: user.uid, email: user.email, role: 'admin', nama: 'Admin' };
+                    initDashboard();
+                }
             });
-          });
-        }
-        allData = tempData;
-        populateFilters();
-        renderTable();
-      });
+        } else { showLogin(); }
+    });
 
-      // 2. Students Listener
-      onValue(studentsRef, (snapshot) => {
-        const rawData = snapshot.val();
-        const tbody = document.getElementById('tbody-students');
-        if (!rawData) {
-          tbody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>⚠️ Belum ada data siswa</td></tr>";
-          allStudents = [];
-          return;
+    async function initDashboard() {
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+        document.getElementById('userProfileDisplay').textContent = `${currentUser.nama || currentUser.email}`;
+        document.getElementById('userRoleDisplay').textContent = `Role: ${currentUser.role.toUpperCase()}`;
+
+        // RBAC UI
+        const role = currentUser.role;
+        const els = {
+            '.role-siswa': role === 'siswa',
+            '.role-guru': role === 'guru' || role === 'admin',
+            '.role-admin': role === 'admin'
+        };
+        for (const [cls, visible] of Object.entries(els)) {
+            document.querySelectorAll(cls).forEach(el => el.style.display = visible ? 'flex' : 'none');
         }
-        let tempStudents = [];
-        Object.keys(rawData).forEach(key => {
-            const s = rawData[key];
-            tempStudents.push({
-                key: key,
-                nama: s.nama || "-",
-                kelas: s.kelas || "-",
-                jurusan: s.jurusan || "-",
-                min_checkout_delay: s.min_checkout_delay || 0
-            });
+
+        // SEED CONFIG (Jika kosong buat default)
+        const snapC = await get(configClassesRef);
+        if(!snapC.exists()) set(configClassesRef, ['X', 'XI', 'XII']);
+        
+        const snapM = await get(configMajorsRef);
+        if(!snapM.exists()) set(configMajorsRef, ['RPL', 'TKJ', 'MM']);
+
+        startClock();
+        loadData();
+    }
+
+    function showLogin() {
+        document.getElementById('auth-section').style.display = 'flex';
+        document.getElementById('dashboard-section').style.display = 'none';
+    }
+
+    function loadData() {
+        // 1. Load Config (Dynamic Dropdowns)
+        onValue(configClassesRef, (snap) => {
+            const val = snap.val();
+            allClasses = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+            allClasses.sort();
+            renderConfigLists();
+            populateDropdowns();
         });
-        allStudents = tempStudents;
-        renderStudentsTable();
-      });
+
+        onValue(configMajorsRef, (snap) => {
+            const val = snap.val();
+            allMajors = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+            allMajors.sort();
+            renderConfigLists();
+            populateDropdowns();
+        });
+
+        // 2. Load Siswa FP
+        onValue(usersRef, (snap) => {
+            const rawData = snap.val();
+            let temp = [];
+            if(rawData) {
+                Object.keys(rawData).forEach(key => {
+                    const s = rawData[key];
+                    if(s) temp.push({ id: key, nama: s.nama, kelas: s.kelas, jurusan: s.jurusan, delayOut: s.delayOut });
+                });
+            }
+            temp.sort((a,b) => parseInt(a.id) - parseInt(b.id));
+            allSiswaFP = temp;
+            renderUsersTable();
+        });
+
+        // 3. Load Absensi
+        onValue(absensiRef, (snap) => {
+            const rawData = snap.val();
+            let temp = [];
+            if(rawData) {
+                Object.keys(rawData).sort().reverse().forEach(date => {
+                    const dayData = rawData[date];
+                    if(dayData) {
+                        Object.keys(dayData).forEach(id => {
+                            const log = dayData[id];
+                            const u = allSiswaFP.find(x => x.id === id) || { nama: id, kelas: "-", jurusan: "-" };
+                            temp.push({ date, id, nama: log.nama || u.nama, kelas: log.kelas || u.kelas, jurusan: log.jurusan || u.jurusan, check_in: log.in, check_out: log.out });
+                        });
+                    }
+                });
+            }
+            allAbsensi = temp;
+            populateFiltersAttendance();
+            renderTable();
+        });
+
+        // 4. Load Web Users
+        if (currentUser.role === 'admin') {
+            onValue(webUsersRef, (snap) => {
+                const rawData = snap.val();
+                let temp = [];
+                if(rawData) {
+                    Object.keys(rawData).forEach(uid => {
+                        const u = rawData[uid];
+                        temp.push({ uid, nama: u.nama, email: u.email, role: u.role, kelas: u.kelas, jurusan: u.jurusan });
+                    });
+                }
+                allWebUsers = temp;
+                renderWebUsersTable();
+            });
+        }
     }
 
-    // --- ATTENDANCE LOGIC ---
-    function populateFilters() {
-      const kelasSet = new Set(); 
-      const jurusanSet = new Set();
-      const dateSet = new Set();
+    // --- DYNAMIC DROPDOWNS ---
+    function populateDropdowns() {
+        const selects = [
+            { id: 'regKelas', data: allClasses, default: 'Pilih Kelas' },
+            { id: 'newKelas', data: allClasses, default: '-' },
+            { id: 'editStudentKelas', data: allClasses, default: '-' },
+            { id: 'filterKelas', data: allClasses, default: 'Semua Kelas', hasAll: true },
+            { id: 'filterUserKelas', data: allClasses, default: 'Semua Kelas', hasAll: true }
+        ];
 
-      allData.forEach(item => {
-        if(item.kelas && item.kelas !== '-') kelasSet.add(item.kelas);
-        if(item.jurusan && item.jurusan !== '-') jurusanSet.add(item.jurusan);
-        // ADDITION: Collect dates
-        if(item.date && item.date !== '-') dateSet.add(item.date);
-      });
+        selects.forEach(item => {
+            const el = document.getElementById(item.id);
+            if(!el) return;
+            const curr = el.value; 
+            el.innerHTML = `<option value="${item.hasAll?'all':''}" disabled selected>${item.default}</option>`;
+            if(item.hasAll) el.innerHTML = `<option value="all">${item.default}</option>`;
+            
+            item.data.forEach(d => el.innerHTML += `<option value="${d}">${d}</option>`);
+            
+            // Restore selection if still valid
+            if(curr && item.data.includes(curr)) el.value = curr;
+        });
 
-      const kelasSelect = document.getElementById('filterKelas');
-      const jurusanSelect = document.getElementById('filterJurusan');
-      const dateSelect = document.getElementById('filterDate'); // ADDITION
-      
-      // Save current selection to persist after refresh
-      const savedKelas = kelasSelect.value; 
-      const savedJurusan = jurusanSelect.value;
-      const savedDate = dateSelect.value;
+        const majorSelects = [
+            { id: 'regJurusan', data: allMajors, default: 'Pilih Jurusan' },
+            { id: 'newJurusan', data: allMajors, default: '-' },
+            { id: 'editStudentJurusan', data: allMajors, default: '-' },
+            { id: 'filterJurusan', data: allMajors, default: 'Semua Jurusan', hasAll: true },
+            { id: 'filterUserJurusan', data: allMajors, default: 'Semua Jurusan', hasAll: true }
+        ];
 
-      // Reset options
-      kelasSelect.innerHTML = '<option value="all">Semua Kelas</option>';
-      jurusanSelect.innerHTML = '<option value="all">Semua Jurusan</option>';
-      dateSelect.innerHTML = '<option value="all">Semua Tanggal</option>'; // ADDITION
+        majorSelects.forEach(item => {
+            const el = document.getElementById(item.id);
+            if(!el) return;
+            const curr = el.value;
+            el.innerHTML = `<option value="${item.hasAll?'all':''}" disabled selected>${item.default}</option>`;
+            if(item.hasAll) el.innerHTML = `<option value="all">${item.default}</option>`;
+            
+            item.data.forEach(d => el.innerHTML += `<option value="${d}">${d}</option>`);
 
-      // Populate Class
-      Array.from(kelasSet).sort().forEach(k => kelasSelect.innerHTML += `<option value="${k}">${k}</option>`);
-      
-      // Populate Major
-      Array.from(jurusanSet).sort().forEach(j => jurusanSelect.innerHTML += `<option value="${j}">${j}</option>`);
+            if(curr && item.data.includes(curr)) el.value = curr;
+        });
+    }
 
-      // ADDITION: Populate Dates (Sorted Descending)
-      Array.from(dateSet).sort().reverse().forEach(d => dateSelect.innerHTML += `<option value="${d}">${d}</option>`);
+    // --- CONFIG MANAGEMENT ---
+    function renderConfigLists() {
+        const listC = document.getElementById('listClasses');
+        listC.innerHTML = allClasses.map(c => `
+            <div class="config-item">
+                <span>${c}</span>
+                <button class="btn-action btn-sm btn-danger" onclick="window.deleteConfig('class', '${c}')">Hapus</button>
+            </div>
+        `).join('');
 
-      // Restore selection if it still exists
-      if(savedKelas !== 'all' && Array.from(kelasSet).includes(savedKelas)) kelasSelect.value = savedKelas;
-      if(savedJurusan !== 'all' && Array.from(jurusanSet).includes(savedJurusan)) jurusanSelect.value = savedJurusan;
-      if(savedDate !== 'all' && Array.from(dateSet).includes(savedDate)) dateSelect.value = savedDate;
+        const listM = document.getElementById('listMajors');
+        listM.innerHTML = allMajors.map(m => `
+            <div class="config-item">
+                <span>${m}</span>
+                <button class="btn-action btn-sm btn-danger" onclick="window.deleteConfig('major', '${m}')">Hapus</button>
+            </div>
+        `).join('');
+    }
+
+    window.addClass = function() {
+        const val = document.getElementById('inputNewClass').value.trim();
+        if(!val) return;
+        if(allClasses.includes(val)) { showToast("Kelas sudah ada"); return; }
+        allClasses.push(val);
+        allClasses.sort();
+        set(configClassesRef, allClasses).then(() => {
+            document.getElementById('inputNewClass').value = '';
+            showToast("✅ Kelas Ditambah");
+        });
+    }
+
+    window.addMajor = function() {
+        const val = document.getElementById('inputNewMajor').value.trim();
+        if(!val) return;
+        if(allMajors.includes(val)) { showToast("Jurusan sudah ada"); return; }
+        allMajors.push(val);
+        allMajors.sort();
+        set(configMajorsRef, allMajors).then(() => {
+            document.getElementById('inputNewMajor').value = '';
+            showToast("✅ Jurusan Ditambah");
+        });
+    }
+
+    window.deleteConfig = function(type, val) {
+        if(!confirm(`Hapus ${type === 'class' ? 'Kelas' : 'Jurusan'} "${val}"?`)) return;
+        const list = type === 'class' ? allClasses : allMajors;
+        const idx = list.indexOf(val);
+        if(idx > -1) {
+            list.splice(idx, 1);
+            const refTarget = type === 'class' ? configClassesRef : configMajorsRef;
+            set(refTarget, list).then(() => showToast("Terhapus"));
+        }
+    }
+
+    // --- RENDER TABLES (UPDATED FOR DYNAMIC FILTERS) ---
+    function populateFiltersAttendance() {
+        // Dates are handled in renderTable loop or simplified logic
+        const dateSelect = document.getElementById('filterDate');
+        const dates = [...new Set(allAbsensi.map(i => i.date))].sort().reverse();
+        const curr = dateSelect.value;
+        dateSelect.innerHTML = '<option value="all">Semua Tanggal</option>';
+        dates.forEach(d => dateSelect.innerHTML += `<option value="${d}">${d}</option>`);
+        if(curr && dates.includes(curr)) dateSelect.value = curr;
     }
 
     window.renderTable = function() {
-      const kelasVal = document.getElementById('filterKelas').value;
-      const jurusanVal = document.getElementById('filterJurusan').value;
-      const dateVal = document.getElementById('filterDate').value; // ADDITION
-      
-      const tbody = document.getElementById('tbody-attendance');
-      
-      filteredData = allData.filter(item => {
-        return (kelasVal === 'all' || item.kelas === kelasVal) &&
-               (jurusanVal === 'all' || item.jurusan === jurusanVal) &&
-               (dateVal === 'all' || item.date === dateVal); // ADDITION
-      });
-
-      if (filteredData.length === 0) {
-        tbody.innerHTML = "<tr><td colspan='9' style='text-align:center;'>Data tidak ditemukan.</td></tr>";
-        return;
-      }
-
-      let rows = "";
-      filteredData.forEach(item => {
-        const statusClass = item.status === 'hadir' ? 'hadir' : (item.status === 'pulang' ? 'pulang' : 'pending');
-        rows += `
-          <tr>
-            <td>${item.date}</td><td>${item.id}</td><td>${item.nama}</td><td>${item.kelas}</td><td>${item.jurusan}</td>
-            <td>${item.check_in}</td>
-            <td>
-                ${item.check_out}
-                <button class="btn-edit" onclick="openEditCheckout('${item._pathDate}', '${item._pathId}', '${item.check_out}', '${item.nama}')" title="Edit Waktu Pulang">✏️</button>
-            </td>
-            <td><span class="status ${statusClass}">${item.status}</span></td><td>-</td>
-          </tr>
-        `;
-      });
-      tbody.innerHTML = rows;
-    }
-
-    // --- STUDENTS LOGIC (UPDATED TO MINUTES) ---
-    function renderStudentsTable() {
-        const tbody = document.getElementById('tbody-students');
-        if(allStudents.length === 0) {
-            tbody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Belum ada data siswa.</td></tr>";
-            return;
+        const tbody = document.getElementById('tbody-attendance');
+        let filtered = allAbsensi;
+        
+        if (currentUser.role === 'siswa') {
+            filtered = filtered.filter(item => item.kelas === currentUser.kelas && item.jurusan === currentUser.jurusan);
+        } else {
+            const kVal = document.getElementById('filterKelas').value;
+            const jVal = document.getElementById('filterJurusan').value;
+            if (kVal !== 'all') filtered = filtered.filter(item => item.kelas === kVal);
+            if (jVal !== 'all') filtered = filtered.filter(item => item.jurusan === jVal);
         }
+        const dVal = document.getElementById('filterDate').value;
+        if (dVal !== 'all') filtered = filtered.filter(item => item.date === dVal);
+
+        if(filtered.length === 0) { tbody.innerHTML = "<tr><td colspan='8'>Tidak ada data.</td></tr>"; return; }
+
         let rows = "";
-        allStudents.forEach(s => {
-            rows += `
-                <tr>
-                    <td style="font-family:monospace; color:#888; font-size:0.8rem;">${s.key}</td>
-                    <td>${s.nama}</td>
-                    <td>${s.kelas}</td>
-                    <td>${s.jurusan}</td>
-                    <td style="font-weight:bold; color:var(--primary);">${s.min_checkout_delay} Menit</td>
-                    <td>
-                        <div class="action-btns">
-                            <button class="btn-edit" onclick="openEditStudent('${s.key}', '${s.nama}', '${s.kelas}', '${s.jurusan}', ${s.min_checkout_delay})">✏️ Edit Delay</button>
-                            <button class="btn-delete" onclick="deleteStudent('${s.key}', '${s.nama}')">🗑️</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
+        filtered.forEach(item => {
+            rows += `<tr><td>${item.date}</td><td>${item.id}</td><td>${item.nama}</td><td>${item.kelas}</td><td>${item.jurusan}</td><td>${item.check_in}</td><td>${item.check_out}</td><td class="role-guru role-admin" style="display:none;">-</td></tr>`;
         });
         tbody.innerHTML = rows;
     }
 
+    window.renderUsersTable = function() {
+        const tbody = document.getElementById('tbody-students');
+        const fK = document.getElementById('filterUserKelas').value;
+        const fJ = document.getElementById('filterUserJurusan').value;
+        const search = document.getElementById('searchUserName').value.toLowerCase();
+
+        let filtered = allSiswaFP.filter(u => {
+            return (fK === 'all' || u.kelas === fK) &&
+                   (fJ === 'all' || u.jurusan === fJ) &&
+                   u.nama.toLowerCase().includes(search);
+        });
+
+        if(filtered.length === 0) { tbody.innerHTML = "<tr><td colspan='6'>Tidak ada data.</td></tr>"; return; }
+        
+        let rows = "";
+        filtered.forEach(u => {
+            let actions = `<div class="action-btns"><button class="btn-edit" onclick="window.openEditUser('${u.id}', '${u.nama}', '${u.kelas}', '${u.jurusan}', '${u.delayOut}')">✏️</button><button class="btn-delete" onclick="window.deleteUser('${u.id}')">🗑️</button></div>`;
+            if (currentUser.role === 'siswa') actions = "-";
+
+            rows += `<tr><td>${u.id}</td><td>${u.nama}</td><td>${u.kelas}</td><td>${u.jurusan}</td><td>${u.delayOut} Menit</td><td>${actions}</td></tr>`;
+        });
+        tbody.innerHTML = rows;
+    }
+
+    window.renderWebUsersTable = function() {
+        const tbody = document.getElementById('tbody-users');
+        if(allWebUsers.length === 0) { tbody.innerHTML = "<tr><td colspan='5'>Belum ada user.</td></tr>"; return; }
+        let rows = "";
+        allWebUsers.forEach(u => {
+            let actions = `<div class="action-btns"><button class="btn-edit" onclick="window.openEditUserModal('${u.uid}', '${u.nama}', '${u.role}')">✏️</button><button class="btn-delete" onclick="window.deleteWebUser('${u.uid}')">🗑️</button></div>`;
+            if (u.uid === currentUser.uid) actions = "(Anda)";
+            rows += `<tr><td>${u.email}</td><td>${u.nama}</td><td><span style="color:${u.role==='admin'?'#ff9800':(u.role==='guru'?'#00bcd4':'#aaa')}">${u.role.toUpperCase()}</span></td><td>${u.kelas||'-'}/${u.jurusan||'-'}</td><td>${actions}</td></tr>`;
+        });
+        tbody.innerHTML = rows;
+    }
+
+    // --- AUTH LOGIC ---
+    window.toggleAuth = function(mode) {
+        document.getElementById('login-card').style.display = mode === 'login' ? 'block' : 'none';
+        document.getElementById('register-card').style.display = mode === 'register' ? 'block' : 'none';
+    }
+    window.switchTab = function(name) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tab-${name}`).classList.add('active');
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            if(btn.innerText.toLowerCase().includes(name) || (name==='config' && btn.innerText.includes('Pengaturan'))) btn.classList.add('active');
+        });
+    }
+    
+    window.handleRegister = async function(e) {
+        e.preventDefault();
+        const nama = document.getElementById('regNama').value;
+        const email = document.getElementById('regEmail').value;
+        const password = document.getElementById('regPassword').value;
+        const kelas = document.getElementById('regKelas').value;
+        const jurusan = document.getElementById('regJurusan').value;
+        const key = document.getElementById('regKey').value.trim();
+
+        const keySnap = await get(ref(db, "registrationKeys/" + key));
+        if (!keySnap.exists()) { showToast("❌ Kode Salah!"); return; }
+
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+            await set(ref(db, "webUsers/" + user.uid), { nama, email, role: "siswa", kelas, jurusan, createdAt: new Date().toISOString() });
+            await remove(ref(db, "registrationKeys/" + key));
+            showToast("✅ Pendaftaran Berhasil!"); toggleAuth('login');
+        } catch (error) { showToast("❌ " + error.message); }
+    }
+
+    window.handleLoginEmail = function(e) { e.preventDefault(); signInWithEmailAndPassword(auth, document.getElementById('loginEmail').value, document.getElementById('loginPassword').value).catch(err => showToast("❌ " + err.message)); }
+    window.handleLoginGoogle = function() { signInWithPopup(auth, googleProvider).then((result) => { const user = result.user; get(ref(db, "webUsers/" + user.uid)).then((snap) => { if(!snap.exists()) { set(ref(db, "webUsers/" + user.uid), { nama: user.displayName, email: user.email, role: "guru", createdAt: new Date().toISOString() }); } }); }).catch(err => showToast("❌ " + err.message)); }
+    window.handleLogout = function() { signOut(auth).then(() => location.reload()); }
+
+    // --- CRUD ---
     window.addStudent = function() {
+        const id = String(document.getElementById('newId').value.trim());
         const nama = document.getElementById('newNama').value.trim();
         const kelas = document.getElementById('newKelas').value;
         const jurusan = document.getElementById('newJurusan').value;
-        if(!nama || !kelas || !jurusan) { showToast("⚠️ Lengkapi semua data siswa!"); return; }
-        // Default delay 0 menit
-        push(studentsRef, { nama, kelas, jurusan, min_checkout_delay: 0 })
-        .then(() => {
-            showToast("✅ Siswa berhasil ditambahkan");
-            document.getElementById('newNama').value = "";
-            document.getElementById('newKelas').selectedIndex = 0;
-            document.getElementById('newJurusan').selectedIndex = 0;
-        })
-        .catch((err) => showToast("❌ Gagal: " + err.message));
-    }
-
-    window.deleteStudent = function(key, nama) {
-        if(confirm(`Yakin menghapus ${nama}?`)) {
-            remove(ref(db, `students/${key}`))
-            .then(() => showToast("🗑️ Siswa dihapus"))
-            .catch(() => showToast("❌ Gagal menghapus"));
-        }
-    }
-
-    // --- NEW: EDIT STUDENT & DELAY (MINUTES) ---
-    const studentModal = document.getElementById('editStudentModal');
-    
-    window.openEditStudent = function(key, nama, kelas, jurusan, delay) {
-        document.getElementById('editStudentKey').value = key;
-        document.getElementById('editStudentNama').value = nama;
-        document.getElementById('editStudentKelas').value = kelas;
-        document.getElementById('editStudentJurusan').value = jurusan;
-        document.getElementById('editDelay').value = delay; 
-        studentModal.style.display = 'flex';
-    }
-    
-    window.closeStudentModal = function() {
-        studentModal.style.display = 'none';
-    }
-
-    window.saveStudentEdit = function() {
-        const key = document.getElementById('editStudentKey').value;
-        const nama = document.getElementById('editStudentNama').value;
-        const kelas = document.getElementById('editStudentKelas').value;
-        const jurusan = document.getElementById('editStudentJurusan').value;
-        const delay = document.getElementById('editDelay').value;
-
-        if(!nama || !kelas || !jurusan || delay === "") {
-            showToast("⚠️ Mohon lengkapi data (termasuk delay)");
-            return;
-        }
-
-        const updates = {};
-        updates[`students/${key}/nama`] = nama;
-        updates[`students/${key}/kelas`] = kelas;
-        updates[`students/${key}/jurusan`] = jurusan;
-        updates[`students/${key}/min_checkout_delay`] = Number(delay); // Simpan dalam menit
-
-        update(ref(db), updates)
-        .then(() => {
-            showToast("✅ Data siswa & delay berhasil diupdate");
-            closeStudentModal();
-        })
-        .catch((err) => {
-            console.error(err);
-            showToast("❌ Gagal mengupdate data");
+        const delay = document.getElementById('newDelay').value.trim();
+        if(!id || !nama || !kelas || !jurusan) { showToast("⚠️ Lengkapi data!"); return; }
+        get(ref(db, "users/" + id)).then(s => {
+            if(s.exists()) showToast("❌ ID sudah ada!");
+            else set(ref(db, "users/" + id), { id: parseInt(id), nama, kelas, jurusan, delayOut: delay || "60" }).then(() => showToast("✅ Berhasil"));
         });
     }
-
-    // --- CHECKOUT EDIT LOGIC ---
-    const checkoutModal = document.getElementById('editCheckoutModal');
-    window.openEditCheckout = function(dateKey, userId, currentCheckout, nama) {
-      document.getElementById('editDateKey').value = dateKey;
-      document.getElementById('editUserId').value = userId;
-      document.getElementById('checkoutInfo').textContent = `Edit untuk: ${nama} (${dateKey})`;
-      document.getElementById('editCheckoutTime').value = currentCheckout && currentCheckout.includes(':') ? currentCheckout.substring(0,5) : "";
-      checkoutModal.style.display = 'flex';
+    window.deleteUser = function(id) { if(confirm("Hapus siswa ini?")) remove(ref(db, `users/${id}`)).then(() => showToast("🗑️ Terhapus")); }
+    
+    window.openEditUser = function(id, n, k, j, d) {
+        document.getElementById('editStudentId').value = id; document.getElementById('editStudentNama').value = n;
+        document.getElementById('editStudentKelas').value = k; document.getElementById('editStudentJurusan').value = j;
+        document.getElementById('editDelay').value = d; document.getElementById('editStudentModal').style.display = 'flex';
     }
-    window.closeCheckoutModal = function() { checkoutModal.style.display = 'none'; }
-    window.saveCheckoutEdit = function() {
-      const newTime = document.getElementById('editCheckoutTime').value;
-      const dKey = document.getElementById('editDateKey').value;
-      const uId = document.getElementById('editUserId').value;
-      if(!newTime) { showToast("⚠️ Masukkan waktu"); return; }
-      const fullTime = newTime + ":00";
-      let updatePath = {};
-      if(dKey === '-') {
-        updatePath[`attendance/${uId}/check_out_time`] = fullTime;
-        updatePath[`attendance/${uId}/status`] = "Pulang";
-      } else {
-        updatePath[`attendance/${dKey}/${uId}/check_out_time`] = fullTime;
-        updatePath[`attendance/${dKey}/${uId}/status`] = "Pulang";
-      }
-      update(ref(db), updatePath)
-        .then(() => { showToast("✅ Waktu pulang diupdate"); closeCheckoutModal(); })
-        .catch(() => showToast("❌ Gagal mengupdate"));
+    window.closeStudentModal = function() { document.getElementById('editStudentModal').style.display = 'none'; }
+    window.saveStudentEdit = function() {
+        const id = document.getElementById('editStudentId').value;
+        update(ref(db, "users/" + id), { nama: document.getElementById('editStudentNama').value, kelas: document.getElementById('editStudentKelas').value, jurusan: document.getElementById('editStudentJurusan').value, delayOut: document.getElementById('editDelay').value }).then(() => { showToast("✅ Update"); closeStudentModal(); });
     }
 
-    // --- CSV DOWNLOAD ---
+    window.generateKey = function() {
+        const key = Math.random().toString(36).substring(2, 10).toUpperCase();
+        document.getElementById('generatedKeyDisplay').style.display = 'block';
+        document.getElementById('generatedKeyDisplay').textContent = "KODE: " + key;
+        set(ref(db, "registrationKeys/" + key), { createdAt: new Date().toISOString() });
+        showToast("✅ Kode disimpan");
+    }
+
+    window.openEditUserModal = function(uid, nama, role) {
+        document.getElementById('editUserId').value = uid; document.getElementById('editUserName').value = nama; document.getElementById('editUserRole').value = role; document.getElementById('editUserModal').style.display = 'flex';
+    }
+    window.closeUserModal = function() { document.getElementById('editUserModal').style.display = 'none'; }
+    window.saveUserEdit = function() {
+        const uid = document.getElementById('editUserId').value;
+        update(ref(db, "webUsers/" + uid), { nama: document.getElementById('editUserName').value, role: document.getElementById('editUserRole').value }).then(() => { showToast("✅ User Update"); closeUserModal(); });
+    }
+    window.deleteWebUser = function(uid) { if(confirm("Hapus user ini?")) remove(ref(db, `webUsers/${uid}`)).then(() => showToast("🗑️ User Terhapus")); }
+
     window.downloadExcel = function() {
-      if(filteredData.length === 0) { showToast("⚠️ Tidak ada data"); return; }
-      let csvContent = "Tanggal,ID,Nama,Kelas,Jurusan,Check In,Check Out,Status\n";
-      filteredData.forEach(row => {
-        const clean = (text) => `"${String(text).replace(/"/g, '""')}"`;
-        csvContent += [clean(row.date), clean(row.id), clean(row.nama), clean(row.kelas), clean(row.jurusan), clean(row.check_in), clean(row.check_out), clean(row.status)].join(",") + "\n";
-      });
-      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `Data_Absensi_${new Date().toISOString().slice(0,10)}.csv`;
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        let csv = "Tanggal,ID,Nama,Kelas,Jurusan,In,Out\n";
+        allAbsensi.forEach(r => csv += `${r.date},${r.id},${r.nama},${r.kelas},${r.jurusan},${r.check_in},${r.check_out}\n`);
+        const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `Laporan_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
-    function showToast(msg) {
-      const x = document.getElementById("toast");
-      x.textContent = msg;
-      x.className = "toast show";
-      setTimeout(() => x.className = x.className.replace("show", ""), 3000);
-    }
+    function startClock() { setInterval(() => { const now = new Date(); document.getElementById('clock').textContent = now.toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'}) + " | " + now.toLocaleTimeString('id-ID'); }, 1000); }
+    function showToast(msg) { const x = document.getElementById("toast"); x.textContent = msg; x.className = "toast show"; setTimeout(() => x.className = x.className.replace("show", ""), 3000); }
   </script>
 </body>
 </html>
