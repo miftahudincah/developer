@@ -190,9 +190,13 @@
     </div>
 
     <!-- MODALS -->
+    <!-- MODAL PROFILE (UPDATED) -->
     <div id="modal-profile" class="modal-overlay">
         <div class="modal-box">
-            <div class="modal-title"><span>Profil Pengguna</span><span style="cursor:pointer;" onclick="closeModal('modal-profile')">✖</span></div>
+            <div class="modal-title">
+                <span>Profil Pengguna</span>
+                <span style="cursor:pointer;" onclick="closeModal('modal-profile')">✖</span>
+            </div>
             <div style="text-align: center;">
                 <div class="profile-upload-wrapper" onclick="document.getElementById('profileFileInput').click()">
                     <img src="https://picsum.photos/seed/admin/200/200" id="profileImg" class="avatar-lg" alt="Profile">
@@ -201,9 +205,26 @@
                 <p class="text-small" style="margin-top:-10px; margin-bottom:15px; color:var(--primary);">Klik ganti foto (ImgBB)</p>
                 <h3 id="profileName" style="margin:0; color:#fff;">Nama User</h3>
                 <p id="profileEmail" style="color:#888; margin-bottom:20px;">email@example.com</p>
+                
+                <!-- INPUT KELAS & JURUSAN -->
+                <div class="form-group">
+                    <label>Kelas (Wajib diisi)</label>
+                    <input type="text" id="profileKelas" placeholder="Contoh: XII">
+                </div>
+                <div class="form-group">
+                    <label>Jurusan / Divisi</label>
+                    <input type="text" id="profileJurusan" placeholder="Contoh: RPL / Karyawan">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-save" onclick="handleUpdateProfileInfo()">Simpan Data</button>
+                    <button class="btn-cancel" onclick="closeModal('modal-profile')">Tutup</button>
+                </div>
+                
+                <!-- PEMISAH DENGAN GARIS -->
+                <hr style="border:0; border-top:1px solid #333; margin: 15px 0;">
+
                 <div class="config-list-item"><span>Password Akun</span><button class="btn-action" onclick="openChangePasswordModal()">Ganti Password</button></div>
             </div>
-            <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-profile')">Tutup</button></div>
         </div>
     </div>
 
