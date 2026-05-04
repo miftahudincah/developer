@@ -52,6 +52,7 @@ function showToast(msg, type='success') {
 }
 
 function populateFilters() {
+    // Filter dropdown untuk Tab Absensi
     const classes = [...new Set(dbData.users.map(s => s.kelas))].sort();
     const majors = [...new Set(dbData.users.map(s => s.jurusan))].sort();
     document.getElementById('filterKelas').innerHTML = '<option value="all">Semua</option>' + classes.map(c => `<option value="${c}">${c}</option>`).join('');
@@ -61,10 +62,15 @@ function populateFilters() {
 // --- PROFILE & MODALS ---
 function openProfileModal() {
     document.getElementById('modal-profile').classList.add('open');
-    if(currentUser) document.getElementById('profileImg').src = currentUser.photoUrl;
+    if(currentUser) {
+        document.getElementById('profileImg').src = currentUser.photoUrl;
+        
+        // Isi input Kelas dan Jurusan dari data user saat ini
+        document.getElementById('profileKelas').value = currentUser.kelas || "";
+        document.getElementById('profileJurusan').value = currentUser.jurusan || "";
+    }
 }
 
-// Tambahkan fungsi ini agar input bersih saat dibuka
 function openForgotPasswordModal() {
     document.getElementById('modal-forgot').classList.add('open');
     document.getElementById('forgotEmail').value = ""; // Reset input
@@ -76,6 +82,52 @@ function openChangePasswordModal() {
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function handleUpdateProfileInfo() {
+    if(!currentUser) return;
+
+    const newKelas = document.getElementById('profileKelas').value;
+    const newJurusan = document.getElementById('profileJurusan').value;
+
+    // Validasi sederhana
+    if(currentUser.role === 'siswa' && !newKelas) {
+        showToast("Kelas wajib diisi!", "error");
+        return;
+    }
+
+    // Tampilkan loading pada tombol
+    const btn = document.querySelector('#modal-profile .btn-save'); 
+    if(btn) {
+        const originalText = btn.innerText;
+        btn.innerText = "Menyimpan..."; btn.disabled = true;
+
+        // Update ke Firebase
+        db.ref(`users_auth/${currentUser.uid}`).update({
+            kelas: newKelas,
+            jurusan: newJurusan
+        }).then(() => {
+            // Update data lokal
+            currentUser.kelas = newKelas;
+            currentUser.jurusan = newJurusan;
+            
+            showToast("Profil (Kelas/Jurusan) berhasil diperbarui");
+            
+            // Render ulang filter dropdown agar muncul data baru jika perlu
+            if(typeof populateFilters === 'function') populateFilters();
+            // Refresh tabel absensi jika siswa mengubah datanya
+            if(currentUser.role === 'siswa') renderTable();
+            
+            closeModal('modal-profile');
+        }).catch((err) => {
+            showToast("Gagal update: " + err.message, "error");
+        }).finally(() => {
+            if(btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        });
+    }
+}
 
 function handleChangePassword(e) {
     e.preventDefault();
@@ -122,7 +174,6 @@ async function uploadProfilePhoto(input) {
     }
 }
 
-// FUNGSI LUPA PASSWORD (FINAL FIX)
 function processForgot() {
     const email = document.getElementById('forgotEmail').value;
 
