@@ -68,9 +68,33 @@ db.ref('absensi').on('value', (snapshot) => {
     if(typeof renderTable === 'function') renderTable();
 });
 
+// --- FUNGSI BERSIH-BERSIH KODE (HAPUS LEBIH DARI 5 JAM) ---
+function cleanupOldCodes(data) {
+    const now = Date.now();
+    const fiveHoursInMs = 5 * 60 * 60 * 1000; // 5 jam dalam milidetik
+
+    if (!data) return;
+
+    Object.keys(data).forEach(key => {
+        const item = data[key];
+        // Cek jika ada createdAt dan selisih waktu sekarang lebih dari 5 jam
+        if (item.createdAt && (now - item.createdAt > fiveHoursInMs)) {
+            // Hapus kode kadaluarsa dari Firebase
+            db.ref('codes/' + key).remove()
+                .then(() => console.log(`Kode ${key} kadaluarsa dan dihapus otomatis.`))
+                .catch(err => console.error("Gagal hapus kode kadaluarsa:", err));
+        }
+    });
+}
+
 // Listener: Kode Pendaftaran
 db.ref('codes').on('value', (snapshot) => {
     const data = snapshot.val();
+    
+    // 1. PANGGIL FUNGSI CLEANUP SEBELUM RENDER
+    // Fungsi ini akan mengecek dan menghapus kode yang lewat 5 jam
+    cleanupOldCodes(data);
+
     dbData.codes = [];
     if(data) {
         Object.keys(data).forEach(key => {
