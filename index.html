@@ -32,7 +32,7 @@
                     <div class="password-container">
                         <input type="password" id="loginPassword" placeholder="contoh123" required>
                         <span class="eye-toggle" onclick="togglePassword('loginPassword', this)">
-                            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-1.34-3-3-3z"/></svg>
                         </span>
                     </div>
                 </div>
@@ -54,7 +54,7 @@
                     <div class="password-container">
                         <input type="password" id="regPassword" placeholder="Minimal 6 karakter" required>
                         <span class="eye-toggle" onclick="togglePassword('regPassword', this)">
-                            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5-5-5 5 5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
                         </span>
                     </div>
                 </div>
@@ -182,9 +182,67 @@
             </div>
         </div>
 
-        <!-- TAB 5: GUIDE -->
+        <!-- TAB 5: GUIDE (UPDATED LENGKAP) -->
         <div id="tab-guide" class="tab-content">
-            <div class="guide-container"><h3>📘 Panduan Sinkronisasi</h3><p>Sistem Web ini terhubung langsung ke Firebase.</p><ul><li><strong>Data Siswa:</strong> Disimpan di <code>users/{id}</code>. ESP32 membaca ini.</li><li><strong>Absensi:</strong> Disimpan di <code>absensi/{tanggal}/{id}</code>.</li></ul></div>
+            <div class="guide-container">
+                <h3>📘 Panduan Lengkap Sistem Absensi</h3>
+                <p>Sistem ini menghubungkan <strong>Web Dashboard</strong> dengan <strong>Alat Fingerprint (ESP32)</strong> secara langsung menggunakan <strong>Firebase Realtime Database</strong>.</p>
+
+                <details open>
+                    <summary><strong>1. Alur Pendaftaran & Scan Siswa Baru</strong></summary>
+                    <div style="margin-top:15px;">
+                        <ol style="line-height: 1.8;">
+                            <li>Siswa menyiapkan <strong>Kode Pendaftaran</strong> yang diberikan Guru.</li>
+                            <li>Siswa melakukan <strong>Pendaftaran</strong> melalui menu "Daftar Disini". Akun web akan terbentuk.</li>
+                            <li><em>Wajib:</em> Setelah mendaftar, siswa <strong>belum bisa scan</strong> jarinya.</li>
+                            <li>Guru/Admin harus masuk ke menu <strong>Data Siswa (FP)</strong> dan memasukkan <strong>ID Fingerprint</strong> pada sensor.</li>
+                            <li>Setelah ID diisi, siswa baru bisa melakukan scan jari (Absen Masuk & Pulang).</li>
+                        </ol>
+                    </div>
+                </details>
+
+                <details>
+                    <summary><strong>2. Cara Melakukan Absensi</strong> (Scan Fingerprint)</summary>
+                    <div style="margin-top:15px;">
+                        <ul>
+                            <li><strong>ABSEN MASUK (IN):</strong> Cukup letakkan jari pada sensor saat jam masuk. Status akan berubah menjadi <span style="color:var(--success)">Hadir</span> dan jam dicatat.</li>
+                            <li><strong>ABSEN PULANG (OUT):</strong> Scan jari lagi saat pulang. Sistem akan mengecek durasi waktu (default 60 menit). Jika kurang dari itu, scan akan ditolak (Peringatan).</li>
+                            <li>Data otomatis masuk ke tabel <strong>Data Absensi</strong> di Web Dashboard.</li>
+                            <li><em>Privasi Siswa:</em> Siswa hanya bisa melihat data absensi sesuai <strong>Kelas</strong> dan <strong>Jurusan</strong> mereka sendiri.</li>
+                        </ul>
+                    </div>
+                </details>
+
+                <details>
+                    <summary><strong>3. Fitur Admin & Guru</strong></summary>
+                    <div style="margin-top:15px;">
+                        <ul>
+                            <li><strong>Generate Kode:</strong> Di menu <strong>Manajemen Pengguna</strong>, klik "Generate Kode" untuk membuat kode unik satu kali pakai bagi siswa.</li>
+                            <li><strong>Manajemen Siswa (FP):</strong> Di menu ini, Admin/Guru bisa menambah, mengedit, atau menghapus ID Fingerprint yang terdaftar.</li>
+                            <li><strong>Hapus User:</strong> Admin dapat menghapus akun pengguna (Siswa/Guru) melalui tombol hapus di menu Manajemen Pengguna.</li>
+                        </ul>
+                    </div>
+                </details>
+
+                <details>
+                    <summary><strong>4. Profil & Pengaturan Akun</strong></summary>
+                    <div style="margin-top:15px;">
+                        <ul>
+                            <li>Klik tombol <strong>👤 Profil Saya</strong> di pojok kanan atas.</li>
+                            <li><strong>Ubah Kelas/Jurusan:</strong> Di dalam profil, Anda bisa mengubah data Kelas atau Jurusan. Ini penting agar filter absensi siswa akurat.</li>
+                            <li><strong>Ganti Password:</strong> Gunakan menu "Ganti Password" di dalam profil untuk mengubah kunci login.</li>
+                            <li><strong>Ganti Foto:</strong> Klik foto profil untuk mengunggah foto baru yang akan tersimpan di ImgBB.</li>
+                            <li><strong>Lupa Password:</strong> Di halaman login, klik "Lupa Password?" untuk mengirim link reset email.</li>
+                        </ul>
+                    </div>
+                </details>
+
+                <div class="guide-box" style="margin-top:20px;">
+                    <strong>💡 Tips Penting:</strong>
+                    <br>1. Pastikan perangkat ESP32 selalu menyala ke internet agar data sinkron ke Web.
+                    <br>2. Data Siswa (Nama, Kelas, Jurusan) di Web harus sama persis dengan yang terdaftar di Alat Fingerprint (SD Card) agar sinkronisasi absensi jalan lancar.
+                </div>
+            </div>
         </div>
 
     </div>
