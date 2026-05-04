@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Sistem Absensi (Firebase Sync)</title>
+
+    <!-- LINK CSS -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- LINK FIREBASE SDK (WAJIB ADA) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="toast">Notifikasi</div>
+
+    <!-- AUTH SECTION -->
+    <div id="auth-section">
+        <!-- LOGIN FORM -->
+        <div id="login-card" class="auth-card">
+            <h2 style="color: var(--primary); margin-bottom: 5px;">🔐 Login Sistem</h2>
+            <p class="text-small">Gunakan akun Admin atau Guru</p>
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="admin@sekolah.sch.id" required></div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <div class="password-container">
+                        <input type="password" id="loginPassword" placeholder="admin123" required>
+                        <span class="eye-toggle" onclick="togglePassword('loginPassword', this)">
+                            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                        </span>
+                    </div>
+                </div>
+                <button type="submit" id="btnLoginSubmit" class="btn-auth btn-primary">MASUK</button>
+            </form>
+            <div class="auth-toggle" style="margin-top:15px;"><span onclick="openForgotPasswordModal()">Lupa Password?</span></div>
+            <div class="auth-toggle">Belum punya akun? <span onclick="toggleAuth('register')">Daftar disini</span></div>
+        </div>
+
+        <!-- REGISTER FORM -->
+        <div id="register-card" class="auth-card" style="display:none;">
+            <h2 style="color: var(--secondary);">📝 Pendaftaran</h2>
+            <p class="text-small">Daftar sebagai Siswa (Butuh Kode)</p>
+            <form id="registerForm" onsubmit="handleRegister(event)">
+                <div class="form-group"><label>Nama Lengkap</label><input type="text" id="regNama" placeholder="Nama Anda" required></div>
+                <div class="form-group"><label>Email</label><input type="email" id="regEmail" placeholder="email@sekolah.sch.id" required></div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <div class="password-container">
+                        <input type="password" id="regPassword" placeholder="Minimal 6 karakter" required>
+                        <span class="eye-toggle" onclick="togglePassword('regPassword', this)">
+                            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                        </span>
+                    </div>
+                </div>
+                <div class="form-group"><label>Kode Pendaftaran</label><input type="text" id="regCode" placeholder="Kode Unik" required style="text-transform: uppercase;"></div>
+                <div class="form-group"><label>Kelas</label><input type="text" id="regKelas" placeholder="Contoh: XII" required></div>
+                <div class="form-group"><label>Jurusan</label><input type="text" id="regJurusan" placeholder="Contoh: RPL" required></div>
+                <button type="submit" id="btnRegSubmit" class="btn-auth btn-primary">DAFTAR</button>
+            </form>
+            <div class="auth-toggle">Sudah punya akun? <span onclick="toggleAuth('login')">Login disini</span></div>
+        </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard-section">
+        <div class="header-bar">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <img id="headerAvatar" src="" class="avatar" style="margin:0; border:2px solid var(--primary);">
+                <div>
+                    <h2 style="margin:0; color: var(--primary); font-size: 1.2rem;">Sistem Absensi</h2>
+                    <div style="display:flex; align-items:center;">
+                        <span id="userProfileDisplay">User</span>
+                        <span id="userRoleDisplay" class="role-badge role-siswa">SISWA</span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <div id="clock" class="clock-display">--:--:--</div>
+                <button class="btn-auth btn-primary" onclick="openProfileModal()" style="width:auto; padding: 8px 15px; font-size: 0.8rem; background: var(--secondary);">Profil Saya</button>
+                <button class="btn-auth btn-danger" onclick="handleLogout()" style="width:auto; padding: 8px 15px; font-size: 0.8rem;">Keluar</button>
+            </div>
+        </div>
+
+        <div class="nav-tabs" id="nav-tabs-container">
+            <button class="tab-btn active" onclick="switchTab('attendance')">Data Absensi</button>
+            <button class="tab-btn role-guru role-admin" onclick="switchTab('students')">Data Siswa (FP)</button>
+            <button class="tab-btn role-guru role-admin" onclick="switchTab('users')">Manajemen Pengguna</button>
+            <button class="tab-btn role-admin" onclick="switchTab('config')">⚙️ Pengaturan</button>
+            <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
+        </div>
+
+        <!-- TAB 1: ATTENDANCE -->
+        <div id="tab-attendance" class="tab-content active">
+            <div class="controls-bar">
+                <div class="filter-group role-guru role-admin"><label>Kelas:</label><select id="filterKelas" onchange="renderTable()"><option value="all">Semua</option></select></div>
+                <div class="filter-group role-guru role-admin"><label>Jurusan:</label><select id="filterJurusan" onchange="renderTable()"><option value="all">Semua</option></select></div>
+                <div class="filter-group"><label>Tanggal:</label><select id="filterDate" onchange="renderTable()"><option value="all">Semua</option><option value="today">Hari Ini</option></select></div>
+                <div style="margin-left:auto; display:flex; gap:10px;">
+                    <div class="role-admin"><button class="btn-action btn-primary" onclick="simulateAttendance()">📷 Simulasi Scan FP</button></div>
+                    <button class="btn-action btn-success role-guru role-admin" onclick="exportToExcel()">📥 Download Excel</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table><thead><tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th class="role-guru role-admin">Aksi</th></tr></thead>
+                <tbody id="tbody-attendance"><tr><td colspan="7" style="text-align:center; padding: 20px;">Memuat data...</td></tr></tbody></table>
+            </div>
+        </div>
+
+        <!-- TAB 2: STUDENTS (FP) -->
+        <div id="tab-students" class="tab-content">
+            <!-- FORM INPUT SISWA -->
+            <div class="controls-bar role-admin role-guru">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; width: 100%;">
+                    <input type="hidden" id="editMode" value="add">
+                    <div class="filter-group"><label>ID FP:</label><input type="number" id="newId" placeholder="ID" style="width: 80px;"></div>
+                    <div class="filter-group"><label>Nama:</label><input type="text" id="newNama" placeholder="Nama Siswa" style="width: 200px;"></div>
+                    <div class="filter-group"><label>Kelas:</label><input type="text" id="newKelas" placeholder="XII" style="width: 80px;"></div>
+                    <div class="filter-group"><label>Jurusan:</label><input type="text" id="newJurusan" placeholder="RPL" style="width: 100px;"></div>
+                    <div class="filter-group"><label>Delay:</label><input type="text" id="newDelay" value="60" placeholder="60" style="width: 90px;"></div>
+                    <button class="btn-action" id="btnSaveStudent" onclick="saveStudent()"><span>➕ Simpan Siswa</span></button>
+                    <button class="btn-action btn-danger hidden" id="btnCancelStudent" onclick="resetStudentForm()">Batal</button>
+                </div>
+            </div>
+            
+            <!-- FILTER BAR (KELAS, JURUSAN, SEARCH) -->
+            <div class="controls-bar role-admin role-guru">
+                <div class="filter-group">
+                    <label>Kelas:</label>
+                    <select id="filterStudentKelas" onchange="renderStudentsTable()">
+                        <option value="all">Semua</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Jurusan:</label>
+                    <select id="filterStudentJurusan" onchange="renderStudentsTable()">
+                        <option value="all">Semua</option>
+                    </select>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="searchStudentName" placeholder="🔍 Cari nama siswa..." oninput="renderStudentsTable()">
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table><thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
+                <tbody id="tbody-students"><tr><td colspan="6" style="text-align:center;">🔄 Mengambil data...</td></tr></tbody></table>
+            </div>
+        </div>
+
+        <!-- TAB 3: USERS -->
+        <div id="tab-users" class="tab-content">
+            <div class="controls-bar role-admin role-guru"><h4 style="margin:0; color:var(--primary);">Generate Kode Pendaftaran</h4></div>
+            <div class="key-box role-admin role-guru">
+                <div><strong>Generate Kode Baru</strong><br><small class="text-small">1 Kode = 1 Siswa.</small></div>
+                <button class="btn-action btn-secondary" onclick="generateRegistrationCode()">Generate Kode</button>
+            </div>
+            <div id="generatedKeyDisplay" style="margin: 10px 0; font-size: 1.2rem; color: var(--secondary); font-weight: bold; display:none; background: rgba(255,152,0,0.1); padding: 10px; border-radius: 4px; text-align: center;"></div>
+            
+            <h4 class="role-admin role-guru" style="margin-top: 30px; color: #bbb; border-bottom:1px solid #333; padding-bottom:5px;">Daftar Kode Aktif</h4>
+            <div class="table-container role-admin role-guru" style="margin-bottom: 30px;">
+                <table><thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></tr></thead>
+                <tbody id="tbody-codes"></tbody></table>
+            </div>
+
+            <div class="controls-bar"><h4 style="margin:0; color:var(--primary);">Daftar Pengguna</h4><div class="search-box"><input type="text" id="searchUser" placeholder="Cari user..." oninput="renderUsersTable()"></div></div>
+            <div class="table-container"><table><thead><tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Detail</th><th>Aksi</th></tr></thead><tbody id="tbody-users"></tbody></table></div>
+        </div>
+
+        <!-- TAB 4: CONFIG -->
+        <div id="tab-config" class="tab-content">
+            <div class="guide-container">
+                <h3>⚙️ Pengaturan Sistem</h3>
+                <div class="form-group"><label>Nama Sekolah</label><input type="text" value="SMK Teknologi Maju"></div>
+                <div class="form-group"><label>API Status</label><div style="color: var(--success);">Connected to Firebase</div><small class="text-small">Sinkronisasi dengan ESP32 aktif.</small></div>
+                <div class="key-box"><div><strong>Reset Data Sistem</strong><br><small>Menghapus semua data Firebase.</small></div><button class="btn-action btn-danger" onclick="resetSystemData()">⚠️ Reset Firebase</button></div>
+            </div>
+        </div>
+
+        <!-- TAB 5: GUIDE -->
+        <div id="tab-guide" class="tab-content">
+            <div class="guide-container"><h3>📘 Panduan Sinkronisasi</h3><p>Sistem Web ini terhubung langsung ke Firebase.</p><ul><li><strong>Data Siswa:</strong> Disimpan di <code>users/{id}</code>. ESP32 membaca ini.</li><li><strong>Absensi:</strong> Disimpan di <code>absensi/{tanggal}/{id}</code>.</li></ul></div>
+        </div>
+
+    </div>
+
+    <!-- MODALS -->
+    <div id="modal-profile" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title"><span>Profil Pengguna</span><span style="cursor:pointer;" onclick="closeModal('modal-profile')">✖</span></div>
+            <div style="text-align: center;">
+                <div class="profile-upload-wrapper" onclick="document.getElementById('profileFileInput').click()">
+                    <img src="https://picsum.photos/seed/admin/200/200" id="profileImg" class="avatar-lg" alt="Profile">
+                    <input type="file" id="profileFileInput" hidden accept="image/*" onchange="uploadProfilePhoto(this)">
+                </div>
+                <p class="text-small" style="margin-top:-10px; margin-bottom:15px; color:var(--primary);">Klik ganti foto (ImgBB)</p>
+                <h3 id="profileName" style="margin:0; color:#fff;">Nama User</h3>
+                <p id="profileEmail" style="color:#888; margin-bottom:20px;">email@example.com</p>
+                <div class="config-list-item"><span>Password Akun</span><button class="btn-action" onclick="openChangePasswordModal()">Ganti Password</button></div>
+            </div>
+            <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-profile')">Tutup</button></div>
+        </div>
+    </div>
+
+    <div id="modal-change-pass" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title"><span>Ganti Password</span><span style="cursor:pointer;" onclick="closeModal('modal-change-pass')">✖</span></div>
+            <form onsubmit="handleChangePassword(event)">
+                <div class="form-group"><label>Password Lama</label><input type="password" id="cpOld" required></div>
+                <div class="form-group"><label>Password Baru</label><input type="password" id="cpNew" required minlength="6"></div>
+                <div class="form-group"><label>Konfirmasi</label><input type="password" id="cpConfirm" required minlength="6"></div>
+                <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeModal('modal-change-pass')">Batal</button><button type="submit" class="btn-save">Simpan</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-forgot" class="modal-overlay">
+        <div class="modal-box"><div class="modal-title"><span>Reset Password</span><span style="cursor:pointer;" onclick="closeModal('modal-forgot')">✖</span></div><p>Masukkan email Anda.</p><div class="form-group"><input type="email" id="forgotEmail" placeholder="Email" required></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-forgot')">Batal</button><button class="btn-save" onclick="processForgot()">Kirim Link</button></div></div>
+    </div>
+
+    <!-- LINK JS FILES (URUTAN PENTING) -->
+    <script src="js/config.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/attendance.js"></script>
+    <script src="js/students.js"></script>
+    <script src="js/users.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
