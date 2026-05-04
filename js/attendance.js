@@ -6,23 +6,37 @@ function renderTable() {
 
     let data = dbData.attendance;
     
-    // Logika filter
-    if (currentUser.role !== 'siswa') {
+    // LOGIKA FILTER SISWA
+    if (currentUser.role === 'siswa') {
+        // Siswa HANYA melihat absensi sesuai Kelas & Jurusan dirinya sendiri
+        if (currentUser.kelas && currentUser.jurusan) {
+            data = data.filter(r => r.kelas === currentUser.kelas && r.jurusan === currentUser.jurusan);
+        } else {
+            // Jika siswa belum set kelas/jurusan di profil, tampilkan array kosong
+            data = []; 
+        }
+        
+        // Siswa bisa filter tanggal (Hari ini / Semua)
+        if (fDate === 'today') {
+            const todayStr = new Date().toISOString().split('T')[0];
+            data = data.filter(r => r.date === todayStr);
+        }
+    } 
+    // LOGIKA FILTER GURU & ADMIN
+    else {
         if (fDate === 'today') {
             const todayStr = new Date().toISOString().split('T')[0];
             data = data.filter(r => r.date === todayStr);
         }
         if (fKelas !== 'all') data = data.filter(r => r.kelas === fKelas);
         if (fJurusan !== 'all') data = data.filter(r => r.jurusan === fJurusan);
-    } else {
-        // Siswa hanya melihat absensi hari ini atau semua (tergantung kebutuhan)
-        // Disini kita biarkan melihat semua tapi filter berdasarkan kelasnya sendiri
-        // const myClass = currentUser.kelas;
-        // data = data.filter(r => r.kelas === myClass);
     }
 
     tbody.innerHTML = '';
-    if (data.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Data tidak ada.</td></tr>'; return; }
+    if (data.length === 0) { 
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Data tidak ada.</td></tr>'; 
+        return; 
+    }
     
     data.forEach(row => {
         tbody.innerHTML += `
