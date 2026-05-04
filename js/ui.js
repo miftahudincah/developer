@@ -63,10 +63,18 @@ function openProfileModal() {
     document.getElementById('modal-profile').classList.add('open');
     if(currentUser) document.getElementById('profileImg').src = currentUser.photoUrl;
 }
+
+// Tambahkan fungsi ini agar input bersih saat dibuka
+function openForgotPasswordModal() {
+    document.getElementById('modal-forgot').classList.add('open');
+    document.getElementById('forgotEmail').value = ""; // Reset input
+}
+
 function openChangePasswordModal() {
     document.getElementById('cpOld').value = ""; document.getElementById('cpNew').value = ""; document.getElementById('cpConfirm').value = "";
     document.getElementById('modal-change-pass').classList.add('open');
 }
+
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 function handleChangePassword(e) {
@@ -114,9 +122,48 @@ async function uploadProfilePhoto(input) {
     }
 }
 
+// FUNGSI LUPA PASSWORD (FINAL FIX)
 function processForgot() {
-    auth.sendPasswordResetEmail(document.getElementById('forgotEmail').value).then(() => {
-        showToast("Email reset terkirim");
-        closeModal('modal-forgot');
-    }).catch(err => showToast(err.message, "error"));
+    const email = document.getElementById('forgotEmail').value;
+
+    // Validasi: Jangan kirim jika kosong
+    if (!email) {
+        showToast("Masukkan email terlebih dahulu!", "error");
+        return;
+    }
+
+    // Ambil elemen tombol untuk efek loading
+    const btn = document.querySelector('#modal-forgot .btn-save'); 
+    if(btn) {
+        btn.innerText = "Mengirim...";
+        btn.disabled = true;
+    }
+
+    auth.sendPasswordResetEmail(email)
+        .then(() => {
+            showToast("Link reset password telah dikirim ke " + email);
+            closeModal('modal-forgot');
+        })
+        .catch((error) => {
+            console.error("Error Forgot Password:", error);
+            
+            // Tampilkan pesan error spesifik
+            if (error.code === 'auth/invalid-email') {
+                showToast("Format email salah!", "error");
+            } else if (error.code === 'auth/user-not-found') {
+                showToast("Email tersebut belum terdaftar!", "error");
+            } else if (error.code === 'auth/missing-android-pkg-name' || error.code === 'auth/missing-continue-uri') {
+                // Error ini biasanya karena konfigurasi di Firebase Console belum diatur
+                showToast("Error: Konfigurasi Email di Firebase belum lengkap.", "error");
+            } else {
+                showToast("Gagal mengirim: " + error.message, "error");
+            }
+        })
+        .finally(() => {
+            // Kembalikan tombol ke kondisi semula
+            if(btn) {
+                btn.innerText = "Kirim Link";
+                btn.disabled = false;
+            }
+        });
 }
