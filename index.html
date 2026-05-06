@@ -23,7 +23,7 @@
     <div id="auth-section">
         <!-- LOGIN FORM -->
         <div id="login-card" class="auth-card">
-            <h2 style="color: var(--primary); margin-bottom: 5px;">🔐 Login Sistem</h2>
+            <h2 style="color: var(--primary); margin-bottom:5px;">🔐 Login Sistem</h2>
             <p class="text-small">Gunakan akun Admin atau Guru</p>
             <form id="loginForm" onsubmit="handleLogin(event)">
                 <div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="contoh@sekolah.sch.id" required></div>
@@ -42,7 +42,7 @@
             <div class="auth-toggle">Belum punya akun? <span onclick="toggleAuth('register')">Daftar disini</span></div>
         </div>
 
-        <!-- REGISTER FORM (UPDATED: SISWA TANPA INPUT DATA DIRI) -->
+        <!-- REGISTER FORM (UPDATED: SISWA OTOMATIS, GURU MANUAL) -->
         <div id="register-card" class="auth-card" style="display:none;">
             <h2 style="color: var(--secondary);">📝 Pendaftaran</h2>
             <p class="text-small">Siswa data diambil otomatis dari Database</p>
@@ -74,6 +74,12 @@
                     <input type="text" id="regNama" placeholder="Nama Guru">
                 </div>
 
+                <!-- Input Mata Pelajaran (Hanya untuk Guru) -->
+                <div class="form-group" id="group-reg-subject" style="display:none;">
+                    <label>Mata Pelajaran</label>
+                    <input type="text" id="regSubject" placeholder="Contoh: Matematika">
+                </div>
+
                 <div class="form-group"><label>Email</label><input type="email" id="regEmail" placeholder="email@sekolah.sch.id" required></div>
                 
                 <div class="form-group">
@@ -101,7 +107,8 @@
             <div style="display:flex; align-items:center; gap:10px;">
                 <img id="headerAvatar" src="" class="avatar" style="margin:0; border:2px solid var(--primary);">
                 <div>
-                    <h2 style="margin:0; color: var(--primary); font-size: 1.2rem;">Sistem Absensi</h2>
+                    <!-- ID UNTUK UPDATE NAMA SEKOLAH OTOMATIS -->
+                    <h2 id="schoolNameDisplay" style="margin:0; color: var(--primary); font-size: 1.2rem;">Sistem Absensi</h2>
                     <div style="display:flex; align-items:center;">
                         <span id="userProfileDisplay">User</span>
                         <span id="userRoleDisplay" class="role-badge role-siswa">SISWA</span>
@@ -119,6 +126,7 @@
             <button class="tab-btn active" onclick="switchTab('attendance')">Data Absensi</button>
             <button class="tab-btn role-guru role-admin" onclick="switchTab('students')">Data Siswa (FP)</button>
             <button class="tab-btn role-guru role-admin" onclick="switchTab('users')">Manajemen Pengguna</button>
+            <!-- BUTTON PENGATURAN DITAMBAH CLASS role-admin -->
             <button class="tab-btn role-admin" onclick="switchTab('config')">⚙️ Pengaturan</button>
             <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
         </div>
@@ -223,11 +231,19 @@
             <div class="table-container"><table><thead><tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Detail</th><th>Aksi</th></tr></thead><tbody id="tbody-users"></tbody></table></div>
         </div>
 
-        <!-- TAB 4: CONFIG -->
-        <div id="tab-config" class="tab-content">
+        <!-- TAB 4: CONFIG (UPDATED: ADMIN ONLY) -->
+        <!-- TAMBAHKAN CLASS role-admin AGAR HANYA ADMIN YANG BISA LIHAT TAB INI -->
+        <div id="tab-config" class="tab-content role-admin">
             <div class="guide-container">
                 <h3>⚙️ Pengaturan Sistem</h3>
-                <div class="form-group"><label>Nama Sekolah</label><input type="text" value="SMK Teknologi Maju"></div>
+                
+                <!-- INPUT NAMA SEKOLAH (UPDATE) -->
+                <div class="form-group">
+                    <label>Nama Sekolah</label>
+                    <input type="text" id="inputSchoolName" placeholder="Nama Sekolah">
+                    <button class="btn-action btn-primary" onclick="saveSchoolName()" style="margin-top:5px;">Simpan Nama Sekolah</button>
+                </div>
+
                 <div class="form-group"><label>API Status</label><div style="color: var(--success);">Connected to Firebase</div><small class="text-small">Sinkronisasi dengan ESP32 aktif.</small></div>
                 <div class="key-box"><div><strong>Reset Data Sistem</strong><br><small>Menghapus semua data Firebase.</small></div><button class="btn-action btn-danger" onclick="resetSystemData()">⚠️ Reset Firebase</button></div>
             </div>
