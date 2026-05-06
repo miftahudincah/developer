@@ -8,7 +8,8 @@ function initApp() {
     document.getElementById('dashboard-section').style.display = 'block';
 
     document.getElementById('userProfileDisplay').textContent = currentUser.nama;
-    // HAPUS BARIS INI KARENA ID 'profileName' TIDAK ADA DI HTML BARU
+    
+    // ID 'profileName' sudah tidak ada di HTML baru (diganti profileNameInput)
     // document.getElementById('profileName').textContent = currentUser.nama; 
     
     document.getElementById('profileEmail').textContent = currentUser.email;
@@ -22,6 +23,9 @@ function initApp() {
     applyRolePermissions();
     populateFilters();
     setInterval(updateClock, 1000); updateClock();
+    
+    // TAMBAHKAN INI: Muat Konfigurasi (Nama Sekolah)
+    if(typeof initSystemConfig === 'function') initSystemConfig();
     
     // Render semua table
     renderTable(); renderStudentsTable(); renderCodesTable(); renderUsersTable();
@@ -67,14 +71,14 @@ function openProfileModal() {
     if(currentUser) {
         document.getElementById('profileImg').src = currentUser.photoUrl;
         
-        // Isi Input Nama dan Subject
+        // Isi Input Nama, Subject, Kelas, Jurusan
         document.getElementById('profileNameInput').value = currentUser.nama || "";
         document.getElementById('profileEmail').textContent = currentUser.email;
         document.getElementById('profileKelas').value = currentUser.kelas || "";
         document.getElementById('profileJurusan').value = currentUser.jurusan || "";
-        document.getElementById('profileSubject').value = currentUser.subject || "";
+        document.getElementById('profileSubject').value = currentUser.subject || ""; 
 
-        // --- LOGIKA TAMPILAN BERDASARKAN ROLE ---
+        // --- PENGATURAN HAK AKSES (ROLE BASED) ---
         const nameInput = document.getElementById('profileNameInput');
         const kelasInput = document.getElementById('profileKelas');
         const jurusanInput = document.getElementById('profileJurusan');
@@ -82,10 +86,11 @@ function openProfileModal() {
         const saveBtn = document.querySelector('#modal-profile .btn-save');
 
         if (currentUser.role === 'siswa') {
-            // SISWA: Hanya readonly, tidak bisa edit
+            // SISWA: HANYA READONLY
             nameInput.readOnly = true;
             nameInput.style.border = "none";
             nameInput.style.background = "transparent";
+            nameInput.style.color = "#888";
             
             kelasInput.readOnly = true;
             kelasInput.style.border = "none";
@@ -97,14 +102,15 @@ function openProfileModal() {
 
             subjectGroup.style.display = 'none'; // Siswa gak butuh field ini
             
-            // Sembunyikan tombol simpan (Siswa gak boleh edit profil teks)
+            // Sembunyikan tombol simpan
             saveBtn.style.display = 'none';
 
         } else {
-            // GURU / ADMIN: Bisa edit
+            // GURU / ADMIN: BISA EDIT
             nameInput.readOnly = false;
             nameInput.style.border = "1px solid var(--border)";
             nameInput.style.background = "#2c2c2c";
+            nameInput.style.color = "#fff";
 
             kelasInput.readOnly = false;
             kelasInput.style.border = "1px solid var(--border)";
@@ -135,7 +141,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 function handleUpdateProfileInfo() {
     if(!currentUser) return;
 
-    // Security: Siswa tidak diizinkan update profil teks (Nama/Kelas/Jurusan)
+    // Security: Siswa tidak diizinkan update profil teks
     if(currentUser.role === 'siswa') {
         showToast("Siswa tidak dapat mengubah data profil. Hubungi Admin/Guru.", "error");
         return;
@@ -155,36 +161,54 @@ function handleUpdateProfileInfo() {
         const originalText = btn.innerText;
         btn.innerText = "Menyimpan..."; btn.disabled = true;
 
-        // Update ke Firebase
-        db.ref(`users_auth/${currentUser.uid}`).update({
+        // Data yang akan diupdate
+        const updateData = {
             nama: newNama,
             kelas: newKelas,
             jurusan: newJurusan,
-            subject: newSubject
-        }).then(() => {
-            // Update data lokal
-            currentUser.nama = newNama;
-            currentUser.kelas = newKelas;
-            currentUser.jurusan = newJurusan;
-            currentUser.subject = newSubject;
+            subject: newSubject // Update Mata Pelajaran
+        };
 
-            showToast("Profil berhasil diperbarui");
-            
-            // Update tampilan header nama
-            document.getElementById('userProfileDisplay').textContent = newNama;
-            
-            closeModal('modal-profile');
-            
-            // Render ulang filter dropdown
-            if(typeof populateFilters === 'function') populateFilters();
-        }).catch((err) => {
-            showToast("Gagal update: " + err.message, "error");
-        }).finally(() => {
-            if(btn) {
-                btn.innerText = originalText;
-                btn.disabled = false;
-            }
-        });
+        db.ref(`users_auth/${currentUser.uid}`).update(updateData)
+            .then(() => {
+                // Update data lokal
+                currentUser.nama = newNama;
+                currentUser.kelas = newKelas;
+                currentUser.jurusan = newJurusan;
+                currentUser.subject = newSubject;
+
+                showToast("Profil berhasil diperbarui");
+                
+                // Update tampilan header nama
+                document.getElementById('userProfileDisplay').textContent = newNama;
+                
+                // --- SINKRONISASI FP (DARI AUTH) ---
+                // Jika user ini adalah Siswa dan memiliki fpId, update juga data di 'users' agar sinkron dengan ESP32
+                if (currentUser.role === 'siswa' && currentUser.fpId) {
+                    db.ref(`users/${currentUser.fpId}`).update({
+                        nama: newNama,
+                        kelas: newKelas,
+                        jurusan: newJurusan
+                    }).then(() => {
+                        // Log atau notifikasi bahwa sinkronisasi FP berhasil (Opsional)
+                        console.log("Sinkronisasi: Profil Web -> Data FP Berhasil");
+                    });
+                }
+
+                closeModal('modal-profile');
+                
+                // Render ulang filter dropdown
+                if(typeof populateFilters === 'function') populateFilters();
+            })
+            .catch((err) => {
+                showToast("Gagal update: " + err.message, "error");
+            })
+            .finally(() => {
+                if(btn) {
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            });
     }
 }
 
@@ -258,12 +282,11 @@ function processForgot() {
             console.error("Error Forgot Password:", error);
             
             // Tampilkan pesan error spesifik
-            if (error.code === 'auth/invalid-email') {
+            if (error.code === 'auth/input-email') {
                 showToast("Format email salah!", "error");
             } else if (error.code === 'auth/user-not-found') {
                 showToast("Email tersebut belum terdaftar!", "error");
             } else if (error.code === 'auth/missing-android-pkg-name' || error.code === 'auth/missing-continue-uri') {
-                // Error ini biasanya karena konfigurasi di Firebase Console belum diatur
                 showToast("Error: Konfigurasi Email di Firebase belum lengkap.", "error");
             } else {
                 showToast("Gagal mengirim: " + error.message, "error");
@@ -280,24 +303,32 @@ function processForgot() {
 
 // --- FUNGSI BARU UNTUK INTERAKSI UI TAMBAHAN ---
 
-// 1. Tampilan Register (Sembunyikan Input Siswa jika pilih Guru)
+// 1. Tampilan Register (Sembunyikan/Tampilkan Input sesuai Role)
 function toggleRegisterInput() {
     const type = document.querySelector('input[name="regRoleType"]:checked').value;
     const idGroup = document.getElementById('group-reg-id');
+    const namaGroup = document.getElementById('group-reg-nama'); // Tambahan
+    const subjectGroup = document.getElementById('group-reg-subject'); // Tambahan
     const detailsGroup = document.getElementById('group-siswa-details');
     const codeInput = document.getElementById('regCode');
 
     if (type === 'siswa') {
-        idGroup.style.display = 'block'; // Tampilkan Input ID Generate
+        idGroup.style.display = 'block';     // Tampilkan ID Generate
         detailsGroup.style.display = 'block'; // Tampilkan Kelas/Jurusan
         
-        // Pastikan input wajib kembali aktif
+        namaGroup.style.display = 'none';     // Sembunyikan Nama (Otomatis)
+        subjectGroup.style.display = 'none'; // Sembunyikan Subject (Otomatis)
+        
+        // Pastikan input wajib kembali aktif (untuk validasi)
         document.getElementById('regKelas').required = true;
         document.getElementById('regJurusan').required = true;
         codeInput.placeholder = "Kode Unik (Siswa)";
     } else {
-        idGroup.style.display = 'none'; // Sembunyikan Input ID Generate
+        idGroup.style.display = 'none';       // Sembunyikan ID Generate
         detailsGroup.style.display = 'none'; // Sembunyikan Kelas/Jurusan
+        
+        namaGroup.style.display = 'block';     // Tampilkan Nama (Manual)
+        subjectGroup.style.display = 'block'; // Tampilkan Subject (Manual)
         
         // Matikan required agar bisa submit
         document.getElementById('regKelas').required = false;
@@ -319,4 +350,57 @@ function toggleGenerateInput() {
         selectGroup.style.display = 'none';
         desc.innerText = "Kode bebas digunakan oleh Guru mana saja.";
     }
+}
+
+// --- FUNGSI TAMBAHAN UNTUK PENGATURAN SISTEM ---
+
+// 1. Simpan Nama Sekolah ke Firebase
+function saveSchoolName() {
+    if(!currentUser) return;
+
+    const newSchoolName = document.getElementById('inputSchoolName').value.trim();
+    
+    if(!newSchoolName) {
+        showToast("Nama sekolah tidak boleh kosong!", "error");
+        return;
+    }
+
+    // Cek apakah yang mengubah adalah Admin
+    if(currentUser.role !== 'admin') {
+        showToast("Hanya Admin yang bisa mengubah nama sekolah.", "error");
+        return;
+    }
+
+    // Simpan ke Firebase (Node system_config/schoolName)
+    db.ref('system_config/schoolName').set(newSchoolName)
+        .then(() => {
+            showToast("Nama sekolah berhasil diperbarui");
+        })
+        .catch((err) => {
+            showToast("Gagal update: " + err.message, "error");
+        });
+}
+
+// 2. Listener untuk Mengambil Nama Sekolah dan Update Header
+// Panggil fungsi ini di dalam initApp() atau saat aplikasi pertama kali load
+function initSystemConfig() {
+    // Mendengarkan perubahan nama sekolah di Firebase
+    db.ref('system_config/schoolName').on('value', (snapshot) => {
+        const name = snapshot.val();
+        
+        // Jika data kosong, gunakan default "Sistem Absensi"
+        const display = name || "Sistem Absensi";
+
+        // Update Text Header (ID schoolNameDisplay ada di HTML baru)
+        const headerTitle = document.getElementById('schoolNameDisplay');
+        if(headerTitle) {
+            headerTitle.textContent = display;
+        }
+
+        // Update Value di Input Pengaturan (agar Admin lihat yang terbaru)
+        const inputField = document.getElementById('inputSchoolName');
+        if(inputField) {
+            inputField.value = name || "";
+        }
+    });
 }

@@ -61,7 +61,7 @@ function handleRegister(e) {
 
         // 3. Validasi Berdasarkan Tipe (SISWA vs GURU)
         if (regType === 'siswa') {
-            // --- FLOW SISWA ---
+            // --- FLOW SISWA (Data Otomatis dari FP) ---
             if (codeData.type !== 'siswa') {
                 showToast("Kode ini bukan untuk Siswa!", "error");
                 return;
@@ -80,7 +80,6 @@ function handleRegister(e) {
             }
 
             // 4. AMBIL DATA SISWA DARI NODE 'users' (DATA FINGERPRINT)
-            // Kita ambil data real-time, bukan dari array local agar lebih akurat
             db.ref('users/' + inputId).once('value').then((snapUser) => {
                 const studentFpData = snapUser.val();
 
@@ -95,22 +94,25 @@ function handleRegister(e) {
                     nama: studentFpData.nama,        // Ambil dari FP
                     kelas: studentFpData.kelas,      // Ambil dari FP
                     jurusan: studentFpData.jurusan,  // Ambil dari FP
-                    fpId: inputId,                   // <--- PENTING: Simpan ID Fingerprint ini
+                    fpId: inputId,                   // <--- PENTING: Simpan ID Fingerprint
                     email: email,
                     role: "siswa",
+                    subject: "",                    // Siswa kosong
                     photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(studentFpData.nama)}&background=random`,
                     registeredAt: firebase.database.ServerValue.TIMESTAMP
                 }, codeInput);
             });
 
         } else {
-            // --- FLOW GURU ---
+            // --- FLOW GURU (Input Manual) ---
             if (codeData.type !== 'guru') {
                 showToast("Kode ini bukan untuk Guru!", "error");
                 return;
             }
 
             const namaGuru = document.getElementById('regNama').value;
+            const subjectGuru = document.getElementById('regSubject').value; // AMBIL MATA PELAJARAN
+
             if(!namaGuru) {
                 showToast("Nama Guru wajib diisi!", "error");
                 return;
@@ -126,6 +128,7 @@ function handleRegister(e) {
                 fpId: null, // <--- PENTING: Guru tidak punya ID Fingerprint
                 kelas: "", 
                 jurusan: "",
+                subject: subjectGuru,          // <--- PENTING: Simpan Mata Pelajaran
                 photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(namaGuru)}&background=random`,
                 registeredAt: firebase.database.ServerValue.TIMESTAMP
             }, codeInput);

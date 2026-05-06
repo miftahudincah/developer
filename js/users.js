@@ -57,7 +57,7 @@ function generateRegistrationCode() {
             return;
         }
 
-        // 4. SIMPAN KODE BARU (JIKA LULUS SEMUA CEK)
+        // 4. SIMPAN KODE BARU
         codeData.linkedId = selectedId;
 
         db.ref('codes/' + code).set(codeData).then(() => {
@@ -184,6 +184,48 @@ function renderUsersTable() {
                 <td>${u.kelas || '-'}</td>
                 <td>${actions}</td>
             </tr>`;
+    });
+}
+
+// --- FUNGSI UPDATE SISWA (DENGAN SINKRONISASI) ---
+function saveStudent() {
+    let idStr = document.getElementById('newId').value;
+    const nama = document.getElementById('newNama').value;
+    // Normalisasi Huruf Kapital (IX, bukan ix/9)
+    const kelas = document.getElementById('newKelas').value.toUpperCase();
+    const jurusan = document.getElementById('newJurusan').value.toUpperCase();
+    const delay = document.getElementById('newDelay').value;
+    const mode = document.getElementById('editMode').value;
+
+    if(!nama || !idStr) return showToast("ID & Nama wajib diisi!", "error");
+    
+    const studentData = { nama, kelas, jurusan, delayOut: parseInt(delay) };
+    const path = `users/${idStr}`;
+
+    if (mode === 'add' && dbData.users.find(u => u.id == idStr)) return showToast("ID sudah ada!", "error");
+
+    db.ref(path).set(studentData).then(() => {
+        showToast("Data Tersimpan di Database (FP)");
+
+        // --- SINKRONISASI: UPDATE PROFIL DI USERS_AUTH JIKA SISWA SUDAH DAFTAR ---
+        // Cek apakah ada user di users_auth yang memiliki fpId ini
+        const registeredUser = dbData.users_auth.find(u => u.fpId == idStr);
+        
+        if (registeredUser) {
+            db.ref(`users_auth/${registeredUser.uid}`).update({
+                nama: nama,
+                kelas: kelas,
+                jurusan: jurusan
+            }).then(() => {
+                showToast("Data Profil Siswa Diperbarui (Sinkronisasi)");
+                // Kita tidak perlu refresh tabel user karena listener db.js akan mengupdate otomatis
+            });
+        } else {
+            showToast("Data Tersimpan (Belum ada User Terdaftar)");
+        }
+
+        resetStudentForm();
+        renderStudentsTable();
     });
 }
 
