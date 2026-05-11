@@ -134,7 +134,7 @@
         <div class="nav-tabs" id="nav-tabs-container">
             <button class="tab-btn active" onclick="switchTab('attendance')">📋 Data Absensi</button>
             <button class="tab-btn" onclick="switchTab('students')">👨‍🎓 Data Siswa (FP)</button>
-            <button class="tab-btn" onclick="switchTab('users')">👥 Manajemen Pengguna</button>
+            <button class="tab-btn role-admin role-guru" onclick="switchTab('users')">👥 Manajemen Pengguna</button>
             <button class="tab-btn" onclick="switchTab('config')">⚙️ Pengaturan</button>
             <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
         </div>
@@ -174,8 +174,8 @@
                     <div class="filter-group" id="delayMinutesGroup"><input type="number" id="delayMinutesValue" value="60" style="width: 70px;"><span>menit</span></div>
                     <div class="filter-group" id="delayHoursGroup" style="display:none;"><select id="delayHoursValue"></select><span>jam</span></div>
                     <input type="hidden" id="newDelay" value="60">
-                    <button class="btn-action" id="btnSaveStudent" onclick="saveStudent()">➕ Simpan Siswa</button>
-                    <button class="btn-action btn-danger hidden" id="btnCancelStudent" onclick="resetStudentForm()">Batal</button>
+                    <button class="btn-action role-guru role-admin" id="btnSaveStudent" onclick="saveStudent()">➕ Simpan Siswa</button>
+                    <button class="btn-action btn-danger hidden role-guru role-admin" id="btnCancelStudent" onclick="resetStudentForm()">Batal</button>
                 </div>
             </div>
             
@@ -190,15 +190,15 @@
                     <thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
                     <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr>
                 </tbody>
-            </table>
+                </table>
             </div>
         </div>
 
-        <!-- TAB 3: USERS -->
-        <div id="tab-users" class="tab-content">
+        <!-- TAB 3: USERS (Hanya untuk Admin dan Guru) -->
+        <div id="tab-users" class="tab-content role-admin role-guru">
             <div class="controls-bar"><h4>🔑 Generate Kode Pendaftaran</h4></div>
             
-            <div class="key-box">
+            <div class="key-box role-admin role-guru">
                 <div style="flex:1;">
                     <div style="margin-bottom:10px;">
                         <label><input type="radio" name="genTarget" value="siswa" checked onchange="toggleGenerateInput()"> 👨‍🎓 Untuk Siswa</label>
@@ -214,16 +214,16 @@
 
             <div id="generatedKeyDisplay" style="display:none;"></div>
             
-            <h4>📋 Daftar Kode Aktif</h4>
-            <div class="table-container">
+            <h4 class="role-admin role-guru">📋 Daftar Kode Aktif</h4>
+            <div class="table-container role-admin role-guru">
                 <table>
                     <thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></tr></thead>
                     <tbody id="tbody-codes"></tbody>
                 </table>
             </div>
 
-            <div class="controls-bar"><h4>👥 Daftar Pengguna</h4><div class="search-box"><input type="text" id="searchUser" placeholder="🔍 Cari user..." oninput="renderUsersTable()"></div></div>
-            <div class="table-container">
+            <div class="controls-bar role-admin role-guru"><h4>👥 Daftar Pengguna</h4><div class="search-box"><input type="text" id="searchUser" placeholder="🔍 Cari user..." oninput="renderUsersTable()"></div></div>
+            <div class="table-container role-admin role-guru">
                 <table>
                     <thead><tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Detail</th><th>Aksi</th></tr></thead>
                     <tbody id="tbody-users"></tbody>
@@ -246,7 +246,7 @@
                         </div>
                         <div style="flex: 1;">
                             <input type="file" id="logoFileInput" hidden accept="image/*" onchange="uploadSchoolLogo(this)">
-                            <button class="btn-action btn-danger" onclick="removeSchoolLogo()" id="btnRemoveLogo" style="display: none;">🗑️ Hapus Logo</button>
+                            <button class="btn-action btn-danger role-admin" onclick="removeSchoolLogo()" id="btnRemoveLogo" style="display: none;">🗑️ Hapus Logo</button>
                             <small class="text-small" style="display: block; margin-top: 8px;">💡 Format: JPG, PNG, GIF (Max 2MB). Logo akan tampil di header navbar.</small>
                         </div>
                     </div>
@@ -259,7 +259,7 @@
                     <label>🏫 Nama Sekolah</label>
                     <div style="display: flex; gap: 10px;">
                         <input type="text" id="inputSchoolName" placeholder="Nama Sekolah" style="flex:1;">
-                        <button class="btn-action btn-primary" onclick="saveSchoolName()">Simpan</button>
+                        <button class="btn-action btn-primary role-admin" onclick="saveSchoolName()">Simpan</button>
                     </div>
                 </div>
                 
@@ -272,7 +272,7 @@
                             <option value="smk">SMK (Kelas X, XI, XII)</option>
                             <option value="both">SMP & SMK (VII - XII)</option>
                         </select>
-                        <button class="btn-action btn-primary" onclick="saveSchoolType()">Simpan</button>
+                        <button class="btn-action btn-primary role-admin" onclick="saveSchoolType()">Simpan</button>
                     </div>
                 </div>
                 
@@ -285,8 +285,8 @@
                         <div id="classesList" style="margin-bottom: 10px; min-height: 50px;"></div>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                             <input type="text" id="newClassInput" placeholder="Contoh: VII A, X RPL, 7A, 8B" style="flex:2;">
-                            <button class="btn-action btn-success" onclick="addClass()">➕ Tambah Kelas</button>
-                            <button class="btn-action btn-primary" id="btnSaveClasses" onclick="saveClasses()">💾 Simpan Semua Kelas</button>
+                            <button class="btn-action btn-success role-admin" onclick="addClass()">➕ Tambah Kelas</button>
+                            <button class="btn-action btn-primary role-admin" id="btnSaveClasses" onclick="saveClasses()">💾 Simpan Semua Kelas</button>
                         </div>
                         <small class="text-small">💡 Format: VII A, VIII B, X RPL, 7A (otomatis dikonversi ke VII A)</small>
                     </div>
@@ -299,8 +299,8 @@
                         <div id="majorsList" style="margin-bottom: 10px; min-height: 50px;"></div>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                             <input type="text" id="newMajorInput" placeholder="Contoh: RPL, TKJ, TBSM" style="flex:2;">
-                            <button class="btn-action btn-success" onclick="addMajor()">➕ Tambah Jurusan</button>
-                            <button class="btn-action btn-primary" id="btnSaveMajors" onclick="saveMajors()">💾 Simpan Semua Jurusan</button>
+                            <button class="btn-action btn-success role-admin" onclick="addMajor()">➕ Tambah Jurusan</button>
+                            <button class="btn-action btn-primary role-admin" id="btnSaveMajors" onclick="saveMajors()">💾 Simpan Semua Jurusan</button>
                         </div>
                         <small class="text-small">💡 Jurusan akan muncul di dropdown saat input data siswa</small>
                     </div>
@@ -326,7 +326,7 @@
                             <span>jam</span>
                         </div>
                         <input type="hidden" id="globalDelayHidden" value="60">
-                        <button class="btn-action btn-primary" id="btnSaveGlobalDelay" onclick="saveGlobalDelay()">💾 Simpan Delay Global</button>
+                        <button class="btn-action btn-primary role-admin" id="btnSaveGlobalDelay" onclick="saveGlobalDelay()">💾 Simpan Delay Global</button>
                     </div>
                     <div style="margin-top: 8px;">
                         <small>Delay saat ini: <strong id="globalDelayDisplay">60 menit</strong></small>
@@ -342,12 +342,12 @@
                 </div>
                 
                 <!-- Reset Data -->
-                <div class="key-box" style="margin-top: 20px;">
+                <div class="key-box role-admin" style="margin-top: 20px;">
                     <div>
                         <strong>⚠️ Reset Data</strong><br>
                         <small>Hapus semua data siswa, absensi, dan pengguna</small>
                     </div>
-                    <button class="btn-action btn-danger" onclick="resetSystemData()">🗑️ Reset Semua Data</button>
+                    <button class="btn-action btn-danger role-admin" onclick="resetSystemData()">🗑️ Reset Semua Data</button>
                 </div>
             </div>
         </div>
