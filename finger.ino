@@ -1,3 +1,6 @@
+// finger.ino - VERSION 3.0 FIXED (Compile Ready)
+// Fitur Lengkap: Delay Per Siswa, Sync dari Firebase, Hapus FP via BLE, WiFi via BLE
+
 #include <HardwareSerial.h>
 #include <Adafruit_Fingerprint.h>
 #include <WiFi.h>
@@ -11,11 +14,12 @@
 #include <BLEUtils.h>
 #include <time.h> 
 #include <RTClib.h>
+#include <Preferences.h>
 
 // ================= KONFIGURASI =================
-// GANTI DENGAN SSID DAN PASSWORD WIFI ANDA
-#define WIFI_SSID "NAMA_WIFI_ANDA"
-#define WIFI_PASSWORD "PASSWORD_WIFI_ANDA"
+// GANTI DENGAN SSID DAN PASSWORD WIFI ANDA (atau biarkan kosong untuk BLE config)
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 
 // Konfigurasi Firebase
 #define API_KEY "AIzaSyBZg9NpbBAg8dKHkCbYf4J_2bpHH2ZJWWI"
@@ -38,7 +42,7 @@
 #define PCF_ADDR 0x20
 #define ENROLL_BTN_PIN 0
 
-// ================= STRUKTUR DATA (DITAMBAHKAN) =================
+// ================= STRUKTUR DATA =================
 struct UserData {
   int id;
   String nama;
@@ -60,15 +64,22 @@ FirebaseConfig config;
 const long gmtOffset_sec = 25200;
 const int daylightOffset_sec = 0;
 
-int minDelayMinutes = 60;
+int globalDelayMinutes = 60;
 int currentID = 1;
 bool deviceConnected = false;
 bool isOnline = false;
 bool isEnrolling = false;
+bool syncInProgress = false;
+
+// WiFi credentials dari Preferences
+String wifiSSID = "";
+String wifiPassword = "";
+Preferences preferences;
 
 // BLE
 BLEServer *pServer;
 BLECharacteristic *pTxCharacteristic;
+BLECharacteristic *pRxCharacteristic;
 
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -76,7 +87,24 @@ BLECharacteristic *pTxCharacteristic;
 
 // Queue
 QueueHandle_t xQueueFingerprint;
-SemaphoreHandle_t xIDMutex;
+
+// Cache user di RAM
+#define MAX_USERS 500
+UserData userCache[MAX_USERS];
+int userCacheCount = 0;
+
+// Timing
+unsigned long lastCommandCheck = 0;
+unsigned long lastUserSync = 0;
+unsigned long lastSettings = 0;
+unsigned long lastPing = 0;
+unsigned long lastReconnect = 0;
+
+const unsigned long COMMAND_CHECK_INTERVAL = 2000;
+const unsigned long USER_SYNC_INTERVAL = 300000;  // 5 menit
+const unsigned long SETTINGS_INTERVAL = 30000;    // 30 detik
+const unsigned long PING_INTERVAL = 60000;        // 60 detik
+const unsigned long RECONNECT_INTERVAL = 30000;   // 30 detik
 
 // ================= FUNGSI WAKTU =================
 String getCurrentDateRTC() {
@@ -117,6 +145,7 @@ void initRTC() {
 }
 
 void syncRTCwithNTP() {
+  if (!isOnline) return;
   configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 5000)) {
@@ -128,14 +157,81 @@ void syncRTCwithNTP() {
   Serial.println("✅ RTC sync dengan NTP");
 }
 
+// ================= WIFI CONFIG VIA BLE =================
+
+void saveWiFiCredentials(String ssid, String password) {
+  preferences.begin("wifi", false);
+  preferences.putString("ssid", ssid);
+  preferences.putString("password", password);
+  preferences.end();
+  Serial.println("✅ WiFi credentials saved to NVS");
+}
+
+void loadWiFiCredentials() {
+  preferences.begin("wifi", true);
+  wifiSSID = preferences.getString("ssid", "");
+  wifiPassword = preferences.getString("password", "");
+  preferences.end();
+  
+  if (wifiSSID.length() > 0) {
+    Serial.printf("📡 Loaded WiFi: %s\n", wifiSSID.c_str());
+  } else {
+    Serial.println("⚠️ No WiFi credentials. Use BLE: SET_WIFI:SSID,PASS");
+  }
+}
+
+void clearWiFiCredentials() {
+  preferences.begin("wifi", false);
+  preferences.clear();
+  preferences.end();
+  wifiSSID = "";
+  wifiPassword = "";
+  Serial.println("🗑️ WiFi credentials cleared");
+}
+
+void connectToWiFi() {
+  if (wifiSSID.length() == 0) {
+    Serial.println("⚠️ No WiFi credentials");
+    return;
+  }
+  
+  Serial.printf("📡 Connecting to: %s\n", wifiSSID.c_str());
+  WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✅ WiFi connected");
+    Serial.print("📡 IP: ");
+    Serial.println(WiFi.localIP());
+    isOnline = true;
+    syncRTCwithNTP();
+    initFirebase();
+    syncOfflineData();
+    checkFirebaseSettings();
+    syncAllUsersFromFirebase();
+    sendBLEMessage("✅ WiFi: " + wifiSSID);
+  } else {
+    Serial.println("\n❌ WiFi failed!");
+    isOnline = false;
+    sendBLEMessage("❌ WiFi failed! Check password");
+  }
+}
+
 // ================= SD CARD =================
 void initSD() {
   SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   if (!SD.begin(SD_CS)) {
-    Serial.println("❌ SD Card gagal!");
+    Serial.println("❌ SD Card failed!");
   } else {
-    Serial.println("✅ SD Card siap");
+    Serial.println("✅ SD Card ready");
     loadSettings();
+    loadUserCacheFromSD();
   }
 }
 
@@ -145,15 +241,15 @@ void loadSettings() {
     while (file.available()) {
       String line = file.readStringUntil('\n');
       if (line.startsWith("delay=")) {
-        minDelayMinutes = line.substring(6).toInt();
-        if (minDelayMinutes < 1) minDelayMinutes = 60;
+        globalDelayMinutes = line.substring(6).toInt();
+        if (globalDelayMinutes < 1) globalDelayMinutes = 60;
       }
       if (line.startsWith("lastID=")) {
         currentID = line.substring(7).toInt();
       }
     }
     file.close();
-    Serial.printf("📁 Delay: %d menit, Last ID: %d\n", minDelayMinutes, currentID);
+    Serial.printf("📁 Global Delay: %d menit, Last ID: %d\n", globalDelayMinutes, currentID);
   } else {
     saveSettings();
   }
@@ -162,10 +258,10 @@ void loadSettings() {
 void saveSettings() {
   File file = SD.open("/settings.txt", FILE_WRITE);
   if (file) {
-    file.println("delay=" + String(minDelayMinutes));
+    file.println("delay=" + String(globalDelayMinutes));
     file.println("lastID=" + String(currentID));
     file.close();
-    Serial.println("✅ Settings tersimpan");
+    Serial.println("✅ Settings saved");
   }
 }
 
@@ -183,41 +279,160 @@ bool isUserRegistered(int id) {
   return false;
 }
 
-void saveUserToSD(int id, String nama, String kelas, String jurusan) {
-  if (isUserRegistered(id)) return;
-  File file = SD.open("/users.txt", FILE_APPEND);
-  if (file) {
-    file.println(String(id) + "," + nama + "," + kelas + "," + jurusan);
-    file.close();
-    Serial.printf("✅ User %d (%s) tersimpan di SD\n", id, nama.c_str());
+// ================= USER CACHE FUNCTIONS =================
+
+void loadUserCacheFromSD() {
+  File file = SD.open("/users.txt", FILE_READ);
+  if (!file) {
+    Serial.println("⚠️ No users.txt found");
+    userCacheCount = 0;
+    return;
   }
+  
+  userCacheCount = 0;
+  while (file.available() && userCacheCount < MAX_USERS) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) continue;
+    
+    int c1 = line.indexOf(',');
+    int c2 = line.indexOf(',', c1 + 1);
+    int c3 = line.indexOf(',', c2 + 1);
+    int c4 = line.indexOf(',', c3 + 1);
+    
+    if (c1 > 0 && c2 > 0 && c3 > 0) {
+      userCache[userCacheCount].id = line.substring(0, c1).toInt();
+      userCache[userCacheCount].nama = line.substring(c1 + 1, c2);
+      userCache[userCacheCount].kelas = line.substring(c2 + 1, c3);
+      
+      if (c4 > 0) {
+        userCache[userCacheCount].jurusan = line.substring(c3 + 1, c4);
+        userCache[userCacheCount].delayOut = line.substring(c4 + 1).toInt();
+      } else {
+        userCache[userCacheCount].jurusan = line.substring(c3 + 1);
+        userCache[userCacheCount].jurusan.trim();
+        userCache[userCacheCount].delayOut = globalDelayMinutes;
+      }
+      
+      if (userCache[userCacheCount].delayOut <= 0) {
+        userCache[userCacheCount].delayOut = globalDelayMinutes;
+      }
+      
+      userCacheCount++;
+    }
+  }
+  file.close();
+  Serial.printf("📚 Loaded %d users from SD cache\n", userCacheCount);
 }
 
-String getUserNamaFromSD(int id) {
+void saveUserToSD(int id, String nama, String kelas, String jurusan, int delayOut) {
   File file = SD.open("/users.txt", FILE_READ);
+  bool exists = false;
+  String existingContent = "";
+  
   if (file) {
     while (file.available()) {
       String line = file.readStringUntil('\n');
       if (line.startsWith(String(id) + ",")) {
-        int c1 = line.indexOf(',');
-        int c2 = line.indexOf(',', c1 + 1);
-        file.close();
-        return line.substring(c1 + 1, c2);
+        exists = true;
+        existingContent += String(id) + "," + nama + "," + kelas + "," + jurusan + "," + String(delayOut) + "\n";
+      } else {
+        existingContent += line + "\n";
       }
     }
     file.close();
   }
-  return "Unknown";
+  
+  if (!exists) {
+    existingContent += String(id) + "," + nama + "," + kelas + "," + jurusan + "," + String(delayOut) + "\n";
+  }
+  
+  File outFile = SD.open("/users.txt", FILE_WRITE);
+  if (outFile) {
+    outFile.print(existingContent);
+    outFile.close();
+    Serial.printf("✅ User %d (%s) delay=%d saved\n", id, nama.c_str(), delayOut);
+  }
+  
+  // Update cache
+  bool found = false;
+  for (int i = 0; i < userCacheCount; i++) {
+    if (userCache[i].id == id) {
+      userCache[i].nama = nama;
+      userCache[i].kelas = kelas;
+      userCache[i].jurusan = jurusan;
+      userCache[i].delayOut = delayOut;
+      found = true;
+      break;
+    }
+  }
+  if (!found && userCacheCount < MAX_USERS) {
+    userCache[userCacheCount].id = id;
+    userCache[userCacheCount].nama = nama;
+    userCache[userCacheCount].kelas = kelas;
+    userCache[userCacheCount].jurusan = jurusan;
+    userCache[userCacheCount].delayOut = delayOut;
+    userCacheCount++;
+  }
 }
 
-// ================= FUNGSI UNTUK MENDAPATKAN DATA USER LENGKAP =================
-UserData getUserDataFromSD(int id) {
+void removeUserFromSD(int id) {
+  File file = SD.open("/users.txt", FILE_READ);
+  if (!file) {
+    Serial.println("⚠️ users.txt not found");
+    return;
+  }
+  
+  String newContent = "";
+  bool found = false;
+  
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    if (line.startsWith(String(id) + ",")) {
+      found = true;
+      Serial.printf("🗑️ Removing user %d from SD\n", id);
+      continue;
+    }
+    newContent += line + "\n";
+  }
+  file.close();
+  
+  if (found) {
+    File outFile = SD.open("/users.txt", FILE_WRITE);
+    if (outFile) {
+      outFile.print(newContent);
+      outFile.close();
+      Serial.printf("✅ User %d removed from SD\n", id);
+      
+      // Update cache
+      for (int i = 0; i < userCacheCount; i++) {
+        if (userCache[i].id == id) {
+          for (int j = i; j < userCacheCount - 1; j++) {
+            userCache[j] = userCache[j + 1];
+          }
+          userCacheCount--;
+          break;
+        }
+      }
+    }
+  }
+}
+
+UserData getUserData(int id) {
+  // Search cache first
+  for (int i = 0; i < userCacheCount; i++) {
+    if (userCache[i].id == id) {
+      return userCache[i];
+    }
+  }
+  
+  // Fallback to SD
   UserData user;
   user.id = id;
   user.nama = "Unknown";
   user.kelas = "-";
   user.jurusan = "-";
-  user.delayOut = 60;
+  user.delayOut = globalDelayMinutes;
   
   File file = SD.open("/users.txt", FILE_READ);
   if (file) {
@@ -227,10 +442,21 @@ UserData getUserDataFromSD(int id) {
         int c1 = line.indexOf(',');
         int c2 = line.indexOf(',', c1 + 1);
         int c3 = line.indexOf(',', c2 + 1);
+        int c4 = line.indexOf(',', c3 + 1);
+        
         user.nama = line.substring(c1 + 1, c2);
         user.kelas = line.substring(c2 + 1, c3);
-        user.jurusan = line.substring(c3 + 1);
-        user.jurusan.trim();
+        
+        if (c4 > 0) {
+          user.jurusan = line.substring(c3 + 1, c4);
+          user.delayOut = line.substring(c4 + 1).toInt();
+        } else {
+          user.jurusan = line.substring(c3 + 1);
+          user.jurusan.trim();
+          user.delayOut = globalDelayMinutes;
+        }
+        
+        if (user.delayOut <= 0) user.delayOut = globalDelayMinutes;
         break;
       }
     }
@@ -239,14 +465,180 @@ UserData getUserDataFromSD(int id) {
   return user;
 }
 
+// ================= FINGERPRINT DELETE FUNCTIONS =================
+
+bool deleteFingerprintFromAllSensors(int id) {
+  int successCount = 0;
+  int failCount = 0;
+  int notFoundCount = 0;
+  
+  sendBLEMessage("🗑️ Deleting ID " + String(id) + " from 16 sensors...");
+  Serial.printf("🗑️ Deleting fingerprint ID %d from all sensors\n", id);
+  
+  for (int i = 1; i <= 16; i++) {
+    selectSensor(i);
+    delay(50);
+    
+    int loadResult = finger.loadModel(id);
+    
+    if (loadResult == FINGERPRINT_OK) {
+      int deleteResult = finger.deleteModel(id);
+      if (deleteResult == FINGERPRINT_OK) {
+        successCount++;
+        Serial.printf("  ✅ Sensor %d: Deleted\n", i);
+      } else {
+        failCount++;
+        Serial.printf("  ❌ Sensor %d: Delete failed (%d)\n", i, deleteResult);
+      }
+    } else {
+      notFoundCount++;
+      Serial.printf("  ℹ️ Sensor %d: ID not found\n", i);
+    }
+    delay(30);
+  }
+  
+  selectSensor(1);
+  
+  String resultMsg = "Delete ID " + String(id) + ": " + String(successCount) + " OK, " + 
+                     String(failCount) + " fail, " + String(notFoundCount) + " not found";
+  sendBLEMessage(resultMsg);
+  Serial.println("📱 " + resultMsg);
+  
+  // Remove from SD
+  removeUserFromSD(id);
+  
+  return (failCount == 0);
+}
+
 // ================= FIREBASE =================
+
 void initFirebase() {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   Firebase.reconnectWiFi(true);
   fbdo.setResponseSize(4096);
   Firebase.begin(&config, &auth);
-  Serial.println("✅ Firebase terinisialisasi");
+  Serial.println("✅ Firebase initialized");
+}
+
+// VERSI YANG DIPERBAIKI - menggunakan FirebaseJsonArray
+void syncAllUsersFromFirebase() {
+  if (!isOnline || !Firebase.ready() || syncInProgress) return;
+  
+  syncInProgress = true;
+  Serial.println("🔄 Syncing users from Firebase...");
+  
+  if (Firebase.RTDB.get(&fbdo, "/users")) {
+    FirebaseJson &json = fbdo.jsonObject();
+    String allUserData = "";
+    int syncCount = 0;
+    
+    // Cara yang lebih sederhana dan kompatibel
+    // Ambil raw JSON string lalu parse manual
+    String rawJson = fbdo.to<FirebaseJson>().raw();
+    
+    // Parse sederhana untuk format {"id": {"nama":"xxx","kelas":"xx",...}}
+    int pos = 0;
+    while (pos < rawJson.length()) {
+      int startKey = rawJson.indexOf("\"", pos);
+      if (startKey == -1) break;
+      int endKey = rawJson.indexOf("\"", startKey + 1);
+      if (endKey == -1) break;
+      
+      String key = rawJson.substring(startKey + 1, endKey);
+      
+      // Cek apakah key adalah angka (ID user)
+      if (key.length() > 0 && isDigit(key.charAt(0))) {
+        int id = key.toInt();
+        
+        // Cari object user
+        int objStart = rawJson.indexOf("{", endKey);
+        int objEnd = rawJson.indexOf("}", objStart);
+        String userObj = rawJson.substring(objStart, objEnd + 1);
+        
+        // Parse field
+        String nama = "", kelas = "", jurusan = "";
+        int delayOut = globalDelayMinutes;
+        
+        // Parse nama
+        int namaPos = userObj.indexOf("\"nama\"");
+        if (namaPos != -1) {
+          int valStart = userObj.indexOf("\"", namaPos + 6) + 1;
+          int valEnd = userObj.indexOf("\"", valStart);
+          nama = userObj.substring(valStart, valEnd);
+        }
+        
+        // Parse kelas
+        int kelasPos = userObj.indexOf("\"kelas\"");
+        if (kelasPos != -1) {
+          int valStart = userObj.indexOf("\"", kelasPos + 7) + 1;
+          int valEnd = userObj.indexOf("\"", valStart);
+          kelas = userObj.substring(valStart, valEnd);
+        }
+        
+        // Parse jurusan
+        int jurusanPos = userObj.indexOf("\"jurusan\"");
+        if (jurusanPos != -1) {
+          int valStart = userObj.indexOf("\"", jurusanPos + 9) + 1;
+          int valEnd = userObj.indexOf("\"", valStart);
+          jurusan = userObj.substring(valStart, valEnd);
+        }
+        
+        // Parse delayOut
+        int delayPos = userObj.indexOf("\"delayOut\"");
+        if (delayPos != -1) {
+          int colonPos = userObj.indexOf(":", delayPos);
+          int commaPos = userObj.indexOf(",", colonPos);
+          int bracePos = userObj.indexOf("}", colonPos);
+          int endPos = (commaPos != -1 && commaPos < bracePos) ? commaPos : bracePos;
+          String delayStr = userObj.substring(colonPos + 1, endPos);
+          delayStr.trim();
+          delayOut = delayStr.toInt();
+        }
+        
+        if (delayOut <= 0) delayOut = globalDelayMinutes;
+        if (nama.length() == 0) nama = "User" + String(id);
+        if (kelas.length() == 0) kelas = "-";
+        if (jurusan.length() == 0) jurusan = "-";
+        
+        allUserData += String(id) + "," + nama + "," + kelas + "," + jurusan + "," + String(delayOut) + "\n";
+        syncCount++;
+      }
+      
+      pos = endKey + 1;
+    }
+    
+    if (syncCount > 0) {
+      File file = SD.open("/users.txt", FILE_WRITE);
+      if (file) {
+        file.print(allUserData);
+        file.close();
+        Serial.printf("✅ Synced %d users from Firebase\n", syncCount);
+        loadUserCacheFromSD();
+        sendBLEMessage("✅ Synced " + String(syncCount) + " users");
+      }
+    } else {
+      Serial.println("⚠️ No users found in Firebase");
+    }
+  } else {
+    Serial.println("❌ Failed to get /users from Firebase");
+  }
+  
+  syncInProgress = false;
+}
+
+void checkFirebaseSettings() {
+  if (Firebase.ready() && isOnline) {
+    if (Firebase.RTDB.get(&fbdo, "/settings/delayOut")) {
+      int fbDelay = fbdo.to<int>();
+      if (fbDelay > 0 && fbDelay != globalDelayMinutes) {
+        globalDelayMinutes = fbDelay;
+        saveSettings();
+        sendBLEMessage("Global Delay: " + String(globalDelayMinutes) + " min");
+        Serial.printf("✅ Global delay updated: %d\n", globalDelayMinutes);
+      }
+    }
+  }
 }
 
 void syncOfflineData() {
@@ -271,7 +663,7 @@ void syncOfflineData() {
     String date = line.substring(c1 + 1, c2);
     String time = line.substring(c2 + 1, c3);
     String status = line.substring(c4 + 1);
-    UserData user = getUserDataFromSD(id);
+    UserData user = getUserData(id);
 
     String path = "absensi/" + date + "/" + String(id);
     
@@ -297,25 +689,12 @@ void syncOfflineData() {
       newLog.print(unsynced);
       newLog.close();
     }
-    Serial.printf("✅ Sync offline: %d data\n", synced);
-  }
-}
-
-void checkFirebaseSettings() {
-  if (Firebase.ready() && isOnline) {
-    if (Firebase.RTDB.get(&fbdo, "/settings/delayOut")) {
-      int fbDelay = fbdo.to<int>();
-      if (fbDelay > 0 && fbDelay != minDelayMinutes) {
-        minDelayMinutes = fbDelay;
-        saveSettings();
-        sendBLEMessage("Delay: " + String(minDelayMinutes) + " menit");
-        Serial.printf("✅ Delay update dari Firebase: %d\n", minDelayMinutes);
-      }
-    }
+    Serial.printf("✅ Offline sync: %d data\n", synced);
   }
 }
 
 // ================= MUX & FINGERPRINT =================
+
 void selectSensor(int id) {
   int val = id - 1;
   digitalWrite(MUX_S0, val & 0x01);
@@ -345,23 +724,26 @@ void sendToFirebase(int id, String status, String time, String date, String nama
     json.set("jurusan", jurusan);
     json.set("in", time);
     Firebase.RTDB.set(&fbdo, path, &json);
-    Serial.printf("📤 Firebase IN: %s\n", nama.c_str());
+    Serial.printf("📤 IN: %s\n", nama.c_str());
   } else if (status == "OUT") {
     Firebase.RTDB.set(&fbdo, path + "/out", time);
-    Serial.printf("📤 Firebase OUT: %s\n", nama.c_str());
+    Serial.printf("📤 OUT: %s\n", nama.c_str());
   }
 }
 
-// ================= FUNGSI HANDLE ATTENDANCE (DIPERBAIKI) =================
+// ================= HANDLE ATTENDANCE (DENGAN DELAY PER SISWA) =================
+
 void handleAttendance(int id) {
   String date = getCurrentDateRTC();
   String time = getCurrentTimeRTC();
-  UserData user = getUserDataFromSD(id);  // ← Gunakan fungsi ini
+  UserData user = getUserData(id);
+  
+  // Gunakan delay PER SISWA, fallback ke global
+  int requiredDelay = (user.delayOut > 0) ? user.delayOut : globalDelayMinutes;
   
   String lastStatus = "NONE";
   String inTime = "";
 
-  // Baca status terakhir dari SD
   File file = SD.open("/attendance.txt", FILE_READ);
   if (file) {
     while (file.available()) {
@@ -370,7 +752,8 @@ void handleAttendance(int id) {
         int c4 = line.lastIndexOf(',');
         lastStatus = line.substring(c4 + 1);
         if (lastStatus == "IN") {
-          int c2 = line.indexOf(',', line.indexOf(',') + 1);
+          int c1 = line.indexOf(',');
+          int c2 = line.indexOf(',', c1 + 1);
           int c3 = line.indexOf(',', c2 + 1);
           inTime = line.substring(c2 + 1, c3);
         }
@@ -384,15 +767,17 @@ void handleAttendance(int id) {
     logAttendanceToSD(id, "IN");
     sendToFirebase(id, "IN", time, date, user.nama, user.kelas, user.jurusan);
     sendBLEMessage("✅ " + user.nama + " - MASUK " + time);
-    Serial.printf("✅ MASUK: %s (%d) jam %s\n", user.nama.c_str(), id, time.c_str());
+    Serial.printf("✅ MASUK: %s (%d) jam %s, delay=%d menit\n", 
+                  user.nama.c_str(), id, time.c_str(), requiredDelay);
     
   } else if (lastStatus == "IN") {
-    // ABSEN PULANG - cek delay
+    // ABSEN PULANG - cek delay PER SISWA
     int timeDiff = getCurrentMinutesRTC() - stringToMinutes(inTime);
-    if (timeDiff < minDelayMinutes) {
-      int wait = minDelayMinutes - timeDiff;
-      sendBLEMessage("⏰ Tunggu " + String(wait) + " menit untuk pulang");
-      Serial.printf("⚠️ PULANG DITOLAK: %s, tunggu %d menit\n", user.nama.c_str(), wait);
+    if (timeDiff < requiredDelay) {
+      int wait = requiredDelay - timeDiff;
+      sendBLEMessage("⏰ " + user.nama + " tunggu " + String(wait) + " menit (min " + String(requiredDelay) + ")");
+      Serial.printf("⚠️ PULANG DITOLAK: %s, sudah %d menit, perlu %d menit\n", 
+                    user.nama.c_str(), timeDiff, requiredDelay);
       return;
     }
     logAttendanceToSD(id, "OUT");
@@ -406,6 +791,7 @@ void handleAttendance(int id) {
 }
 
 // ================= ENROLL FINGERPRINT =================
+
 int enrollFingerprint(int id) {
   selectSensor(1);
   sendBLEMessage("📌 Tempelkan jari...");
@@ -437,7 +823,6 @@ int enrollFingerprint(int id) {
   p = finger.storeModel(id);
   if (p != FINGERPRINT_OK) return p;
 
-  // Sync ke semua sensor (1-16)
   sendBLEMessage("🔄 Sinkronisasi ke 16 sensor...");
   for (int i = 1; i <= 16; i++) {
     selectSensor(i);
@@ -451,7 +836,8 @@ int enrollFingerprint(int id) {
   return FINGERPRINT_OK;
 }
 
-// ================= BLE (DIPERBAIKI) =================
+// ================= BLE COMMANDS =================
+
 void sendBLEMessage(String msg) {
   if (deviceConnected && pTxCharacteristic) {
     pTxCharacteristic->setValue(msg.c_str());
@@ -461,21 +847,131 @@ void sendBLEMessage(String msg) {
 }
 
 class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) { deviceConnected = true; }
-  void onDisconnect(BLEServer* pServer) { deviceConnected = false; }
+  void onConnect(BLEServer* pServer) { 
+    deviceConnected = true; 
+    Serial.println("📱 BLE Connected");
+    sendBLEMessage("ESP32 Absensi Ready");
+    sendBLEMessage("WiFi: " + String(isOnline ? "ONLINE" : "OFFLINE"));
+  }
+  void onDisconnect(BLEServer* pServer) { 
+    deviceConnected = false; 
+    Serial.println("📱 BLE Disconnected");
+  }
 };
 
 class MyCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
-    String rxValue = pCharacteristic->getValue().c_str();  // ← DIPERBAIKI
+    String rxValue = pCharacteristic->getValue().c_str();
     if (rxValue.length() > 0) {
+      Serial.println("📱 BLE RX: " + rxValue);
       
-      if (rxValue.startsWith("SET_DELAY:")) {
-        minDelayMinutes = rxValue.substring(10).toInt();
+      // ========== WIFI COMMANDS ==========
+      if (rxValue.startsWith("SET_WIFI:")) {
+        String creds = rxValue.substring(9);
+        int commaPos = creds.indexOf(',');
+        if (commaPos > 0) {
+          String ssid = creds.substring(0, commaPos);
+          String password = creds.substring(commaPos + 1);
+          ssid.trim();
+          password.trim();
+          
+          if (ssid.length() > 0) {
+            sendBLEMessage("📡 Saving WiFi: " + ssid);
+            saveWiFiCredentials(ssid, password);
+            wifiSSID = ssid;
+            wifiPassword = password;
+            sendBLEMessage("🔄 Connecting...");
+            connectToWiFi();
+          } else {
+            sendBLEMessage("❌ Invalid! Use: SET_WIFI:SSID,PASS");
+          }
+        } else {
+          sendBLEMessage("❌ Invalid! Use: SET_WIFI:SSID,PASS");
+        }
+      }
+      
+      else if (rxValue.startsWith("GET_WIFI")) {
+        if (wifiSSID.length() > 0) {
+          sendBLEMessage("WiFi: " + wifiSSID);
+          sendBLEMessage("Status: " + String(isOnline ? "CONNECTED" : "DISCONNECTED"));
+          if (isOnline) sendBLEMessage("IP: " + WiFi.localIP().toString());
+        } else {
+          sendBLEMessage("⚠️ No WiFi configured");
+        }
+      }
+      
+      else if (rxValue.startsWith("CLEAR_WIFI")) {
+        clearWiFiCredentials();
+        WiFi.disconnect(true);
+        isOnline = false;
+        sendBLEMessage("🗑️ WiFi cleared");
+      }
+      
+      else if (rxValue.startsWith("SCAN_WIFI")) {
+        sendBLEMessage("📡 Scanning...");
+        int n = WiFi.scanNetworks();
+        if (n == 0) {
+          sendBLEMessage("❌ No networks");
+        } else {
+          sendBLEMessage("📡 Found " + String(n) + " networks:");
+          for (int i = 0; i < n && i < 10; i++) {
+            sendBLEMessage(String(i+1) + ". " + WiFi.SSID(i));
+          }
+        }
+        WiFi.scanDelete();
+      }
+      
+      // ========== SYSTEM COMMANDS ==========
+      else if (rxValue.startsWith("GET_STATUS")) {
+        sendBLEMessage("STATUS|Delay:" + String(globalDelayMinutes) + 
+                       "|Online:" + String(isOnline) + 
+                       "|Users:" + String(userCacheCount) +
+                       "|WiFi:" + (wifiSSID.length() > 0 ? wifiSSID : "NONE"));
+        if (isOnline) sendBLEMessage("IP: " + WiFi.localIP().toString());
+      }
+      
+      else if (rxValue.startsWith("SET_DELAY:")) {
+        globalDelayMinutes = rxValue.substring(10).toInt();
         saveSettings();
-        sendBLEMessage("✅ Delay: " + String(minDelayMinutes) + " menit");
-      } else if (rxValue.startsWith("GET_STATUS")) {
-        sendBLEMessage("STATUS|Delay:" + String(minDelayMinutes) + "|Online:" + String(isOnline));
+        sendBLEMessage("✅ Global Delay: " + String(globalDelayMinutes) + " min");
+      }
+      
+      else if (rxValue.startsWith("SYNC_USERS")) {
+        if (isOnline) {
+          sendBLEMessage("🔄 Syncing...");
+          syncAllUsersFromFirebase();
+        } else {
+          sendBLEMessage("❌ No WiFi connection");
+        }
+      }
+      
+      else if (rxValue.startsWith("DELETE_FP:")) {
+        int fid = rxValue.substring(10).toInt();
+        deleteFingerprintFromAllSensors(fid);
+      }
+      
+      else if (rxValue.startsWith("REBOOT")) {
+        sendBLEMessage("🔄 Rebooting...");
+        delay(100);
+        ESP.restart();
+      }
+      
+      else if (rxValue.startsWith("HELP")) {
+        sendBLEMessage("=== ESP32 Commands ===");
+        sendBLEMessage("SET_WIFI:SSID,PASS - Config WiFi");
+        sendBLEMessage("GET_WIFI - WiFi status");
+        sendBLEMessage("CLEAR_WIFI - Clear WiFi");
+        sendBLEMessage("SCAN_WIFI - Scan networks");
+        sendBLEMessage("GET_STATUS - System status");
+        sendBLEMessage("SET_DELAY:min - Set global delay");
+        sendBLEMessage("SYNC_USERS - Sync from Firebase");
+        sendBLEMessage("DELETE_FP:id - Delete fingerprint");
+        sendBLEMessage("REBOOT - Restart ESP32");
+        sendBLEMessage("HELP - This menu");
+      }
+      
+      else {
+        sendBLEMessage("❌ Unknown. Send HELP");
       }
     }
   }
@@ -487,14 +983,15 @@ void initBLE() {
   pServer->setCallbacks(new MyServerCallbacks());
   BLEService* pService = pServer->createService(SERVICE_UUID);
   pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_NOTIFY);
-  BLECharacteristic* pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+  pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
   pRxCharacteristic->setCallbacks(new MyCallbacks());
   pService->start();
   pServer->getAdvertising()->start();
-  Serial.println("✅ BLE siap");
+  Serial.println("✅ BLE Ready - Name: ESP32_Absensi");
 }
 
 // ================= TASK CORE 0 =================
+
 void TaskScanSensors(void* pvParameters) {
   for (;;) {
     if (isEnrolling) {
@@ -520,8 +1017,10 @@ void TaskScanSensors(void* pvParameters) {
 }
 
 // ================= SETUP =================
+
 void setup() {
   Serial.begin(115200);
+  Serial.println("\n🚀 ESP32 Fingerprint System Starting...");
 
   // Setup MUX
   pinMode(MUX_S0, OUTPUT); pinMode(MUX_S1, OUTPUT);
@@ -548,66 +1047,93 @@ void setup() {
 
   // Setup Queue
   xQueueFingerprint = xQueueCreate(10, sizeof(int));
-  xIDMutex = xSemaphoreCreateMutex();
 
   // Task Core 0
   xTaskCreatePinnedToCore(TaskScanSensors, "SensorTask", 10000, NULL, 1, NULL, 0);
 
-  // WiFi
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("📡 Menghubungkan WiFi");
-  int tries = 0;
-  while (WiFi.status() != WL_CONNECTED && tries < 20) {
-    delay(500);
-    Serial.print(".");
-    tries++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ WiFi terhubung");
-    isOnline = true;
-    syncRTCwithNTP();
-    initFirebase();
-    syncOfflineData();
-    checkFirebaseSettings();
+  // Load WiFi credentials
+  loadWiFiCredentials();
+  
+  // Connect if credentials exist
+  if (wifiSSID.length() > 0) {
+    connectToWiFi();
   } else {
-    Serial.println("\n⚠️ WiFi gagal, mode offline");
+    Serial.println("⚠️ No WiFi. Use BLE: SET_WIFI:SSID,PASS");
   }
 
+  // Initialize BLE
   initBLE();
-  Serial.println("🚀 ESP32 SIAP!");
+  
+  Serial.println("==========================================");
+  Serial.println("🚀 ESP32 READY!");
+  Serial.println("   BLE Name: ESP32_Absensi");
+  Serial.println("   Commands: HELP, GET_STATUS, SET_WIFI:SSID,PASS");
+  Serial.println("   Features: Delay PER SISWA | Delete FP | WiFi via BLE");
+  Serial.println("==========================================");
+  
+  sendBLEMessage("ESP32 Absensi Ready");
+  if (wifiSSID.length() == 0) {
+    sendBLEMessage("⚠️ No WiFi! Send: SET_WIFI:SSID,PASS");
+  }
 }
 
 // ================= LOOP =================
+
 void loop() {
   int id;
   if (xQueueReceive(xQueueFingerprint, &id, pdMS_TO_TICKS(100)) == pdPASS) {
     handleAttendance(id);
   }
 
-  if (WiFi.status() == WL_CONNECTED) {
-    if (!isOnline) {
-      isOnline = true;
-      syncRTCwithNTP();
-      syncOfflineData();
-    }
-    
-    static unsigned long lastSettings = 0;
-    if (millis() - lastSettings > 30000) {
-      checkFirebaseSettings();
-      lastSettings = millis();
-    }
-    
-    static unsigned long lastPing = 0;
-    if (millis() - lastPing > 60000) {
-      if (Firebase.ready()) {
-        Firebase.RTDB.set(&fbdo, "/status/esp32/last_ping", getCurrentTimeRTC());
-        Firebase.RTDB.set(&fbdo, "/status/esp32/ip", WiFi.localIP().toString());
+  // WiFi handling
+  if (wifiSSID.length() > 0) {
+    if (WiFi.status() == WL_CONNECTED) {
+      if (!isOnline) {
+        isOnline = true;
+        Serial.println("✅ WiFi reconnected");
+        syncRTCwithNTP();
+        initFirebase();
+        syncOfflineData();
+        checkFirebaseSettings();
+        syncAllUsersFromFirebase();
+        sendBLEMessage("✅ WiFi Reconnected");
       }
-      lastPing = millis();
+      
+      // Periodic tasks
+      unsigned long now = millis();
+      
+      if (now - lastSettings > SETTINGS_INTERVAL) {
+        checkFirebaseSettings();
+        lastSettings = now;
+      }
+      
+      if (now - lastUserSync > USER_SYNC_INTERVAL) {
+        syncAllUsersFromFirebase();
+        lastUserSync = now;
+      }
+      
+      if (now - lastPing > PING_INTERVAL) {
+        if (Firebase.ready()) {
+          Firebase.RTDB.set(&fbdo, "/status/esp32/last_ping", getCurrentTimeRTC());
+          Firebase.RTDB.set(&fbdo, "/status/esp32/ip", WiFi.localIP().toString());
+        }
+        lastPing = now;
+      }
+    } else {
+      if (isOnline) {
+        isOnline = false;
+        Serial.println("⚠️ WiFi lost");
+        sendBLEMessage("⚠️ WiFi lost, reconnecting...");
+      }
+      
+      // Attempt reconnect
+      if (millis() - lastReconnect > RECONNECT_INTERVAL) {
+        WiFi.disconnect();
+        WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
+        lastReconnect = millis();
+        Serial.println("🔄 Reconnecting...");
+      }
     }
-  } else {
-    isOnline = false;
   }
 
   // Tombol enroll
@@ -621,16 +1147,17 @@ void loop() {
     
     isEnrolling = true;
     Serial.printf("📝 Enroll ID: %d\n", currentID);
-    sendBLEMessage("📝 Registrasi ID: " + String(currentID));
+    sendBLEMessage("📝 Register ID: " + String(currentID));
     
     String defaultNama = "Siswa" + String(currentID);
     String defaultKelas = "X";
     String defaultJurusan = "RPL";
+    int defaultDelay = globalDelayMinutes;
     
     int result = enrollFingerprint(currentID);
     
     if (result == FINGERPRINT_OK) {
-      saveUserToSD(currentID, defaultNama, defaultKelas, defaultJurusan);
+      saveUserToSD(currentID, defaultNama, defaultKelas, defaultJurusan, defaultDelay);
       
       if (isOnline && Firebase.ready()) {
         FirebaseJson json;
@@ -638,17 +1165,17 @@ void loop() {
         json.set("nama", defaultNama);
         json.set("kelas", defaultKelas);
         json.set("jurusan", defaultJurusan);
-        json.set("delayOut", minDelayMinutes);
+        json.set("delayOut", defaultDelay);
         Firebase.RTDB.set(&fbdo, "users/" + String(currentID), &json);
       }
       
-      sendBLEMessage("✅ Sukses ID " + String(currentID));
-      Serial.printf("✅ Enroll sukses ID: %d\n", currentID);
+      sendBLEMessage("✅ Success ID " + String(currentID));
+      Serial.printf("✅ Enroll success ID: %d, delay=%d min\n", currentID, defaultDelay);
       currentID++;
       saveSettings();
     } else {
-      sendBLEMessage("❌ Gagal enroll, coba lagi");
-      Serial.printf("❌ Enroll gagal, code: %d\n", result);
+      sendBLEMessage("❌ Enroll failed, try again");
+      Serial.printf("❌ Enroll failed, code: %d\n", result);
     }
     
     isEnrolling = false;

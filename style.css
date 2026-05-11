@@ -39,6 +39,87 @@ body {
     line-height: 1.5;
 }
 
+/* ==================== SCHOOL LOGO STYLES ==================== */
+
+/* Logo di header navbar */
+.school-logo {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 12px;
+    background: var(--bg-card);
+    border: 2px solid var(--primary);
+    box-shadow: 0 2px 8px rgba(0, 188, 212, 0.2);
+    transition: all 0.3s ease;
+}
+
+.school-logo:hover {
+    transform: scale(1.05);
+    border-color: var(--secondary);
+    box-shadow: 0 4px 12px rgba(0, 188, 212, 0.3);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* Preview logo di pengaturan */
+.school-logo-preview {
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 16px;
+    border: 2px solid var(--border);
+    background: var(--bg-card);
+    transition: all 0.3s ease;
+}
+
+.logo-preview-wrapper {
+    position: relative;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+.logo-preview-wrapper:hover {
+    transform: scale(1.02);
+}
+
+.logo-preview-wrapper:hover .school-logo-preview {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.2);
+}
+
+.logo-upload-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 8px;
+    transition: color 0.2s ease;
+}
+
+.logo-preview-wrapper:hover .logo-upload-hint {
+    color: var(--primary);
+}
+
+/* Skeleton loading untuk logo */
+.school-logo.skeleton,
+.school-logo-preview.skeleton {
+    background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
 /* ==================== TYPOGRAPHY ==================== */
 .text-small {
     font-size: 0.75rem;
@@ -867,4 +948,87 @@ hr {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--primary-dark);
+}
+
+/* ==================== RESPONSIVE DESIGN ==================== */
+@media (max-width: 768px) {
+    .header-bar {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .header-left {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .school-logo {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .clock-display {
+        font-size: 1rem;
+    }
+    
+    .nav-tabs {
+        justify-content: center;
+    }
+    
+    .tab-btn {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+    }
+    
+    .controls-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .filter-group {
+        justify-content: space-between;
+    }
+    
+    .search-box input {
+        width: 100%;
+    }
+    
+    .key-box {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .school-logo-preview {
+        width: 80px;
+        height: 80px;
+    }
+}
+
+@media (max-width: 480px) {
+    #dashboard-section {
+        padding: 10px;
+    }
+    
+    .header-bar {
+        padding: 12px 16px;
+    }
+    
+    .school-logo {
+        width: 35px;
+        height: 35px;
+    }
+    
+    .clock-display {
+        font-size: 0.85rem;
+        padding: 4px 10px;
+    }
+    
+    th, td {
+        padding: 8px 10px;
+    }
+    
+    .btn-action {
+        padding: 6px 12px;
+        font-size: 0.7rem;
+    }
 }
