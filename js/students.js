@@ -1,6 +1,7 @@
-// students.js - VERSION 2.1
+// students.js - VERSION 2.2 (DENGAN MANAJEMEN KELAS DINAMIS)
 // ======================= DROPDOWN KELAS & JURUSAN DINAMIS =======================
 // Dengan real-time update, auto-sync, dan fitur hapus sidik jari dari ESP32
+// Mendukung kelas kustom dari pengaturan sekolah (VII A, VIII B, X RPL, dll)
 
 let studentsRealtimeListener = null;
 let studentFormResetTimer = null;
@@ -174,30 +175,46 @@ function createStudentsStatsContainer() {
 
 // ======================= DROPDOWN KELAS & JURUSAN DINAMIS =======================
 
+/**
+ * Populate dropdown kelas menggunakan daftar dari pengaturan sekolah
+ * Mendukung kelas kustom seperti VII A, VIII B, X RPL, dll
+ */
 function populateKelasOptions() {
     const kelasSelect = document.getElementById('newKelas');
     if (!kelasSelect) return;
 
+    // Ambil daftar kelas dari currentSchoolConfig (pengaturan sekolah)
     let options = [];
-    const schoolType = currentSchoolConfig?.type || 'smp';
-
-    if (schoolType === 'smp') {
-        options = ['VII', 'VIII', 'IX'];
-    } else if (schoolType === 'smk') {
-        options = ['X', 'XI', 'XII'];
-    } else if (schoolType === 'both') {
-        options = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+    
+    if (currentSchoolConfig && currentSchoolConfig.classes && currentSchoolConfig.classes.length > 0) {
+        // Gunakan daftar kelas dari database (sudah termasuk kelas kustom)
+        options = currentSchoolConfig.classes;
+        console.log(`📚 Menggunakan daftar kelas dari pengaturan: ${options.length} kelas`);
+    } else {
+        // Fallback ke default jika belum ada konfigurasi
+        const schoolType = currentSchoolConfig?.type || 'smp';
+        if (schoolType === 'smp') {
+            options = ['VII', 'VIII', 'IX'];
+        } else if (schoolType === 'smk') {
+            options = ['X', 'XI', 'XII'];
+        } else if (schoolType === 'both') {
+            options = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+        }
+        console.log(`📚 Menggunakan fallback kelas default: ${options.length} kelas`);
     }
 
     const currentValue = kelasSelect.value;
     kelasSelect.innerHTML = '<option value="">-- Pilih Kelas --</option>' +
-        options.map(k => `<option value="${k}">Kelas ${k}</option>`).join('');
+        options.map(k => `<option value="${k}">${k}</option>`).join('');
     
     if (currentValue && options.includes(currentValue)) {
         kelasSelect.value = currentValue;
     }
 }
 
+/**
+ * Populate dropdown jurusan menggunakan daftar dari pengaturan sekolah
+ */
 function populateJurusanOptions() {
     const jurusanSelect = document.getElementById('newJurusan');
     if (!jurusanSelect) return;
@@ -302,25 +319,37 @@ function formatDelayDisplay(delayMinutes) {
 
 // ======================= FUNGSI FILTER SISWA =======================
 
+/**
+ * Populate filter dropdown kelas menggunakan daftar dari pengaturan sekolah
+ */
 function populateStudentFilters() {
     const kSelect = document.getElementById('filterStudentKelas');
     const jSelect = document.getElementById('filterStudentJurusan');
     
     if (!kSelect || !jSelect) return;
 
+    // Gunakan daftar kelas dari pengaturan sekolah
     let kelasOptions = [];
-    const schoolType = currentSchoolConfig?.type || 'smp';
-    if (schoolType === 'smp') kelasOptions = ['VII', 'VIII', 'IX'];
-    else if (schoolType === 'smk') kelasOptions = ['X', 'XI', 'XII'];
-    else if (schoolType === 'both') kelasOptions = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+    
+    if (currentSchoolConfig && currentSchoolConfig.classes && currentSchoolConfig.classes.length > 0) {
+        kelasOptions = currentSchoolConfig.classes;
+        console.log(`🔍 Filter kelas: menggunakan ${kelasOptions.length} kelas dari pengaturan`);
+    } else {
+        // Fallback ke default
+        const schoolType = currentSchoolConfig?.type || 'smp';
+        if (schoolType === 'smp') kelasOptions = ['VII', 'VIII', 'IX'];
+        else if (schoolType === 'smk') kelasOptions = ['X', 'XI', 'XII'];
+        else if (schoolType === 'both') kelasOptions = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+    }
 
     const currentKelas = kSelect.value;
     kSelect.innerHTML = '<option value="all">📚 Semua Kelas</option>' +
-        kelasOptions.map(k => `<option value="${k}">Kelas ${k}</option>`).join('');
+        kelasOptions.map(k => `<option value="${k}">${k}</option>`).join('');
     if (currentKelas !== 'all' && kelasOptions.includes(currentKelas)) {
         kSelect.value = currentKelas;
     }
 
+    // Jurusan options
     const currentJurusan = jSelect.value;
     jSelect.innerHTML = '<option value="all">🎓 Semua Jurusan</option>';
     if (currentSchoolConfig?.majors && currentSchoolConfig.majors.length > 0) {
@@ -359,7 +388,7 @@ function renderStudentsTable() {
     tbody.innerHTML = '';
     
     if (data.length === 0) {
-        tbody.innerHTML = `<td><td colspan="6" style="text-align:center; padding: 30px;">
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px;">
             📭 Data siswa tidak ditemukan.
             ${searchValue ? '<br><small>Coba kata kunci lain</small>' : '<br><small>Tambahkan siswa baru melalui form di atas</small>'}
         </td></tr>`;
@@ -380,8 +409,8 @@ function renderStudentsTable() {
                 <td>
                     <button class="btn-icon edit" onclick="editStudent('${s.id}')" title="Edit Siswa">✏️</button>
                     <button class="btn-icon delete" onclick="deleteStudentWithFP('${s.id}')" title="Hapus Siswa (termasuk sidik jari)">🗑️</button>
-                  </td>
-              </tr>
+                   </td>
+               </tr>
         `;
     });
     
@@ -430,12 +459,9 @@ async function deleteStudentWithFP(studentId) {
     showToast(`🗑️ Menghapus ${studentName}...`, "info");
     
     // ======================= 1. KIRIM PERINTAH HAPUS KE ESP32 =======================
-    let fpDeleted = false;
-    
     try {
         showToast(`📡 Mengirim perintah hapus sidik jari ke ESP32...`, "info");
         
-        // Buat node command untuk ESP32
         const commandRef = db.ref('commands/esp32/delete_fingerprint');
         await commandRef.set({
             studentId: parseInt(studentId),
@@ -445,7 +471,6 @@ async function deleteStudentWithFP(studentId) {
             status: 'pending'
         });
         
-        // Tunggu response dari ESP32 (maksimal 15 detik)
         let commandCompleted = false;
         let responseReceived = false;
         
@@ -465,7 +490,6 @@ async function deleteStudentWithFP(studentId) {
                     responseReceived = true;
                     clearTimeout(timeout);
                     responseRef.off('value', responseListener);
-                    fpDeleted = true;
                     commandCompleted = true;
                     resolve(true);
                     showToast(`✅ Sidik jari ${studentName} berhasil dihapus dari sensor`, "success");
@@ -486,7 +510,6 @@ async function deleteStudentWithFP(studentId) {
             showToast(`⚠️ ESP32 tidak merespon, sidik jari mungkin masih tersimpan`, "warning");
         }
         
-        // Hapus node command (cleanup)
         setTimeout(() => {
             db.ref('commands/esp32/delete_fingerprint').remove().catch(() => {});
             db.ref('commands/esp32/delete_fingerprint_response').remove().catch(() => {});
@@ -513,7 +536,6 @@ async function deleteStudentWithFP(studentId) {
         await db.ref(`users/${studentId}`).remove();
         showToast(`✅ Data siswa "${studentName}" berhasil dihapus dari database`, "success");
         
-        // Refresh UI
         setTimeout(() => {
             if (typeof renderStudentsTable === 'function') renderStudentsTable();
             if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
@@ -525,19 +547,13 @@ async function deleteStudentWithFP(studentId) {
         showToast("❌ Gagal menghapus data siswa: " + err.message, "error");
     }
     
-    // Aktifkan kembali tombol
     btns.forEach(btn => {
         btn.disabled = false;
         btn.innerHTML = '🗑️';
     });
 }
 
-/**
- * Fungsi hapus siswa LAMA (tanpa hapus FP) - untuk kompatibilitas
- * Tetapi akan mengarahkan ke fungsi baru
- */
 function deleteStudent(id) {
-    // Redirect ke fungsi baru dengan konfirmasi tambahan
     if (confirm(`⚠️ Hapus siswa ini akan MENGHAPUS SIDIK JARI dari semua sensor.\n\nLanjutkan?`)) {
         deleteStudentWithFP(id);
     }

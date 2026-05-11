@@ -1,6 +1,8 @@
-// FILE: ui.js - VERSION 2.0
+// FILE: ui.js - VERSION 2.2 (DENGAN LOGO SEKOLAH)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // Dengan dukungan real-time data refresh & session persistence
+// Mendukung filter kelas dari pengaturan sekolah (kelas kustom)
+// Mendukung upload logo sekolah (hanya admin)
 
 // ======================== GLOBAL UI STATE ========================
 let clockInterval = null;
@@ -31,6 +33,10 @@ function initApp() {
     
     // Apply role permissions
     applyRolePermissions();
+    
+    // ========== LOAD LOGO SEKOLAH ==========
+    loadSchoolLogo();
+    updateSchoolLogoUI();
     
     // Populate filters
     if (typeof populateFilters === 'function') {
@@ -206,6 +212,248 @@ function formatDelayText(delayMinutes) {
     }
 }
 
+// ======================== LOGO SEKOLAH ========================
+
+/**
+ * Load logo sekolah dari Firebase dan tampilkan di header
+ */
+function loadSchoolLogo() {
+    if (typeof db === 'undefined' || !db) {
+        console.warn("Firebase db not available for loading logo");
+        return;
+    }
+    
+    const headerLogo = document.getElementById('headerSchoolLogo');
+    const previewLogo = document.getElementById('schoolLogoPreview');
+    const btnRemove = document.getElementById('btnRemoveLogo');
+    
+    db.ref('system_config/schoolLogo').on('value', (snapshot) => {
+        const logoUrl = snapshot.val();
+        
+        if (logoUrl && logoUrl !== '') {
+            // Tampilkan logo di header
+            if (headerLogo) {
+                headerLogo.src = logoUrl;
+                headerLogo.style.display = 'block';
+                headerLogo.classList.remove('skeleton');
+            }
+            
+            // Tampilkan preview di pengaturan
+            if (previewLogo) {
+                previewLogo.src = logoUrl;
+                previewLogo.classList.remove('skeleton');
+            }
+            
+            // Tampilkan tombol hapus (untuk admin)
+            if (btnRemove && currentUser && currentUser.role === 'admin') {
+                btnRemove.style.display = 'inline-block';
+            }
+            
+            console.log("🏫 Logo sekolah loaded:", logoUrl);
+        } else {
+            // Gunakan placeholder default
+            const defaultIcon = 'https://ui-avatars.com/api/?name=S&background=00bcd4&color=fff&size=80';
+            if (headerLogo) {
+                headerLogo.src = defaultIcon;
+                headerLogo.style.display = 'block';
+            }
+            if (previewLogo) {
+                previewLogo.src = defaultIcon;
+            }
+            if (btnRemove) {
+                btnRemove.style.display = 'none';
+            }
+        }
+    });
+}
+
+/**
+ * Upload logo sekolah ke ImgBB dan simpan URL ke Firebase
+ * Hanya admin yang dapat mengakses
+ */
+async function uploadSchoolLogo(input) {
+    if (!currentUser) {
+        showToast('Anda harus login!', 'error');
+        return;
+    }
+    
+    if (currentUser.role !== 'admin') {
+        showToast('⛔ Hanya Admin yang dapat mengubah logo sekolah!', 'error');
+        return;
+    }
+    
+    if (!input.files || !input.files[0]) return;
+    
+    const file = input.files[0];
+    if (!file.type.match('image.*')) {
+        showToast('❌ Hanya file gambar yang diperbolehkan!', 'error');
+        return;
+    }
+    
+    if (file.size > 2 * 1024 * 1024) {
+        showToast('❌ Ukuran gambar maksimal 2MB!', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    const previewImg = document.getElementById('schoolLogoPreview');
+    const headerImg = document.getElementById('headerSchoolLogo');
+    
+    // Tampilkan loading skeleton
+    if (previewImg) {
+        previewImg.classList.add('skeleton');
+        previewImg.style.opacity = '0.5';
+    }
+    if (headerImg) headerImg.classList.add('skeleton');
+    
+    showToast('📤 Mengunggah logo sekolah ke ImgBB...', 'neutral');
+
+    try {
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { 
+            method: 'POST', 
+            body: formData 
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            // Gunakan proxy untuk menghindari masalah CORS
+            const urlProxy = `https://wsrv.nl/?url=${encodeURIComponent(data.data.image.url)}&w=200&h=200&fit=cover`;
+            
+            // Simpan ke Firebase
+            await db.ref('system_config/schoolLogo').set(urlProxy);
+            
+            // Update tampilan
+            if (previewImg) {
+                previewImg.src = urlProxy;
+                previewImg.classList.remove('skeleton');
+                previewImg.style.opacity = '1';
+            }
+            if (headerImg) {
+                headerImg.src = urlProxy;
+                headerImg.classList.remove('skeleton');
+            }
+            
+            // Tampilkan tombol hapus
+            const btnRemove = document.getElementById('btnRemoveLogo');
+            if (btnRemove) btnRemove.style.display = 'inline-block';
+            
+            showToast('✅ Logo sekolah berhasil diperbarui!', 'success');
+        } else {
+            console.error('ImgBB upload failed:', data);
+            showToast('❌ Gagal upload ke ImgBB', 'error');
+            if (previewImg) {
+                previewImg.classList.remove('skeleton');
+                previewImg.style.opacity = '1';
+            }
+            if (headerImg) headerImg.classList.remove('skeleton');
+        }
+    } catch (e) {
+        console.error('Upload error:', e);
+        showToast('❌ Koneksi Error: ' + e.message, 'error');
+        if (previewImg) {
+            previewImg.classList.remove('skeleton');
+            previewImg.style.opacity = '1';
+        }
+        if (headerImg) headerImg.classList.remove('skeleton');
+    } finally {
+        input.value = '';
+    }
+}
+
+/**
+ * Hapus logo sekolah dari Firebase
+ * Hanya admin yang dapat mengakses
+ */
+function removeSchoolLogo() {
+    if (!currentUser) {
+        showToast('Anda harus login!', 'error');
+        return;
+    }
+    
+    if (currentUser.role !== 'admin') {
+        showToast('⛔ Hanya Admin yang dapat menghapus logo sekolah!', 'error');
+        return;
+    }
+    
+    if (!confirm('⚠️ Yakin ingin menghapus logo sekolah?\n\nLogo akan kembali ke default.')) return;
+    
+    const btn = document.getElementById('btnRemoveLogo');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Menghapus...';
+    }
+    
+    db.ref('system_config/schoolLogo').remove()
+        .then(() => {
+            showToast('✅ Logo sekolah berhasil dihapus', 'success');
+            
+            // Reset ke default
+            const defaultIcon = 'https://ui-avatars.com/api/?name=S&background=00bcd4&color=fff&size=80';
+            const previewImg = document.getElementById('schoolLogoPreview');
+            const headerImg = document.getElementById('headerSchoolLogo');
+            
+            if (previewImg) previewImg.src = defaultIcon;
+            if (headerImg) headerImg.src = defaultIcon;
+            
+            if (btn) btn.style.display = 'none';
+        })
+        .catch(err => {
+            console.error('Remove logo error:', err);
+            showToast('❌ Gagal menghapus logo: ' + err.message, 'error');
+        })
+        .finally(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '🗑️ Hapus Logo';
+            }
+        });
+}
+
+/**
+ * Update tampilan logo di header (dipanggil saat user login/role berubah)
+ * Tampilan logo untuk semua role, tapi tombol edit hanya untuk admin
+ */
+function updateSchoolLogoUI() {
+    const logoSettingGroup = document.getElementById('logoSettingGroup');
+    if (logoSettingGroup && currentUser) {
+        // Sembunyikan tombol upload untuk non-admin, tapi tetap tampilkan preview
+        const uploadHint = logoSettingGroup.querySelector('.logo-upload-hint');
+        const removeBtn = document.getElementById('btnRemoveLogo');
+        const previewWrapper = logoSettingGroup.querySelector('.logo-preview-wrapper');
+        
+        if (currentUser.role !== 'admin') {
+            // Non-admin hanya bisa melihat logo, tidak bisa mengubah
+            if (uploadHint) uploadHint.style.display = 'none';
+            if (removeBtn) removeBtn.style.display = 'none';
+            // Nonaktifkan klik pada preview
+            if (previewWrapper) {
+                previewWrapper.style.cursor = 'default';
+                // Hapus onclick attribute
+                previewWrapper.removeAttribute('onclick');
+            }
+        } else {
+            // Admin bisa mengubah
+            if (uploadHint) uploadHint.style.display = 'block';
+            if (previewWrapper) {
+                previewWrapper.style.cursor = 'pointer';
+                previewWrapper.setAttribute('onclick', "document.getElementById('logoFileInput').click()");
+            }
+            // Cek apakah ada logo untuk menentukan tampilkan tombol hapus
+            db.ref('system_config/schoolLogo').once('value', (snapshot) => {
+                if (removeBtn) {
+                    if (snapshot.val()) {
+                        removeBtn.style.display = 'inline-block';
+                    } else {
+                        removeBtn.style.display = 'none';
+                    }
+                }
+            });
+        }
+    }
+}
+
 // ======================== ROLE PERMISSIONS ========================
 
 function applyRolePermissions() {
@@ -270,6 +518,9 @@ function applyRolePermissions() {
             btn.style.display = '';
         });
     }
+    
+    // Update UI logo berdasarkan role
+    updateSchoolLogoUI();
 }
 
 function updateClock() {
@@ -348,34 +599,84 @@ function showToast(msg, type = 'success') {
     }, 3000);
 }
 
-// Filter dropdown untuk tab Absensi (berdasarkan data siswa yang sudah terdaftar)
+/**
+ * Filter dropdown untuk tab Absensi
+ * Menggunakan daftar kelas dari currentSchoolConfig.classes (pengaturan sekolah)
+ * Juga menambahkan kelas dari data siswa yang ada untuk kompatibilitas
+ */
 function populateFilters() {
-    if (!dbData || !dbData.users) {
-        console.log("populateFilters: dbData.users not ready yet");
-        return;
-    }
-    
-    const classes = [...new Set(dbData.users.map(s => s.kelas).filter(Boolean))].sort();
-    const majors = [...new Set(dbData.users.map(s => s.jurusan).filter(Boolean))].sort();
-    
     const filterKelas = document.getElementById('filterKelas');
     const filterJurusan = document.getElementById('filterJurusan');
     
+    // ======================== POPULATE KELAS ========================
     if (filterKelas) {
         const currentValue = filterKelas.value;
+        let kelasOptions = [];
+        
+        // Prioritaskan daftar kelas dari pengaturan sekolah
+        if (currentSchoolConfig && currentSchoolConfig.classes && currentSchoolConfig.classes.length > 0) {
+            kelasOptions = currentSchoolConfig.classes;
+            console.log(`📚 Filter kelas: menggunakan ${kelasOptions.length} kelas dari pengaturan sekolah`);
+        } else {
+            // Fallback: ambil dari data siswa yang sudah ada
+            if (dbData && dbData.users) {
+                kelasOptions = [...new Set(dbData.users.map(s => s.kelas).filter(Boolean))].sort();
+                console.log(`📚 Filter kelas: fallback dari data siswa (${kelasOptions.length} kelas)`);
+            }
+        }
+        
+        // Jika masih kosong, gunakan default
+        if (kelasOptions.length === 0) {
+            const schoolType = currentSchoolConfig?.type || 'smp';
+            if (schoolType === 'smp') {
+                kelasOptions = ['VII', 'VIII', 'IX'];
+            } else if (schoolType === 'smk') {
+                kelasOptions = ['X', 'XI', 'XII'];
+            } else {
+                kelasOptions = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+            }
+            console.log(`📚 Filter kelas: menggunakan default (${kelasOptions.length} kelas)`);
+        }
+        
         filterKelas.innerHTML = '<option value="all">📚 Semua Kelas</option>' +
-            classes.map(c => `<option value="${c}">Kelas ${c}</option>`).join('');
-        if (currentValue && classes.includes(currentValue)) filterKelas.value = currentValue;
+            kelasOptions.map(k => `<option value="${k}">${k}</option>`).join('');
+        
+        if (currentValue && kelasOptions.includes(currentValue)) {
+            filterKelas.value = currentValue;
+        }
     }
     
+    // ======================== POPULATE JURUSAN ========================
     if (filterJurusan) {
         const currentValue = filterJurusan.value;
+        let jurusanOptions = [];
+        
+        // Prioritaskan daftar jurusan dari pengaturan sekolah
+        if (currentSchoolConfig && currentSchoolConfig.majors && currentSchoolConfig.majors.length > 0) {
+            jurusanOptions = currentSchoolConfig.majors;
+            console.log(`🎓 Filter jurusan: menggunakan ${jurusanOptions.length} jurusan dari pengaturan sekolah`);
+        } else {
+            // Fallback: ambil dari data siswa yang sudah ada
+            if (dbData && dbData.users) {
+                jurusanOptions = [...new Set(dbData.users.map(s => s.jurusan).filter(Boolean))].sort();
+                console.log(`🎓 Filter jurusan: fallback dari data siswa (${jurusanOptions.length} jurusan)`);
+            }
+        }
+        
+        // Jika masih kosong, gunakan default
+        if (jurusanOptions.length === 0) {
+            jurusanOptions = ['UMUM'];
+        }
+        
         filterJurusan.innerHTML = '<option value="all">🎓 Semua Jurusan</option>' +
-            majors.map(j => `<option value="${j}">${j}</option>`).join('');
-        if (currentValue && majors.includes(currentValue)) filterJurusan.value = currentValue;
+            jurusanOptions.map(j => `<option value="${j}">${j}</option>`).join('');
+        
+        if (currentValue && jurusanOptions.includes(currentValue)) {
+            filterJurusan.value = currentValue;
+        }
     }
     
-    console.log(`📊 populateFilters: ${classes.length} kelas, ${majors.length} jurusan`);
+    console.log(`📊 populateFilters selesai`);
 }
 
 // ======================== PROFIL & MODALS ========================
@@ -831,7 +1132,7 @@ function renderUsersTable() {
     tbody.innerHTML = '';
 
     if (!dbData.users_auth || dbData.users_auth.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.</td></tr>';
+        tbody.innerHTML = '</table><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.</td></tr>';
         return;
     }
 
@@ -971,3 +1272,8 @@ window.saveSchoolName = saveSchoolName;
 window.renderUsersTable = renderUsersTable;
 window.updateProfileDelayDisplay = updateProfileDelayDisplay;
 window.cleanupUI = cleanupUI;
+// Export fungsi logo sekolah
+window.loadSchoolLogo = loadSchoolLogo;
+window.uploadSchoolLogo = uploadSchoolLogo;
+window.removeSchoolLogo = removeSchoolLogo;
+window.updateSchoolLogoUI = updateSchoolLogoUI;
