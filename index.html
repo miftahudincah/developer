@@ -136,6 +136,7 @@
             <button class="tab-btn" onclick="switchTab('students')">👨‍🎓 Data Siswa (FP)</button>
             <button class="tab-btn role-admin role-guru" onclick="switchTab('users')">👥 Manajemen Pengguna</button>
             <button class="tab-btn" onclick="switchTab('config')">⚙️ Pengaturan</button>
+            <button class="tab-btn" onclick="switchTab('rekap')">📊 Rekap Absensi</button>
             <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
         </div>
 
@@ -148,6 +149,7 @@
                 <div style="margin-left:auto; display:flex; gap:10px;">
                     <button class="btn-action btn-primary" onclick="simulateAttendance()">📷 Simulasi Scan FP</button>
                     <button class="btn-action btn-success" onclick="exportToExcel()">📥 Download Excel</button>
+                    <button class="btn-action btn-info" onclick="switchTab('rekap')">📊 Lihat Rekap</button>
                 </div>
             </div>
             <div class="table-container">
@@ -155,9 +157,9 @@
                     <thead>
                         <tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr>
                     </thead>
-                    <tbody id="tbody-attendance"><tr><td colspan="7" style="text-align:center;">Memuat data...</td></tr>
+                    <tbody id="tbody-attendance"><tr><td colspan="7" style="text-align:center;">Memuat data...<\/td><\/tr>
                 </tbody>
-                </table>
+            <\/table>
             </div>
         </div>
 
@@ -174,8 +176,8 @@
                     <div class="filter-group" id="delayMinutesGroup"><input type="number" id="delayMinutesValue" value="60" style="width: 70px;"><span>menit</span></div>
                     <div class="filter-group" id="delayHoursGroup" style="display:none;"><select id="delayHoursValue"></select><span>jam</span></div>
                     <input type="hidden" id="newDelay" value="60">
-                    <button class="btn-action role-guru role-admin" id="btnSaveStudent" onclick="saveStudent()">➕ Simpan Siswa</button>
-                    <button class="btn-action btn-danger hidden role-guru role-admin" id="btnCancelStudent" onclick="resetStudentForm()">Batal</button>
+                    <button class="btn-action role-guru role-admin" id="btnSaveStudent" onclick="saveStudent()">➕ Simpan Siswa<\/button>
+                    <button class="btn-action btn-danger hidden role-guru role-admin" id="btnCancelStudent" onclick="resetStudentForm()">Batal<\/button>
                 </div>
             </div>
             
@@ -187,10 +189,11 @@
 
             <div class="table-container">
                 <table>
-                    <thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
-                    <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr>
+                    <thead></tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr>
+                    </thead>
+                    <tbody id="tbody-students"><tr><td colspan="6">Memuat data...<\/td><\/tr>
                 </tbody>
-                </table>
+            <\/table>
             </div>
         </div>
 
@@ -209,7 +212,7 @@
                     </div>
                     <small class="text-small" id="gen-desc">🔒 Kode akan dikunci ke ID Siswa terpilih.</small>
                 </div>
-                <button class="btn-action btn-secondary" onclick="generateRegistrationCode()">✨ Generate Kode</button>
+                <button class="btn-action btn-secondary" onclick="generateRegistrationCode()">✨ Generate Kode<\/button>
             </div>
 
             <div id="generatedKeyDisplay" style="display:none;"></div>
@@ -217,7 +220,8 @@
             <h4 class="role-admin role-guru">📋 Daftar Kode Aktif</h4>
             <div class="table-container role-admin role-guru">
                 <table>
-                    <thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></tr></thead>
+                    <thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></tr>
+                    </thead>
                     <tbody id="tbody-codes"></tbody>
                 </table>
             </div>
@@ -225,7 +229,8 @@
             <div class="controls-bar role-admin role-guru"><h4>👥 Daftar Pengguna</h4><div class="search-box"><input type="text" id="searchUser" placeholder="🔍 Cari user..." oninput="renderUsersTable()"></div></div>
             <div class="table-container role-admin role-guru">
                 <table>
-                    <thead><tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Detail</th><th>Aksi</th></tr></thead>
+                    <thead><tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Detail</th><th>Aksi</th></tr>
+                    </thead>
                     <tbody id="tbody-users"></tbody>
                 </table>
             </div>
@@ -352,7 +357,56 @@
             </div>
         </div>
 
-        <!-- TAB 5: GUIDE -->
+        <!-- TAB 5: REKAP ABSENSI -->
+        <div id="tab-rekap" class="tab-content">
+            <div class="controls-bar">
+                <div class="filter-group">
+                    <label>📅 Periode:</label>
+                    <select id="rekapPeriod" onchange="loadRekap()">
+                        <option value="minggu">Minggu Ini</option>
+                        <option value="bulan">Bulan Ini</option>
+                        <option value="semester">Semester Ini</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                <div id="customRangeGroup" style="display: none; display: flex; gap: 10px; align-items: center;">
+                    <input type="date" id="rekapStartDate">
+                    <span>s/d</span>
+                    <input type="date" id="rekapEndDate">
+                    <button class="btn-action btn-primary" onclick="loadRekap()">📊 Tampilkan</button>
+                </div>
+                <div style="margin-left: auto; display: flex; gap: 10px;">
+                    <button class="btn-action btn-success" onclick="exportRekapToExcel()">📥 Export Excel</button>
+                    <button class="btn-action btn-danger" onclick="exportRekapToPDF()">📄 Export PDF</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="rekapTable">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>ID FP</th>
+                            <th>Nama Siswa</th>
+                            <th>Kelas</th>
+                            <th>Jurusan</th>
+                            <th>Total Hari</th>
+                            <th>Hadir</th>
+                            <th>Sakit</th>
+                            <th>Izin</th>
+                            <th>Alpha</th>
+                            <th>Persentase</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rekapTbody">
+                        <tr><td colspan="12" style="text-align:center;">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 6: GUIDE -->
         <div id="tab-guide" class="tab-content">
             <div class="guide-container">
                 <h3>📘 Panduan Sistem Absensi</h3>
@@ -394,7 +448,17 @@
                     </div>
                 </details>
                 <details>
-                    <summary>5. Logo Sekolah</summary>
+                    <summary>5. Rekap Absensi</summary>
+                    <div class="guide-box">
+                        <strong>Fitur Rekap:</strong><br>
+                        - Lihat rekap kehadiran per siswa<br>
+                        - Pilih periode: Minggu, Bulan, Semester, atau Custom<br>
+                        - Export ke Excel atau PDF<br>
+                        - Status kehadiran otomatis (Sangat Baik, Baik, Cukup, Kurang, Buruk)
+                    </div>
+                </details>
+                <details>
+                    <summary>6. Logo Sekolah</summary>
                     <div class="guide-box">
                         <strong>Fitur Logo Sekolah:</strong><br>
                         - Admin dapat mengupload logo sekolah<br>
@@ -403,7 +467,7 @@
                     </div>
                 </details>
                 <details>
-                    <summary>6. ESP32 Configuration</summary>
+                    <summary>7. ESP32 Configuration</summary>
                     <div class="guide-box">
                         <strong>Setup ESP32:</strong><br>
                         - Hubungkan ke WiFi yang sama<br>
@@ -435,6 +499,7 @@
     <script src="js/users.js"></script>
     <script src="js/setting.js"></script>
     <script src="js/announcement.js"></script>
+    <script src="js/rekap.js"></script>
     <script src="js/main.js"></script>
     
     <script>
@@ -505,6 +570,25 @@
                 gdu.addEventListener('change', function() { 
                     if(typeof toggleGlobalDelayInput === 'function') toggleGlobalDelayInput(); 
                 });
+            }
+            
+            // Setup custom range group visibility
+            const periodSelect = document.getElementById('rekapPeriod');
+            const customRangeGroup = document.getElementById('customRangeGroup');
+            if(periodSelect && customRangeGroup) {
+                periodSelect.addEventListener('change', function() {
+                    customRangeGroup.style.display = this.value === 'custom' ? 'flex' : 'none';
+                });
+                
+                // Set default dates for custom range
+                const today = new Date();
+                const startDate = new Date();
+                startDate.setDate(today.getDate() - 30);
+                
+                const startInput = document.getElementById('rekapStartDate');
+                const endInput = document.getElementById('rekapEndDate');
+                if(startInput) startInput.value = startDate.toISOString().split('T')[0];
+                if(endInput) endInput.value = today.toISOString().split('T')[0];
             }
             
             // Inisialisasi toggle input setelah delay
