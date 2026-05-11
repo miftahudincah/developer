@@ -1,4 +1,4 @@
-// FILE: ui.js - VERSION 2.3 (DENGAN TAB REKAP ABSENSI)
+// FILE: ui.js - VERSION 2.4 (FIXED: JAM TETAP BERJALAN & CURRENT SCHOOL CONFIG GUARD)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // Dengan dukungan real-time data refresh & session persistence
 // Mendukung filter kelas dari pengaturan sekolah (kelas kustom)
@@ -39,20 +39,29 @@ function initApp() {
     loadSchoolLogo();
     updateSchoolLogoUI();
     
-    // Populate filters
-    if (typeof populateFilters === 'function') {
-        populateFilters();
-    } else {
-        console.warn("populateFilters not available yet, will retry");
-        setTimeout(() => {
-            if (typeof populateFilters === 'function') populateFilters();
-        }, 500);
+    // Populate filters dengan guard
+    try {
+        if (typeof populateFilters === 'function') {
+            populateFilters();
+        } else {
+            console.warn("populateFilters not available yet, will retry");
+            setTimeout(() => {
+                if (typeof populateFilters === 'function') populateFilters();
+            }, 500);
+        }
+    } catch (err) {
+        console.error("Error in populateFilters:", err);
     }
     
-    // Start clock (hanya sekali)
-    if (clockInterval) clearInterval(clockInterval);
-    clockInterval = setInterval(updateClock, 1000);
-    updateClock();
+    // Start clock (hanya sekali) - DIPASTIKAN JALAN MESKIPUN ADA ERROR SEBELUMNYA
+    try {
+        if (clockInterval) clearInterval(clockInterval);
+        clockInterval = setInterval(updateClock, 1000);
+        updateClock();
+        console.log("✅ Clock started");
+    } catch (err) {
+        console.error("Clock initialization error:", err);
+    }
     
     // ========== INISIALISASI SISTEM PENGUMUMAN ==========
     if (typeof initAnnouncementSystem === 'function') {
@@ -544,6 +553,8 @@ function updateClock() {
             day: 'numeric' 
         });
         clockEl.innerHTML = `${timeStr}<br><small>${dateStr}</small>`;
+    } else {
+        console.warn("Clock element not found");
     }
 }
 
@@ -614,10 +625,20 @@ function showToast(msg, type = 'success') {
  * Filter dropdown untuk tab Absensi
  * Menggunakan daftar kelas dari currentSchoolConfig.classes (pengaturan sekolah)
  * Juga menambahkan kelas dari data siswa yang ada untuk kompatibilitas
+ * 
+ * PERBAIKAN: Guard condition untuk memastikan currentSchoolConfig tersedia
+ * sebelum mengakses propertinya, dan fallback yang lebih robust.
  */
 function populateFilters() {
     const filterKelas = document.getElementById('filterKelas');
     const filterJurusan = document.getElementById('filterJurusan');
+    
+    // Guard: pastikan currentSchoolConfig terdefinisi
+    if (typeof currentSchoolConfig === 'undefined') {
+        console.warn("populateFilters: currentSchoolConfig belum didefinisikan, coba lagi nanti");
+        setTimeout(populateFilters, 500);
+        return;
+    }
     
     // ======================== POPULATE KELAS ========================
     if (filterKelas) {
@@ -630,15 +651,15 @@ function populateFilters() {
             console.log(`📚 Filter kelas: menggunakan ${kelasOptions.length} kelas dari pengaturan sekolah`);
         } else {
             // Fallback: ambil dari data siswa yang sudah ada
-            if (dbData && dbData.users) {
+            if (dbData && dbData.users && dbData.users.length > 0) {
                 kelasOptions = [...new Set(dbData.users.map(s => s.kelas).filter(Boolean))].sort();
                 console.log(`📚 Filter kelas: fallback dari data siswa (${kelasOptions.length} kelas)`);
             }
         }
         
-        // Jika masih kosong, gunakan default
+        // Jika masih kosong, gunakan default berdasarkan tipe sekolah (asumsi SMP)
         if (kelasOptions.length === 0) {
-            const schoolType = currentSchoolConfig?.type || 'smp';
+            const schoolType = (currentSchoolConfig && currentSchoolConfig.type) ? currentSchoolConfig.type : 'smp';
             if (schoolType === 'smp') {
                 kelasOptions = ['VII', 'VIII', 'IX'];
             } else if (schoolType === 'smk') {
@@ -668,7 +689,7 @@ function populateFilters() {
             console.log(`🎓 Filter jurusan: menggunakan ${jurusanOptions.length} jurusan dari pengaturan sekolah`);
         } else {
             // Fallback: ambil dari data siswa yang sudah ada
-            if (dbData && dbData.users) {
+            if (dbData && dbData.users && dbData.users.length > 0) {
                 jurusanOptions = [...new Set(dbData.users.map(s => s.jurusan).filter(Boolean))].sort();
                 console.log(`🎓 Filter jurusan: fallback dari data siswa (${jurusanOptions.length} jurusan)`);
             }
