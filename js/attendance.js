@@ -1,4 +1,4 @@
-// attendance.js - VERSION 2.1 (Dengan Fitur Atur Ketidakhadiran)
+// attendance.js - VERSION 2.2 (Dengan Chart Ringkasan Hari Ini)
 // Mengelola data absensi, filter, validasi delay pulang, real-time updates,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
 
@@ -6,6 +6,7 @@
 let lastAttendanceCount = 0;
 let attendanceRefreshInterval = null;
 let notificationSound = null;
+let attendanceDonutChart = null; // Chart instance
 
 // ======================== INITIALIZATION ========================
 
@@ -21,6 +22,8 @@ function initRealtimeAttendance() {
     
     setupRealtimeAttendanceListener();
     startAttendancePeriodicRefresh();
+    // Inisialisasi chart (donut) setelah DOM siap
+    setTimeout(() => updateAttendanceDonutChart(), 500);
 }
 
 /**
@@ -51,6 +54,8 @@ function setupRealtimeAttendanceListener() {
         if (typeof renderTable === 'function') {
             requestAnimationFrame(() => renderTable());
         }
+        // Update chart setiap ada perubahan data
+        updateAttendanceDonutChart();
     });
     
     db.ref('absensi').on('child_added', (snapshot) => {
@@ -58,12 +63,14 @@ function setupRealtimeAttendanceListener() {
         console.log(`📋 New attendance record added for date: ${date}`);
         showToast("📢 Ada absensi baru masuk!", "info");
         flashAttendanceTable();
+        updateAttendanceDonutChart();
     });
     
     db.ref('absensi').on('child_changed', (snapshot) => {
         const date = snapshot.key;
         console.log(`📝 Attendance record updated for date: ${date}`);
         showToast("📝 Data absensi diperbarui (pulang)", "info");
+        updateAttendanceDonutChart();
     });
 }
 
@@ -141,6 +148,63 @@ function flashAttendanceTable() {
     }
 }
 
+// ======================== CHART RINGKASAN HARI INI ========================
+
+/**
+ * Update donut chart untuk ringkasan absensi hari ini
+ */
+function updateAttendanceDonutChart() {
+    const ctx = document.getElementById('attendanceDonutChart')?.getContext('2d');
+    if (!ctx) {
+        // console.warn("Canvas attendanceDonutChart not found yet");
+        return;
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    const todayData = dbData.attendance.filter(r => r.date === today);
+    const hadir = todayData.filter(r => r.status === 'Hadir').length;
+    const pulang = todayData.filter(r => r.status === 'Pulang').length;
+    
+    // Hancurkan chart lama jika ada
+    if (attendanceDonutChart) {
+        attendanceDonutChart.destroy();
+    }
+    
+    attendanceDonutChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['✅ Masuk (Belum Pulang)', '🏠 Pulang'],
+            datasets: [{
+                data: [hadir, pulang],
+                backgroundColor: ['#ff9800', '#4caf50'],
+                borderWidth: 0,
+                hoverOffset: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '65%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#fff', font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `${ctx.label}: ${ctx.raw} siswa`
+                    }
+                }
+            }
+        }
+    });
+    
+    const statsText = document.getElementById('todayStatsText');
+    if (statsText) {
+        statsText.innerHTML = `✅ Masuk: ${hadir} orang &nbsp;|&nbsp; 🏠 Pulang: ${pulang} orang`;
+    }
+}
+
 // ======================== RENDER TABLE (DENGAN STATUS MANUAL) ========================
 
 async function renderTable() {
@@ -190,6 +254,7 @@ async function renderTable() {
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
         </td></tr>`;
         updateAttendanceStatistics(data);
+        updateAttendanceDonutChart(); // refresh chart meski data kosong
         return;
     }
     
@@ -240,6 +305,7 @@ async function renderTable() {
     });
     
     updateAttendanceStatistics(data);
+    updateAttendanceDonutChart(); // perbarui chart setelah render
 }
 
 /**
@@ -642,6 +708,10 @@ function getTodayAttendanceStats() {
 function cleanupAttendanceListeners() {
     stopAttendancePeriodicRefresh();
     if (typeof db !== 'undefined' && db) db.ref('absensi').off();
+    if (attendanceDonutChart) {
+        attendanceDonutChart.destroy();
+        attendanceDonutChart = null;
+    }
     console.log("🧹 Attendance listeners cleaned up");
 }
 
@@ -668,3 +738,4 @@ window.initRealtimeAttendance = initRealtimeAttendance;
 window.openAbsenceModal = openAbsenceModal;
 window.loadAbsenceList = loadAbsenceList;
 window.saveAllAbsenceStatus = saveAllAbsenceStatus;
+window.updateAttendanceDonutChart = updateAttendanceDonutChart;
