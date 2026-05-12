@@ -4,17 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
-    <title>Sistem Absensi (Firebase Sync)</title>
+    <title>sistem absensi iot</title>
+  <link rel="icon" type="image/png" href="https://i.ibb.co/j9dVXQdc/Chat-GPT-Image-11-Mei-2026-10-31-44.png">>
 
-    <!-- LINK CSS - HANYA INI YANG DIPAKAI -->
+    <!-- LINK CSS -->
     <link rel="stylesheet" href="style.css">
 
     <!-- LINK FIREBASE SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-    
-    <!-- TIDAK ADA STYLE INTERNAL LAGI - SEMUA PAKAI style.css -->
 </head>
 <body>
 
@@ -24,6 +23,16 @@
     <!-- FLOATING ANNOUNCEMENT BUTTON -->
     <button id="floatingAnnouncementBtn" class="floating-announcement-btn" onclick="openAnnouncementModal()" style="display: none;">
         ✏️
+    </button>
+
+    <!-- FLOATING CHAT BUTTON -->
+    <button id="floatingChatBtn" class="floating-chat-btn" onclick="openChatModal()" style="display: none;">
+        💬
+    </button>
+
+    <!-- FLOATING FRIENDS BUTTON -->
+    <button id="floatingFriendsBtn" class="floating-friends-btn" onclick="toggleFriendsModal()" style="display: none;">
+        👥
     </button>
 
     <!-- AUTH SECTION -->
@@ -131,10 +140,22 @@
             <div id="announcementList"></div>
         </div>
 
+        <!-- STATUS BAR - HANYA UNTUK TEMAN -->
+        <div class="status-bar-container" id="statusBarContainer" style="margin-bottom: 20px;">
+            <div class="status-header">
+                <h4>📸 Status Update</h4>
+                <small class="text-small">Status akan hilang setelah 24 jam</small>
+            </div>
+            <div id="statusBar" class="status-bar-scroll"></div>
+        </div>
+
         <div class="nav-tabs" id="nav-tabs-container">
-            <button class="tab-btn active" onclick="switchTab('attendance')">📋 Data Absensi</button>
-            <button class="tab-btn" onclick="switchTab('students')">👨‍🎓 Data Siswa (FP)</button>
-            <button class="tab-btn role-admin role-guru" onclick="switchTab('users')">👥 Manajemen Pengguna</button>
+            <button class="tab-btn active" onclick="switchTab('attendance')">📋 Absensi</button>
+            <button class="tab-btn" onclick="switchTab('students')">👨‍🎓 Data Siswa</button>
+            <button class="tab-btn role-admin role-guru" onclick="switchTab('users')">👥 Manajemen User</button>
+            <button class="tab-btn" onclick="switchTab('rekap')">📊 Rekap Absensi</button>
+            <button class="tab-btn" onclick="switchTab('friends')">👥 Teman</button>
+            <button class="tab-btn" onclick="switchTab('chat')">💬 Chat</button>
             <button class="tab-btn" onclick="switchTab('config')">⚙️ Pengaturan</button>
             <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
         </div>
@@ -155,8 +176,7 @@
                     <thead>
                         <tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr>
                     </thead>
-                    <tbody id="tbody-attendance"><tr><td colspan="7" style="text-align:center;">Memuat data...</td></tr>
-                </tbody>
+                    <tbody id="tbody-attendance"><tr><td colspan="7" style="text-align:center;">Memuat data...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -188,8 +208,7 @@
             <div class="table-container">
                 <table>
                     <thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
-                    <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr>
-                </tbody>
+                    <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -231,12 +250,85 @@
             </div>
         </div>
 
-        <!-- TAB 4: CONFIG -->
+        <!-- TAB 4: REKAP ABSENSI -->
+        <div id="tab-rekap" class="tab-content">
+            <div class="controls-bar">
+                <div class="filter-group">
+                    <label>📅 Periode:</label>
+                    <select id="rekapPeriod" onchange="loadRekap()">
+                        <option value="minggu">Minggu Ini</option>
+                        <option value="bulan">Bulan Ini</option>
+                        <option value="semester">Semester Ini</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                <div id="customRangeGroup" style="display: none; gap: 10px; align-items: center;">
+                    <input type="date" id="rekapStartDate" onchange="loadRekap()">
+                    <span>s/d</span>
+                    <input type="date" id="rekapEndDate" onchange="loadRekap()">
+                </div>
+                <div style="margin-left: auto; display: flex; gap: 10px;">
+                    <button class="btn-action btn-success" onclick="exportRekapToExcel()">📥 Export Excel</button>
+                    <button class="btn-action btn-primary" onclick="exportRekapToPDF()">📄 Export PDF</button>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th>
+                            <th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th>
+                            <th>Persentase</th><th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rekapTbody"><tr><td colspan="12" style="text-align:center;">Memuat data...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 5: FRIENDS -->
+        <div id="tab-friends" class="tab-content">
+            <div class="friends-container">
+                <div class="friends-search-section">
+                    <h4>🔍 Cari Teman</h4>
+                    <div class="search-box" style="display: flex; gap: 10px;">
+                        <input type="email" id="searchFriendEmail" placeholder="Cari berdasarkan email..." style="flex: 1;">
+                        <button class="btn-action btn-primary" onclick="searchUserByEmail()">Cari</button>
+                    </div>
+                    <div id="searchResult" style="margin-top: 10px; display: none;"></div>
+                </div>
+                <hr>
+                <div class="friends-requests-section">
+                    <h4>📨 Permintaan Pertemanan <span id="friendRequestBadge" class="request-badge" style="display: none;">0</span></h4>
+                    <div id="friendRequestsList" class="friends-list">
+                        <p class="text-small" style="color: var(--text-muted);">Tidak ada permintaan pertemanan</p>
+                    </div>
+                </div>
+                <hr>
+                <div class="friends-list-section">
+                    <h4>👥 Daftar Teman <span id="friendsCount" class="count-badge">0</span></h4>
+                    <div id="friendsList" class="friends-list">
+                        <p class="text-small" style="color: var(--text-muted);">Belum ada teman. Cari dan tambahkan teman!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 6: CHAT (HANYA DENGAN TEMAN) -->
+        <div id="tab-chat" class="tab-content">
+            <div class="chat-header-info" style="margin-bottom: 15px;">
+                <h3>💬 Pesan dengan Teman</h3>
+                <p class="text-small">Hanya bisa chat dengan teman yang sudah terdaftar. Pesan tersimpan dan real-time.</p>
+            </div>
+            <div id="chatPanel" class="chat-panel"></div>
+        </div>
+
+        <!-- TAB 7: CONFIG -->
         <div id="tab-config" class="tab-content">
             <div class="guide-container">
                 <h3>⚙️ Pengaturan Sistem</h3>
                 
-                <!-- LOGO SEKOLAH -->
                 <div class="form-group" id="logoSettingGroup">
                     <label>🏫 Logo Sekolah</label>
                     <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
@@ -247,14 +339,12 @@
                         <div style="flex: 1;">
                             <input type="file" id="logoFileInput" hidden accept="image/*" onchange="uploadSchoolLogo(this)">
                             <button class="btn-action btn-danger role-admin" onclick="removeSchoolLogo()" id="btnRemoveLogo" style="display: none;">🗑️ Hapus Logo</button>
-                            <small class="text-small" style="display: block; margin-top: 8px;">💡 Format: JPG, PNG, GIF (Max 2MB). Logo akan tampil di header navbar.</small>
+                            <small class="text-small" style="display: block; margin-top: 8px;">💡 Format: JPG, PNG, GIF (Max 2MB)</small>
                         </div>
                     </div>
                 </div>
-                
                 <hr>
                 
-                <!-- Nama Sekolah -->
                 <div class="form-group">
                     <label>🏫 Nama Sekolah</label>
                     <div style="display: flex; gap: 10px;">
@@ -263,7 +353,6 @@
                     </div>
                 </div>
                 
-                <!-- Tipe Sekolah -->
                 <div class="form-group">
                     <label>📋 Tipe Sekolah</label>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -275,10 +364,8 @@
                         <button class="btn-action btn-primary role-admin" onclick="saveSchoolType()">Simpan</button>
                     </div>
                 </div>
-                
                 <hr>
                 
-                <!-- MANAJEMEN KELAS -->
                 <div id="classesManager" style="margin-bottom: 20px;">
                     <h4>📚 Daftar Kelas</h4>
                     <div class="form-group">
@@ -288,11 +375,10 @@
                             <button class="btn-action btn-success role-admin" onclick="addClass()">➕ Tambah Kelas</button>
                             <button class="btn-action btn-primary role-admin" id="btnSaveClasses" onclick="saveClasses()">💾 Simpan Semua Kelas</button>
                         </div>
-                        <small class="text-small">💡 Format: VII A, VIII B, X RPL, 7A (otomatis dikonversi ke VII A)</small>
+                        <small class="text-small">💡 Format: VII A, VIII B, X RPL, 7A (otomatis dikonversi)</small>
                     </div>
                 </div>
                 
-                <!-- MANAJEMEN JURUSAN (hanya untuk SMK atau Both) -->
                 <div id="majorsManager" style="display:none; margin-bottom: 20px;">
                     <h4>🎓 Daftar Jurusan (SMK)</h4>
                     <div class="form-group">
@@ -305,10 +391,8 @@
                         <small class="text-small">💡 Jurusan akan muncul di dropdown saat input data siswa</small>
                     </div>
                 </div>
-                
                 <hr>
                 
-                <!-- Delay Global -->
                 <div class="form-group">
                     <label>⏰ Delay Pulang Global</label>
                     <p class="text-small">Default untuk ESP32 (minimal waktu sebelum bisa absen pulang)</p>
@@ -332,16 +416,13 @@
                         <small>Delay saat ini: <strong id="globalDelayDisplay">60 menit</strong></small>
                     </div>
                 </div>
-                
                 <hr>
                 
-                <!-- Status API -->
                 <div class="form-group">
                     <label>🔌 API Status</label>
                     <div>✅ Connected to Firebase</div>
                 </div>
                 
-                <!-- Reset Data -->
                 <div class="key-box role-admin" style="margin-top: 20px;">
                     <div>
                         <strong>⚠️ Reset Data</strong><br>
@@ -352,80 +433,93 @@
             </div>
         </div>
 
-        <!-- TAB 5: GUIDE -->
+        <!-- TAB 8: GUIDE -->
         <div id="tab-guide" class="tab-content">
             <div class="guide-container">
                 <h3>📘 Panduan Sistem Absensi</h3>
                 <p>Sistem menghubungkan Web dengan ESP32 via Firebase</p>
-                <details>
-                    <summary>1. Pendaftaran Siswa</summary>
-                    <div class="guide-box">
-                        <strong>Langkah-langkah:</strong><br>
-                        - Guru input data siswa di menu <strong>Data Siswa (FP)</strong><br>
-                        - Generate kode registrasi di menu <strong>Manajemen Pengguna</strong><br>
-                        - Siswa daftar dengan kode dan ID Fingerprint
-                    </div>
-                </details>
-                <details>
-                    <summary>2. Absensi Fingerprint</summary>
-                    <div class="guide-box">
-                        <strong>Cara absen:</strong><br>
-                        - Scan fingerprint di sensor ESP32 untuk absen MASUK<br>
-                        - Scan fingerprint lagi untuk absen PULANG (setelah delay)<br>
-                        - Data otomatis masuk ke tabel absensi
-                    </div>
-                </details>
-                <details>
-                    <summary>3. Pengaturan Kelas & Jurusan</summary>
-                    <div class="guide-box">
-                        <strong>Manajemen Kelas:</strong><br>
-                        - Admin dapat menambah/edit kelas sesuai kebutuhan (VII A, VIII B, dll)<br>
-                        - Untuk SMK, dapat juga menambah jurusan (RPL, TKJ, dll)<br>
-                        - Semua perubahan akan otomatis tersimpan di Firebase
-                    </div>
-                </details>
-                <details>
-                    <summary>4. Pengumuman</summary>
-                    <div class="guide-box">
-                        <strong>Fitur pengumuman:</strong><br>
-                        - Admin/Guru dapat membuat pengumuman dengan batas waktu<br>
-                        - Pengumuman muncul real-time untuk semua pengguna<br>
-                        - Notifikasi akan muncul saat ada pengumuman baru
-                    </div>
-                </details>
-                <details>
-                    <summary>5. Logo Sekolah</summary>
-                    <div class="guide-box">
-                        <strong>Fitur Logo Sekolah:</strong><br>
-                        - Admin dapat mengupload logo sekolah<br>
-                        - Logo akan tampil di header navbar untuk semua pengguna<br>
-                        - Format gambar: JPG, PNG, GIF (Max 2MB)
-                    </div>
-                </details>
-                <details>
-                    <summary>6. ESP32 Configuration</summary>
-                    <div class="guide-box">
-                        <strong>Setup ESP32:</strong><br>
-                        - Hubungkan ke WiFi yang sama<br>
-                        - Pastikan RTC DS3231 terpasang<br>
-                        - Sensor fingerprint terhubung via multiplexer 16 channel<br>
-                        - Data akan tersinkronisasi ke Firebase secara real-time
-                    </div>
-                </details>
+                <details><summary>1. Pendaftaran Siswa</summary><div class="guide-box">- Guru input data siswa di menu Data Siswa (FP)<br>- Generate kode registrasi di menu Manajemen Pengguna<br>- Siswa daftar dengan kode dan ID Fingerprint</div></details>
+                <details><summary>2. Absensi Fingerprint</summary><div class="guide-box">- Scan fingerprint di sensor ESP32 untuk absen MASUK<br>- Scan fingerprint lagi untuk absen PULANG (setelah delay)</div></details>
+                <details><summary>3. Pengaturan Kelas & Jurusan</summary><div class="guide-box">- Admin dapat menambah/edit kelas sesuai kebutuhan<br>- Untuk SMK, dapat juga menambah jurusan</div></details>
+                <details><summary>4. Pengumuman</summary><div class="guide-box">- Admin/Guru dapat membuat pengumuman dengan batas waktu<br>- Pengumuman muncul real-time</div></details>
+                <details><summary>5. Logo Sekolah</summary><div class="guide-box">- Admin dapat mengupload logo sekolah<br>- Logo akan tampil di header navbar</div></details>
+                <details><summary>6. Rekap Absensi</summary><div class="guide-box">- Lihat rekap kehadiran per siswa<br>- Mendukung periode: Minggu, Bulan, Semester, Custom<br>- Bisa export ke Excel atau PDF</div></details>
+                <details><summary>7. Fitur Pertemanan</summary><div class="guide-box">- Cari teman berdasarkan email<br>- Kirim permintaan pertemanan<br>- Terima/tolak permintaan pertemanan</div></details>
+                <details><summary>8. Chat & Status</summary><div class="guide-box">- 💬 Chat: Hanya dengan teman, real-time, bisa kirim teks dan gambar<br>- 📸 Status: Update status yang akan hilang setelah 24 jam</div></details>
+                <details><summary>9. ESP32 Configuration</summary><div class="guide-box">- Hubungkan ke WiFi yang sama<br>- Pastikan RTC DS3231 terpasang<br>- Sensor fingerprint via multiplexer 16 channel</div></details>
             </div>
         </div>
     </div>
 
     <!-- MODALS -->
+    <!-- MODAL PROFILE -->
     <div id="modal-profile" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📸 Profil Saya</span><span onclick="closeModal('modal-profile')">✖</span></div><div class="profile-upload-wrapper" onclick="document.getElementById('profileFileInput').click()"><img id="profileImg" class="avatar-lg"><input type="file" id="profileFileInput" hidden accept="image/*" onchange="uploadProfilePhoto(this)"></div><div class="form-group"><input type="text" id="profileNameInput" placeholder="Nama Lengkap"></div><p id="profileEmail" style="color:#aaa;"></p><div class="form-group" id="group-subject" style="display:none;"><input type="text" id="profileSubject" placeholder="Mata Pelajaran"></div><div class="form-group"><input type="text" id="profileKelas" placeholder="Kelas"></div><div class="form-group"><input type="text" id="profileJurusan" placeholder="Jurusan"></div><div class="modal-actions"><button class="btn-save" onclick="handleUpdateProfileInfo()">💾 Simpan</button><button class="btn-cancel" onclick="closeModal('modal-profile')">Tutup</button></div><hr><div style="text-align:center;"><button class="btn-action" onclick="openChangePasswordModal()">🔑 Ganti Password</button></div></div></div>
 
+    <!-- MODAL CHANGE PASSWORD -->
     <div id="modal-change-pass" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>🔑 Ganti Password</span><span onclick="closeModal('modal-change-pass')">✖</span></div><form onsubmit="handleChangePassword(event)"><div class="form-group"><input type="password" id="cpOld" placeholder="Password Lama" required></div><div class="form-group"><input type="password" id="cpNew" placeholder="Password Baru (min. 6 karakter)" required></div><div class="form-group"><input type="password" id="cpConfirm" placeholder="Konfirmasi Password Baru" required></div><div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeModal('modal-change-pass')">Batal</button><button type="submit" class="btn-save">Simpan</button></div></form></div></div>
 
+    <!-- MODAL FORGOT PASSWORD -->
     <div id="modal-forgot" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>🔐 Reset Password</span><span onclick="closeModal('modal-forgot')">✖</span></div><p>Masukkan email Anda untuk menerima link reset password</p><div class="form-group"><input type="email" id="forgotEmail" placeholder="Email"></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-forgot')">Batal</button><button class="btn-save" onclick="processForgot()">Kirim Link</button></div></div></div>
 
+    <!-- MODAL ANNOUNCEMENT -->
     <div id="modal-announcement" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📢 Pengumuman</span><span onclick="closeModal('modal-announcement')">✖</span></div><input type="hidden" id="announcementId"><div class="form-group"><input type="text" id="annTitle" placeholder="Judul Pengumuman"></div><div class="form-group"><textarea id="annMessage" rows="3" placeholder="Isi pengumuman"></textarea></div><div class="form-group"><select id="annPriority"><option value="low">🔵 Rendah</option><option value="normal" selected>🟢 Normal</option><option value="high">🔴 Tinggi (Penting)</option></select></div><div class="form-group"><select id="annExpiryType" onchange="toggleExpiryInput()"><option value="none">Tidak Ada Batas Waktu</option><option value="time">⏰ Berdasarkan Jam</option><option value="date">📅 Berdasarkan Tanggal</option><option value="both">📅⏰ Tanggal & Jam</option></select></div><div id="annExpiryDateGroup" class="form-group" style="display:none;"><input type="date" id="annExpiryDate"></div><div id="annExpiryTimeGroup" class="form-group" style="display:none;"><input type="time" id="annExpiryTime"></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-announcement')">Batal</button><button class="btn-save" onclick="saveAnnouncement()">📢 Simpan Pengumuman</button></div></div></div>
 
-    <!-- SCRIPTS -->
+    <!-- MODAL FRIENDS -->
+    <div id="modal-friends" class="modal-overlay">
+        <div class="modal-box" style="max-width: 500px; max-height: 80vh;">
+            <div class="modal-title">
+                <span>👥 Teman & Pertemanan</span>
+                <span onclick="closeModal('modal-friends')">✖</span>
+            </div>
+            <div id="friendsPanel" style="overflow-y: auto; max-height: calc(80vh - 60px);"></div>
+        </div>
+    </div>
+
+    <!-- MODAL CHAT (FLOATING) -->
+    <div id="modal-chat" class="modal-overlay">
+        <div class="modal-box" style="max-width: 800px; height: 80vh;">
+            <div class="modal-title">
+                <span>💬 Pesan</span>
+                <span onclick="closeModal('modal-chat')">✖</span>
+            </div>
+            <div id="chatModalPanel" style="height: calc(100% - 60px);"></div>
+        </div>
+    </div>
+
+    <!-- MODAL CREATE STATUS -->
+    <div id="modal-create-status" class="modal-overlay">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-title">
+                <span>📸 Buat Status Baru</span>
+                <span onclick="closeModal('modal-create-status')">✖</span>
+            </div>
+            <div class="form-group">
+                <label>Teks Status</label>
+                <textarea id="statusText" rows="3" placeholder="Apa yang sedang kamu pikirkan?"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Gambar (Opsional)</label>
+                <input type="file" id="statusImageInput" accept="image/*" onchange="previewStatusImage(this)">
+                <div id="statusImagePreviewContainer" style="display:none; margin-top:10px;">
+                    <img id="statusImagePreview" style="max-width:100%; border-radius:8px;">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeModal('modal-create-status')">Batal</button>
+                <button class="btn-save" onclick="createStatus()">Upload Status</button>
+            </div>
+            <small class="text-small" style="display:block; text-align:center; margin-top:10px;">⏰ Status akan hilang setelah 24 jam</small>
+        </div>
+    </div>
+
+    <!-- MODAL STATUS VIEWER -->
+    <div id="modal-status-viewer" class="modal-overlay">
+        <div class="modal-box" style="max-width: 500px; background: #000; padding: 0;">
+            <div id="statusViewerContent"></div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS - URUTAN PENTING -->
     <script src="js/config.js"></script>
     <script src="js/db.js"></script>
     <script src="js/auth.js"></script>
@@ -435,76 +529,87 @@
     <script src="js/users.js"></script>
     <script src="js/setting.js"></script>
     <script src="js/announcement.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/status.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/rekap.js"></script>
+    <script src="js/friends.js"></script>
     
     <script>
+        // INISIALISASI GLOBAL - PASTIKAN SEMUA ELEMENT TERSEDIA
         document.addEventListener('DOMContentLoaded', function() {
-            console.log("📱 DOM Ready - Initializing...");
+            console.log("📱 DOM Ready - Initializing system...");
             
             // Inisialisasi dropdown jam untuk delay siswa (1-24 jam)
-            const delayHours = document.getElementById('delayHoursValue');
-            if(delayHours) {
+            var delayHours = document.getElementById('delayHoursValue');
+            if(delayHours && delayHours.children.length === 0) {
                 delayHours.innerHTML = '';
-                for(let i = 1; i <= 24; i++) {
-                    delayHours.innerHTML += `<option value="${i}">${i} Jam</option>`;
+                for(var i = 1; i <= 24; i++) {
+                    delayHours.innerHTML += '<option value="' + i + '">' + i + ' Jam</option>';
                 }
             }
             
             // Inisialisasi dropdown jam untuk delay global (1-24 jam)
-            const globalHours = document.getElementById('globalDelayHoursValue');
-            if(globalHours) {
+            var globalHours = document.getElementById('globalDelayHoursValue');
+            if(globalHours && globalHours.children.length === 0) {
                 globalHours.innerHTML = '';
-                for(let i = 1; i <= 24; i++) {
-                    globalHours.innerHTML += `<option value="${i}">${i}</option>`;
+                for(var j = 1; j <= 24; j++) {
+                    globalHours.innerHTML += '<option value="' + j + '">' + j + '</option>';
                 }
             }
             
             // Event listeners untuk delay siswa
-            const dm = document.getElementById('delayMinutesValue');
-            if(dm) {
+            var dm = document.getElementById('delayMinutesValue');
+            if(dm && !dm._listenerAdded) {
                 dm.addEventListener('input', function() { 
-                    let h = document.getElementById('newDelay'); 
+                    var h = document.getElementById('newDelay'); 
                     if(h) h.value = this.value; 
                 });
+                dm._listenerAdded = true;
             }
             
-            const dh = document.getElementById('delayHoursValue');
-            if(dh) {
+            var dh = document.getElementById('delayHoursValue');
+            if(dh && !dh._listenerAdded) {
                 dh.addEventListener('change', function() { 
-                    let h = document.getElementById('newDelay'); 
+                    var h = document.getElementById('newDelay'); 
                     if(h) h.value = this.value * 60; 
                 });
+                dh._listenerAdded = true;
             }
             
-            const du = document.getElementById('delayUnit');
-            if(du) {
+            var du = document.getElementById('delayUnit');
+            if(du && !du._listenerAdded) {
                 du.addEventListener('change', function() { 
                     if(typeof toggleDelayInput === 'function') toggleDelayInput(); 
                 });
+                du._listenerAdded = true;
             }
             
             // Event listeners untuk delay global
-            const gdm = document.getElementById('globalDelayMinutesValue');
-            if(gdm) {
+            var gdm = document.getElementById('globalDelayMinutesValue');
+            if(gdm && !gdm._listenerAdded) {
                 gdm.addEventListener('input', function() { 
-                    let h = document.getElementById('globalDelayHidden'); 
+                    var h = document.getElementById('globalDelayHidden'); 
                     if(h) h.value = this.value; 
                 });
+                gdm._listenerAdded = true;
             }
             
-            const gdh = document.getElementById('globalDelayHoursValue');
-            if(gdh) {
+            var gdh = document.getElementById('globalDelayHoursValue');
+            if(gdh && !gdh._listenerAdded) {
                 gdh.addEventListener('change', function() { 
-                    let h = document.getElementById('globalDelayHidden'); 
+                    var h = document.getElementById('globalDelayHidden'); 
                     if(h) h.value = this.value * 60; 
                 });
+                gdh._listenerAdded = true;
             }
             
-            const gdu = document.getElementById('globalDelayUnit');
-            if(gdu) {
+            var gdu = document.getElementById('globalDelayUnit');
+            if(gdu && !gdu._listenerAdded) {
                 gdu.addEventListener('change', function() { 
                     if(typeof toggleGlobalDelayInput === 'function') toggleGlobalDelayInput(); 
                 });
+                gdu._listenerAdded = true;
             }
             
             // Inisialisasi toggle input setelah delay
@@ -513,8 +618,74 @@
                 if(typeof toggleGlobalDelayInput === 'function') toggleGlobalDelayInput();
             }, 100);
             
-            console.log("✅ Initialization complete");
+            // Event listener untuk custom range pada tab rekap
+            var periodSelect = document.getElementById('rekapPeriod');
+            var customRangeGroup = document.getElementById('customRangeGroup');
+            if(periodSelect && customRangeGroup) {
+                var today = new Date();
+                var startDate = new Date();
+                startDate.setDate(today.getDate() - 30);
+                
+                var startInput = document.getElementById('rekapStartDate');
+                var endInput = document.getElementById('rekapEndDate');
+                
+                if(startInput && !startInput.value) {
+                    startInput.value = startDate.toISOString().split('T')[0];
+                }
+                if(endInput && !endInput.value) {
+                    endInput.value = today.toISOString().split('T')[0];
+                }
+                
+                function toggleCustomRange() {
+                    customRangeGroup.style.display = periodSelect.value === 'custom' ? 'flex' : 'none';
+                }
+                
+                periodSelect.addEventListener('change', toggleCustomRange);
+                toggleCustomRange();
+            }
+            
+            // Inisialisasi filter kelas
+            setTimeout(function() {
+                if(typeof populateFilters === 'function') {
+                    populateFilters();
+                }
+                if(typeof populateStudentFilters === 'function') {
+                    populateStudentFilters();
+                }
+                if(typeof populateKelasOptions === 'function') {
+                    populateKelasOptions();
+                }
+                if(typeof populateJurusanOptions === 'function') {
+                    populateJurusanOptions();
+                }
+            }, 200);
+            
+            console.log("✅ Initialization complete - Sistem siap digunakan");
         });
+        
+        // FUNGSI GLOBAL YANG DIBUTUHKAN
+        function showToast(msg, type) {
+            var toast = document.getElementById('toast');
+            if(toast) {
+                toast.textContent = msg;
+                toast.style.borderLeftColor = type === 'error' ? '#f44336' : '#00bcd4';
+                toast.className = 'toast show';
+                setTimeout(function() {
+                    toast.className = toast.className.replace('show', '');
+                }, 3000);
+            } else {
+                console.log("Toast:", msg);
+            }
+        }
+        
+        function closeModal(id) {
+            var modal = document.getElementById(id);
+            if(modal) modal.classList.remove('open');
+        }
+        
+        // Pastikan fungsi global tersedia
+        window.showToast = showToast;
+        window.closeModal = closeModal;
     </script>
 </body>
 </html>
