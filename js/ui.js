@@ -1,14 +1,13 @@
-// FILE: ui.js - VERSION 2.7 (DENGAN DASHBOARD MODERN)
+// FILE: ui.js - VERSION 3.0 (FULLY FIXED DASHBOARD CHART)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // Dengan dukungan real-time data refresh & session persistence
-// Mendukung filter kelas dari pengaturan sekolah (kelas kustom)
-// Mendukung upload logo sekolah (hanya admin)
-// Mendukung tab Rekap Absensi, Friends, Chat, Status, dan Dashboard Modern
+// FIX: Auto-detect tahun dari data absensi untuk chart
 
 // ======================== GLOBAL UI STATE ========================
 let clockInterval = null;
 let uiInitialized = false;
 let dashboardChart = null; // Chart instance untuk dashboard bar chart
+let dashboardChartRetryTimeout = null;
 
 // ======================== INISIALISASI DASHBOARD ========================
 
@@ -39,6 +38,9 @@ function initApp() {
     // ========== LOAD LOGO SEKOLAH ==========
     loadSchoolLogo();
     updateSchoolLogoUI();
+    
+    // Setup chart year listener
+    setupChartYearListener();
     
     // Populate filters dengan guard
     try {
@@ -157,6 +159,23 @@ function initApp() {
     }, 1800);
     
     console.log("✅ initApp completed successfully");
+}
+
+/**
+ * Setup event listener untuk perubahan tahun pada chart
+ */
+function setupChartYearListener() {
+    const yearSelect = document.getElementById('chartYearSelect');
+    if (yearSelect) {
+        // Hapus listener lama dengan clone & replace
+        const newSelect = yearSelect.cloneNode(true);
+        yearSelect.parentNode.replaceChild(newSelect, yearSelect);
+        
+        newSelect.addEventListener('change', function() {
+            console.log("📅 Year changed to:", this.value);
+            updateDashboardChart();
+        });
+    }
 }
 
 /**
@@ -437,11 +456,19 @@ function applyRolePermissions() {
     console.log("🎭 Apply role permissions untuk role:", role);
     
     document.querySelectorAll('.role-admin').forEach(el => {
-        if (role === 'admin') { el.style.display = ''; el.style.visibility = 'visible'; el.style.opacity = '1'; }
+        if (role === 'admin') { 
+            el.style.display = ''; 
+            el.style.visibility = 'visible'; 
+            el.style.opacity = '1'; 
+        }
         else el.style.display = 'none';
     });
     document.querySelectorAll('.role-guru').forEach(el => {
-        if (role === 'admin' || role === 'guru') { el.style.display = ''; el.style.visibility = 'visible'; el.style.opacity = '1'; }
+        if (role === 'admin' || role === 'guru') { 
+            el.style.display = ''; 
+            el.style.visibility = 'visible'; 
+            el.style.opacity = '1'; 
+        }
         else el.style.display = 'none';
     });
     
@@ -508,101 +535,402 @@ function showToast(msg, type = 'success') {
 }
 
 // ======================== DASHBOARD MODERN FUNCTIONS ========================
+
+/**
+ * Debug function untuk melihat data absensi
+ */
+function debugAttendanceData() {
+    console.log("========== DEBUG DATA ABSENSI ==========");
+    console.log("dbData:", dbData);
+    console.log("dbData.attendance:", dbData.attendance);
+    
+    if (dbData.attendance && dbData.attendance.length > 0) {
+        console.log("Jumlah data absensi:", dbData.attendance.length);
+        console.log("Sample data pertama:", dbData.attendance[0]);
+        
+        // Tampilkan ringkasan per bulan
+        const byMonth = {};
+        const availableYears = [];
+        dbData.attendance.forEach(rec => {
+            if (rec.date) {
+                const date = new Date(rec.date);
+                const year = date.getFullYear();
+                const monthYear = `${year}-${date.getMonth()+1}`;
+                if (!availableYears.includes(year)) availableYears.push(year);
+                if (!byMonth[monthYear]) byMonth[monthYear] = { hadir: 0, izin: 0, alpha: 0 };
+                const status = rec.status || (rec.timeOut ? 'Pulang' : (rec.timeIn ? 'Hadir' : 'Unknown'));
+                if (status === 'Hadir' || status === 'Pulang') byMonth[monthYear].hadir++;
+                else if (status === 'Izin' || status === 'Sakit') byMonth[monthYear].izin++;
+                else if (status === 'Alpha') byMonth[monthYear].alpha++;
+            }
+        });
+        console.log("Data per bulan:", byMonth);
+        console.log("Tahun yang tersedia di data:", availableYears);
+    } else {
+        console.warn("TIDAK ADA DATA ABSENSI!");
+    }
+    console.log("========================================");
+}
+
+/**
+ * Update dropdown tahun dengan opsi dari data absensi
+ */
+function updateYearDropdownOptions() {
+    const yearSelect = document.getElementById('chartYearSelect');
+    if (!yearSelect) return;
+    
+    // Kumpulkan tahun dari data absensi
+    const availableYears = new Set();
+    if (dbData && dbData.attendance && dbData.attendance.length > 0) {
+        dbData.attendance.forEach(rec => {
+            if (rec.date) {
+                const year = new Date(rec.date).getFullYear();
+                if (!isNaN(year)) availableYears.add(year);
+            }
+        });
+    }
+    
+    // Tambahkan tahun 2024, 2025, 2026 sebagai default jika data kosong
+    if (availableYears.size === 0) {
+        availableYears.add(2024);
+        availableYears.add(2025);
+        availableYears.add(2026);
+    }
+    
+    const years = Array.from(availableYears).sort((a,b) => b - a);
+    const currentValue = yearSelect.value;
+    
+    // Simpan option yang ada
+    let needsUpdate = false;
+    const existingOptions = Array.from(yearSelect.options).map(opt => opt.value);
+    
+    for (const year of years) {
+        if (!existingOptions.includes(year.toString())) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+            needsUpdate = true;
+        }
+    }
+    
+    // Hapus option yang tidak ada di data (opsional, biarkan saja)
+    
+    // Jika current value tidak ada di options, pilih tahun terbaru
+    if (!years.includes(parseInt(currentValue)) && years.length > 0) {
+        yearSelect.value = years[0];
+        console.log(`📅 Tahun berubah otomatis dari ${currentValue} ke ${years[0]}`);
+    }
+}
+
 function renderDashboard() {
     console.log("📊 Rendering modern dashboard...");
-    if (!dbData) return;
     
-    // 1. Kehadiran bulan ini (total kehadiran = status 'Hadir' atau 'Pulang')
+    // Debug data
+    debugAttendanceData();
+    
+    // Pastikan dbData tersedia
+    if (!dbData || !dbData.attendance) {
+        console.log("⏳ Data belum siap, schedule ulang renderDashboard...");
+        setTimeout(() => renderDashboard(), 500);
+        return;
+    }
+    
+    // Update dropdown tahun dengan data yang tersedia
+    updateYearDropdownOptions();
+    
+    // 1. Kehadiran bulan ini
     const now = new Date();
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const monthAttendance = dbData.attendance ? dbData.attendance.filter(a => {
+    
+    const monthAttendance = dbData.attendance.filter(a => {
+        if (!a.date) return false;
         const d = new Date(a.date);
         return d >= startMonth && d <= endMonth;
-    }) : [];
+    });
+    
     const totalHadirBulan = monthAttendance.filter(a => a.status === 'Hadir' || a.status === 'Pulang').length;
-    document.getElementById('statKehadiranBulan').innerText = totalHadirBulan;
+    console.log(`📊 Bulan ini (${startMonth.toLocaleDateString()} - ${endMonth.toLocaleDateString()}): ${totalHadirBulan} kehadiran dari ${monthAttendance.length} transaksi`);
+    
+    const kehadiranElem = document.getElementById('statKehadiranBulan');
+    if (kehadiranElem) kehadiranElem.innerText = totalHadirBulan;
+    
     // Trend sederhana (bandingkan dengan bulan lalu)
     const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    const lastMonthAttendance = dbData.attendance ? dbData.attendance.filter(a => {
+    const lastMonthAttendance = dbData.attendance.filter(a => {
+        if (!a.date) return false;
         const d = new Date(a.date);
         return d >= startLastMonth && d <= endLastMonth;
-    }) : [];
+    });
     const lastHadir = lastMonthAttendance.filter(a => a.status === 'Hadir' || a.status === 'Pulang').length;
     let trend = totalHadirBulan - lastHadir;
     let trendText = trend >= 0 ? `+${trend}` : `${trend}`;
     let trendClass = trend >= 0 ? 'positive' : 'negative';
-    document.getElementById('statTrendKehadiran').innerHTML = `${trendText}%`;
-    document.getElementById('statTrendKehadiran').className = `stat-change ${trendClass}`;
+    const trendElem = document.getElementById('statTrendKehadiran');
+    if (trendElem) {
+        trendElem.innerHTML = `${trendText}%`;
+        trendElem.className = `stat-change ${trendClass}`;
+    }
     
     // 2. Total transaksi bulan ini
-    document.getElementById('statTotalTransaksi').innerText = monthAttendance.length;
+    const transaksiElem = document.getElementById('statTotalTransaksi');
+    if (transaksiElem) transaksiElem.innerText = monthAttendance.length;
     
     // 3. Total siswa
-    const totalSiswa = dbData.users ? dbData.users.length : 0;
-    document.getElementById('statTotalSiswa').innerText = totalSiswa;
+    const totalSiswaElem = document.getElementById('statTotalSiswa');
+    if (totalSiswaElem && dbData.users) totalSiswaElem.innerText = dbData.users.length;
     
     // 4. Total pengguna terdaftar
-    const totalUsers = dbData.users_auth ? dbData.users_auth.length : 0;
-    document.getElementById('statTotalUsers').innerText = totalUsers;
+    const totalUsersElem = document.getElementById('statTotalUsers');
+    if (totalUsersElem && dbData.users_auth) totalUsersElem.innerText = dbData.users_auth.length;
     
     // 5. Update grafik
-    updateDashboardChart();
+    setTimeout(() => {
+        updateDashboardChart();
+    }, 100);
     
     // 6. Update aktivitas terbaru
     renderRecentActivities();
     
     // 7. Update daftar pengumuman
     renderDashboardTasks();
+    
+    console.log("✅ Dashboard rendered successfully");
 }
 
 function updateDashboardChart() {
-    const yearSelect = document.getElementById('chartYearSelect');
-    const year = yearSelect ? parseInt(yearSelect.value) : 2025;
-    const monthlyHadir = new Array(12).fill(0);
-    const monthlyIzin = new Array(12).fill(0);
-    const monthlyAlpha = new Array(12).fill(0);
+    // Hentikan retry timeout jika ada
+    if (dashboardChartRetryTimeout) {
+        clearTimeout(dashboardChartRetryTimeout);
+        dashboardChartRetryTimeout = null;
+    }
+
+    const canvas = document.getElementById('dashboardBarChart');
+    if (!canvas) {
+        console.warn("⚠️ Canvas dashboardBarChart tidak ditemukan, coba lagi nanti...");
+        dashboardChartRetryTimeout = setTimeout(() => updateDashboardChart(), 500);
+        return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // ========== PERBAIKAN UTAMA: Auto-detect tahun dari data ==========
+    let yearSelect = document.getElementById('chartYearSelect');
+    let selectedYear = 2025;
     
-    if (dbData.attendance) {
+    // Kumpulkan tahun yang tersedia dari data
+    let availableYears = [];
+    if (dbData && dbData.attendance && dbData.attendance.length > 0) {
         dbData.attendance.forEach(rec => {
-            const d = new Date(rec.date);
-            if (d.getFullYear() === year) {
-                const month = d.getMonth();
-                let status = rec.status;
-                if (status === 'Hadir' || status === 'Pulang') monthlyHadir[month]++;
-                else if (status === 'Izin') monthlyIzin[month]++;
-                else if (status === 'Alpha') monthlyAlpha[month]++;
-                else if (status === 'Sakit') monthlyIzin[month]++; // sederhanakan
+            if (rec.date) {
+                const year = new Date(rec.date).getFullYear();
+                if (!isNaN(year) && !availableYears.includes(year)) {
+                    availableYears.push(year);
+                }
             }
         });
     }
     
-    const ctx = document.getElementById('dashboardBarChart')?.getContext('2d');
-    if (!ctx) return;
-    if (dashboardChart) dashboardChart.destroy();
-    dashboardChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
-            datasets: [
-                { label: 'Hadir', data: monthlyHadir, backgroundColor: '#00bcd4', borderRadius: 6 },
-                { label: 'Izin', data: monthlyIzin, backgroundColor: '#ff9800', borderRadius: 6 },
-                { label: 'Alpha', data: monthlyAlpha, backgroundColor: '#f44336', borderRadius: 6 }
-            ]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: true,
-            plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-            scales: { y: { beginAtZero: true, grid: { color: '#333' }, ticks: { color: '#ccc' } }, x: { ticks: { color: '#ccc' } } }
+    // Jika data tersedia, gunakan tahun terbaru
+    if (availableYears.length > 0) {
+        selectedYear = Math.max(...availableYears);
+        console.log(`📅 Tahun data tersedia: ${availableYears.join(', ')}, menggunakan: ${selectedYear}`);
+        
+        // Update dropdown jika perlu
+        if (yearSelect) {
+            // Tambahkan option tahun yang belum ada
+            for (const year of availableYears) {
+                let optionExists = false;
+                for (let i = 0; i < yearSelect.options.length; i++) {
+                    if (yearSelect.options[i].value == year) {
+                        optionExists = true;
+                        break;
+                    }
+                }
+                if (!optionExists) {
+                    const option = document.createElement('option');
+                    option.value = year;
+                    option.textContent = year;
+                    yearSelect.appendChild(option);
+                }
+            }
+            
+            // Set value ke tahun terbaru jika tahun yang dipilih tidak valid
+            const currentYear = parseInt(yearSelect.value);
+            if (isNaN(currentYear) || !availableYears.includes(currentYear)) {
+                yearSelect.value = selectedYear;
+                console.log(`📅 Set dropdown ke tahun: ${selectedYear}`);
+            } else {
+                selectedYear = currentYear;
+            }
         }
-    });
+    } else {
+        // Fallback ke tahun dari dropdown atau 2025
+        if (yearSelect && yearSelect.value) {
+            selectedYear = parseInt(yearSelect.value);
+        }
+        console.log(`📅 Tidak ada data, menggunakan tahun dropdown: ${selectedYear}`);
+    }
+    
+    const year = selectedYear;
+
+    // Inisialisasi data bulanan
+    const monthlyHadir = new Array(12).fill(0);
+    const monthlyIzin = new Array(12).fill(0);
+    const monthlyAlpha = new Array(12).fill(0);
+
+    // Proses data absensi
+    if (dbData && dbData.attendance && dbData.attendance.length > 0) {
+        console.log(`📊 Memproses ${dbData.attendance.length} data absensi untuk chart tahun ${year}`);
+        
+        let dataFound = false;
+        dbData.attendance.forEach((rec, index) => {
+            if (!rec.date) return;
+            
+            const d = new Date(rec.date);
+            if (isNaN(d.getTime())) return;
+            
+            const recordYear = d.getFullYear();
+            const month = d.getMonth();
+            
+            if (recordYear === year) {
+                dataFound = true;
+                let status = rec.status || '';
+                
+                // Handle status dari berbagai format
+                if (status === 'Hadir' || status === 'Pulang') {
+                    monthlyHadir[month]++;
+                } else if (status === 'Izin' || status === 'Sakit') {
+                    monthlyIzin[month]++;
+                } else if (status === 'Alpha') {
+                    monthlyAlpha[month]++;
+                } else {
+                    // Jika status tidak dikenali tapi ada timeIn, anggap hadir
+                    if (rec.timeIn) {
+                        monthlyHadir[month]++;
+                    }
+                }
+            }
+        });
+        
+        const totalDataYear = monthlyHadir.reduce((a,b) => a+b, 0) + 
+                              monthlyIzin.reduce((a,b) => a+b, 0) + 
+                              monthlyAlpha.reduce((a,b) => a+b, 0);
+        
+        if (dataFound) {
+            console.log(`📊 Data untuk tahun ${year}: ${totalDataYear} transaksi`);
+            // Tampilkan detail per bulan yang memiliki data
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+            for (let i = 0; i < 12; i++) {
+                if (monthlyHadir[i] > 0 || monthlyIzin[i] > 0 || monthlyAlpha[i] > 0) {
+                    console.log(`   ${months[i]}: Hadir=${monthlyHadir[i]}, Izin=${monthlyIzin[i]}, Alpha=${monthlyAlpha[i]}`);
+                }
+            }
+        } else {
+            console.warn(`⚠️ Tidak ada data untuk tahun ${year}. Data tersedia di tahun: ${availableYears.join(', ')}`);
+            if (typeof showToast === 'function') {
+                showToast(`📊 Data absensi tersedia di tahun ${availableYears.join(', ')}. Pilih tahun yang sesuai.`, "info");
+            }
+        }
+    } else {
+        console.warn("⚠️ Tidak ada data absensi!");
+    }
+
+    // Hancurkan chart lama jika ada
+    if (dashboardChart) {
+        try {
+            dashboardChart.destroy();
+        } catch(e) {
+            console.warn("Error destroying old chart:", e);
+        }
+        dashboardChart = null;
+    }
+
+    // Buat chart baru
+    try {
+        dashboardChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
+                datasets: [
+                    {
+                        label: 'Hadir',
+                        data: monthlyHadir,
+                        backgroundColor: '#00bcd4',
+                        borderRadius: 6,
+                        barPercentage: 0.7,
+                        categoryPercentage: 0.8
+                    },
+                    {
+                        label: 'Izin/Sakit',
+                        data: monthlyIzin,
+                        backgroundColor: '#ff9800',
+                        borderRadius: 6,
+                        barPercentage: 0.7,
+                        categoryPercentage: 0.8
+                    },
+                    {
+                        label: 'Alpha',
+                        data: monthlyAlpha,
+                        backgroundColor: '#f44336',
+                        borderRadius: 6,
+                        barPercentage: 0.7,
+                        categoryPercentage: 0.8
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: '#ccc', font: { size: 11 } }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                let value = context.raw || 0;
+                                return `${label}: ${value} kali`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#333' },
+                        ticks: { color: '#ccc', stepSize: 1 }
+                    },
+                    x: {
+                        ticks: { color: '#ccc', autoSkip: true }
+                    }
+                }
+            }
+        });
+        
+        const totalData = monthlyHadir.reduce((a,b) => a+b, 0) + 
+                         monthlyIzin.reduce((a,b) => a+b, 0) + 
+                         monthlyAlpha.reduce((a,b) => a+b, 0);
+        
+        console.log(`✅ Dashboard chart berhasil di-update untuk tahun ${year} (total data: ${totalData})`);
+    } catch (err) {
+        console.error("❌ Gagal membuat chart:", err);
+    }
 }
 
 function renderRecentActivities() {
     const container = document.getElementById('recentActivitiesList');
     if (!container) return;
-    const recent = dbData.attendance ? dbData.attendance.slice(0, 5) : [];
+    
+    const recent = dbData.attendance ? [...dbData.attendance].slice(0, 5) : [];
     if (recent.length === 0) {
         container.innerHTML = '<div class="activity-item"><div class="activity-detail">Belum ada aktivitas</div></div>';
         return;
@@ -630,6 +958,7 @@ function renderRecentActivities() {
 function renderDashboardTasks() {
     const container = document.getElementById('dashboardTasksList');
     if (!container) return;
+    
     db.ref('announcements/active').once('value', (snapshot) => {
         const data = snapshot.val();
         let tasksHtml = '';
@@ -906,12 +1235,12 @@ function renderUsersTable() {
     const search = searchInput ? searchInput.value.toLowerCase() : '';
     tbody.innerHTML = '';
     if (!dbData.users_auth || dbData.users_auth.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.</td></tr>`;
         return;
     }
     let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
     if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">🔍 Tidak ada pengguna yang cocok dengan pencarian.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">🔍 Tidak ada pengguna yang cocok dengan pencarian.</td></tr>`;
         return;
     }
     data.forEach(u => {
@@ -936,12 +1265,14 @@ function renderUsersTable() {
         if (u.role === 'siswa') detailText = `${u.kelas || '-'} / ${u.jurusan || '-'}`;
         else if (u.role === 'guru') detailText = u.subject || '-';
         else detailText = '-';
-        tbody.innerHTML += `<tr><td style="text-align:center;"><img src="${avatar}" style="width:32px; height:32px; border-radius:50%; object-fit:cover;"></td>
+        tbody.innerHTML += `<tr>
+            <td style="text-align:center;"><img src="${avatar}" style="width:32px; height:32px; border-radius:50%; object-fit:cover;"></td>
             <td><strong>${escapeHtmlString(u.nama)}</strong></td>
             <td style="color:#aaa; font-size:0.9rem;">${u.email || '-'}</td>
             <td>${roleHtml}</td>
             <td style="color:#888; font-size:0.85rem;">${escapeHtmlString(detailText)}</td>
-            <td style="text-align:center;">${actionsHtml}</td></tr>`;
+            <td style="text-align:center;">${actionsHtml}</td>
+        </tr>`;
     });
     console.log(`📊 renderUsersTable: ${data.length} users displayed`);
 }
@@ -971,9 +1302,24 @@ function updateProfileDelayDisplay() {
 function cleanupUI() {
     if (clockInterval) clearInterval(clockInterval);
     uiInitialized = false;
-    if (dashboardChart) { dashboardChart.destroy(); dashboardChart = null; }
+    
+    if (dashboardChart) { 
+        try {
+            dashboardChart.destroy(); 
+        } catch(e) {}
+        dashboardChart = null; 
+    }
+    
+    if (dashboardChartRetryTimeout) {
+        clearTimeout(dashboardChartRetryTimeout);
+        dashboardChartRetryTimeout = null;
+    }
+    
     console.log("🧹 UI cleanup completed");
 }
+
+// Export fungsi debug ke window agar bisa dipanggil dari console
+window.debugAttendanceData = debugAttendanceData;
 
 // ======================== EXPORT KE GLOBAL ========================
 window.initApp = initApp;
@@ -1002,3 +1348,5 @@ window.openChatModal = openChatModal;
 // Dashboard functions
 window.renderDashboard = renderDashboard;
 window.updateDashboardChart = updateDashboardChart;
+window.setupChartYearListener = setupChartYearListener;
+window.updateYearDropdownOptions = updateYearDropdownOptions;
