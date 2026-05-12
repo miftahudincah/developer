@@ -2221,4 +2221,56 @@ hr {
     .dashboard-cards-row {
         grid-template-columns: 1fr;
     }
+
+    /* Status avatar lebih kecil di HP kecil */
+    .status-avatar {
+        width: 54px;
+        height: 54px;
+    }
+    .status-name {
+        font-size: 0.7rem;
+    }
+    .status-time {
+        font-size: 0.6rem;
+    }
+    
+    /* Chat bubble lebih lebar di HP */
+    .chat-message-bubble {
+        max-width: 90%;
+    }
+    
+    /* Floating button jarak lebih kecil di HP kecil */
+    .floating-friends-btn {
+        bottom: 16px;
+        left: 16px;
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+    }
+    .floating-chat-btn {
+        bottom: 16px;
+        right: 70px;
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+    }
+    .floating-announcement-btn {
+        bottom: 16px;
+        right: 16px;
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+    }
+    
+    /* Canvas jangan overflow */
+    canvas {
+        max-width: 100%;
+        height: auto !important;
+    }
+    .dashboard-chart canvas {
+        max-height: 180px;
+    }
+    .chart-legend span {
+        font-size: 0.6rem;
+    }
 }
