@@ -1,9 +1,11 @@
-// FILE: ui.js - VERSION 2.4 (FIXED: JAM TETAP BERJALAN & CURRENT SCHOOL CONFIG GUARD)
+// FILE: ui.js - VERSION 2.6 (DENGAN DUKUNGAN CHAT & STATUS)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // Dengan dukungan real-time data refresh & session persistence
 // Mendukung filter kelas dari pengaturan sekolah (kelas kustom)
 // Mendukung upload logo sekolah (hanya admin)
 // Mendukung tab Rekap Absensi
+// Mendukung Friends System (pertemanan)
+// Mendukung Chat System & Status System
 
 // ======================== GLOBAL UI STATE ========================
 let clockInterval = null;
@@ -53,7 +55,7 @@ function initApp() {
         console.error("Error in populateFilters:", err);
     }
     
-    // Start clock (hanya sekali) - DIPASTIKAN JALAN MESKIPUN ADA ERROR SEBELUMNYA
+    // Start clock (hanya sekali)
     try {
         if (clockInterval) clearInterval(clockInterval);
         clockInterval = setInterval(updateClock, 1000);
@@ -80,7 +82,6 @@ function initApp() {
     if (typeof initSystemConfig === 'function') {
         initSystemConfig();
     } else {
-        // Fallback: inisialisasi manual
         initSystemConfigManual();
     }
     
@@ -101,7 +102,7 @@ function initApp() {
         initGlobalDelayListeners();
     }
     
-    // Render semua tabel (akan otomatis di-refresh oleh listener db.js)
+    // Render semua tabel
     setTimeout(() => {
         if (typeof renderTable === 'function') renderTable();
         if (typeof renderStudentsTable === 'function') renderStudentsTable();
@@ -112,11 +113,24 @@ function initApp() {
     // Switch ke tab default
     switchTab('attendance');
     
-    // Tampilkan floating button untuk admin/guru
+    // Tampilkan floating button
     setTimeout(function() {
+        // Floating button untuk pengumuman (hanya admin/guru)
         if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru')) {
             const floatingBtn = document.getElementById('floatingAnnouncementBtn');
             if (floatingBtn) floatingBtn.style.display = 'flex';
+        }
+        
+        // Floating button untuk teman (semua user)
+        const floatingFriendsBtn = document.getElementById('floatingFriendsBtn');
+        if (floatingFriendsBtn) {
+            floatingFriendsBtn.style.display = 'flex';
+        }
+        
+        // Floating button untuk chat (semua user)
+        const floatingChatBtn = document.getElementById('floatingChatBtn');
+        if (floatingChatBtn) {
+            floatingChatBtn.style.display = 'flex';
         }
     }, 1000);
     
@@ -127,6 +141,36 @@ function initApp() {
             console.log("📊 Rekap system initialized from initApp");
         }
     }, 800);
+    
+    // ========== INISIALISASI FRIENDS SYSTEM ==========
+    setTimeout(function() {
+        if (typeof initFriendsSystem === 'function') {
+            initFriendsSystem();
+            console.log("👥 Friends system initialized from initApp");
+        } else {
+            console.warn("⚠️ initFriendsSystem not found - pastikan friends.js sudah di-load");
+        }
+    }, 1200);
+    
+    // ========== INISIALISASI CHAT SYSTEM ==========
+    setTimeout(function() {
+        if (typeof initChatSystem === 'function') {
+            initChatSystem();
+            console.log("💬 Chat system initialized from initApp");
+        } else {
+            console.warn("⚠️ initChatSystem not found - pastikan chat.js sudah di-load");
+        }
+    }, 1500);
+    
+    // ========== INISIALISASI STATUS SYSTEM ==========
+    setTimeout(function() {
+        if (typeof initStatusSystem === 'function') {
+            initStatusSystem();
+            console.log("📸 Status system initialized from initApp");
+        } else {
+            console.warn("⚠️ initStatusSystem not found - pastikan status.js sudah di-load");
+        }
+    }, 1800);
     
     console.log("✅ initApp completed successfully");
 }
@@ -182,7 +226,6 @@ function initManualDelayListeners() {
         delayUnitSelect.addEventListener('change', toggleDelayInput);
     }
     
-    // Set default values
     setTimeout(() => {
         if (typeof toggleDelayInput === 'function') toggleDelayInput();
     }, 100);
@@ -210,11 +253,6 @@ function initSystemConfigManual() {
 
 // ======================== FUNGSI FORMAT DELAY ========================
 
-/**
- * Format delay dalam menit menjadi teks yang mudah dibaca
- * @param {number} delayMinutes - Delay dalam menit
- * @returns {string} Format teks (contoh: "2 jam 30 menit")
- */
 function formatDelayText(delayMinutes) {
     if (!delayMinutes && delayMinutes !== 0) return '-';
     
@@ -232,9 +270,6 @@ function formatDelayText(delayMinutes) {
 
 // ======================== LOGO SEKOLAH ========================
 
-/**
- * Load logo sekolah dari Firebase dan tampilkan di header
- */
 function loadSchoolLogo() {
     if (typeof db === 'undefined' || !db) {
         console.warn("Firebase db not available for loading logo");
@@ -249,46 +284,31 @@ function loadSchoolLogo() {
         const logoUrl = snapshot.val();
         
         if (logoUrl && logoUrl !== '') {
-            // Tampilkan logo di header
             if (headerLogo) {
                 headerLogo.src = logoUrl;
                 headerLogo.style.display = 'block';
                 headerLogo.classList.remove('skeleton');
             }
-            
-            // Tampilkan preview di pengaturan
             if (previewLogo) {
                 previewLogo.src = logoUrl;
                 previewLogo.classList.remove('skeleton');
             }
-            
-            // Tampilkan tombol hapus (untuk admin)
             if (btnRemove && currentUser && currentUser.role === 'admin') {
                 btnRemove.style.display = 'inline-block';
             }
-            
             console.log("🏫 Logo sekolah loaded:", logoUrl);
         } else {
-            // Gunakan placeholder default
             const defaultIcon = 'https://ui-avatars.com/api/?name=S&background=00bcd4&color=fff&size=80';
             if (headerLogo) {
                 headerLogo.src = defaultIcon;
                 headerLogo.style.display = 'block';
             }
-            if (previewLogo) {
-                previewLogo.src = defaultIcon;
-            }
-            if (btnRemove) {
-                btnRemove.style.display = 'none';
-            }
+            if (previewLogo) previewLogo.src = defaultIcon;
+            if (btnRemove) btnRemove.style.display = 'none';
         }
     });
 }
 
-/**
- * Upload logo sekolah ke ImgBB dan simpan URL ke Firebase
- * Hanya admin yang dapat mengakses
- */
 async function uploadSchoolLogo(input) {
     if (!currentUser) {
         showToast('Anda harus login!', 'error');
@@ -319,7 +339,6 @@ async function uploadSchoolLogo(input) {
     const previewImg = document.getElementById('schoolLogoPreview');
     const headerImg = document.getElementById('headerSchoolLogo');
     
-    // Tampilkan loading skeleton
     if (previewImg) {
         previewImg.classList.add('skeleton');
         previewImg.style.opacity = '0.5';
@@ -336,13 +355,9 @@ async function uploadSchoolLogo(input) {
         const data = await res.json();
         
         if (data.success) {
-            // Gunakan proxy untuk menghindari masalah CORS
             const urlProxy = `https://wsrv.nl/?url=${encodeURIComponent(data.data.image.url)}&w=200&h=200&fit=cover`;
-            
-            // Simpan ke Firebase
             await db.ref('system_config/schoolLogo').set(urlProxy);
             
-            // Update tampilan
             if (previewImg) {
                 previewImg.src = urlProxy;
                 previewImg.classList.remove('skeleton');
@@ -353,7 +368,6 @@ async function uploadSchoolLogo(input) {
                 headerImg.classList.remove('skeleton');
             }
             
-            // Tampilkan tombol hapus
             const btnRemove = document.getElementById('btnRemoveLogo');
             if (btnRemove) btnRemove.style.display = 'inline-block';
             
@@ -380,10 +394,6 @@ async function uploadSchoolLogo(input) {
     }
 }
 
-/**
- * Hapus logo sekolah dari Firebase
- * Hanya admin yang dapat mengakses
- */
 function removeSchoolLogo() {
     if (!currentUser) {
         showToast('Anda harus login!', 'error');
@@ -407,7 +417,6 @@ function removeSchoolLogo() {
         .then(() => {
             showToast('✅ Logo sekolah berhasil dihapus', 'success');
             
-            // Reset ke default
             const defaultIcon = 'https://ui-avatars.com/api/?name=S&background=00bcd4&color=fff&size=80';
             const previewImg = document.getElementById('schoolLogoPreview');
             const headerImg = document.getElementById('headerSchoolLogo');
@@ -429,36 +438,26 @@ function removeSchoolLogo() {
         });
 }
 
-/**
- * Update tampilan logo di header (dipanggil saat user login/role berubah)
- * Tampilan logo untuk semua role, tapi tombol edit hanya untuk admin
- */
 function updateSchoolLogoUI() {
     const logoSettingGroup = document.getElementById('logoSettingGroup');
     if (logoSettingGroup && currentUser) {
-        // Sembunyikan tombol upload untuk non-admin, tapi tetap tampilkan preview
         const uploadHint = logoSettingGroup.querySelector('.logo-upload-hint');
         const removeBtn = document.getElementById('btnRemoveLogo');
         const previewWrapper = logoSettingGroup.querySelector('.logo-preview-wrapper');
         
         if (currentUser.role !== 'admin') {
-            // Non-admin hanya bisa melihat logo, tidak bisa mengubah
             if (uploadHint) uploadHint.style.display = 'none';
             if (removeBtn) removeBtn.style.display = 'none';
-            // Nonaktifkan klik pada preview
             if (previewWrapper) {
                 previewWrapper.style.cursor = 'default';
-                // Hapus onclick attribute
                 previewWrapper.removeAttribute('onclick');
             }
         } else {
-            // Admin bisa mengubah
             if (uploadHint) uploadHint.style.display = 'block';
             if (previewWrapper) {
                 previewWrapper.style.cursor = 'pointer';
                 previewWrapper.setAttribute('onclick', "document.getElementById('logoFileInput').click()");
             }
-            // Cek apakah ada logo untuk menentukan tampilkan tombol hapus
             db.ref('system_config/schoolLogo').once('value', (snapshot) => {
                 if (removeBtn) {
                     if (snapshot.val()) {
@@ -472,6 +471,34 @@ function updateSchoolLogoUI() {
     }
 }
 
+// ======================== FRIENDS SYSTEM UI ========================
+
+function toggleFriendsModal() {
+    const modal = document.getElementById('modal-friends');
+    if (modal) {
+        modal.classList.add('open');
+        if (typeof renderFriendsPanel === 'function') {
+            renderFriendsPanel();
+        } else {
+            console.warn("renderFriendsPanel not found");
+        }
+    }
+}
+
+// ======================== CHAT SYSTEM UI ========================
+
+function openChatModal() {
+    const modal = document.getElementById('modal-chat');
+    if (modal) {
+        modal.classList.add('open');
+        if (typeof renderChatInterface === 'function') {
+            renderChatInterface();
+        } else {
+            console.warn("renderChatInterface not found");
+        }
+    }
+}
+
 // ======================== ROLE PERMISSIONS ========================
 
 function applyRolePermissions() {
@@ -480,7 +507,6 @@ function applyRolePermissions() {
     const role = currentUser.role;
     console.log("🎭 Apply role permissions untuk role:", role);
     
-    // Untuk elemen dengan class role-admin
     document.querySelectorAll('.role-admin').forEach(el => {
         if (role === 'admin') {
             el.style.display = '';
@@ -491,7 +517,6 @@ function applyRolePermissions() {
         }
     });
     
-    // Untuk elemen dengan class role-guru (admin dan guru bisa lihat)
     document.querySelectorAll('.role-guru').forEach(el => {
         if (role === 'admin' || role === 'guru') {
             el.style.display = '';
@@ -502,7 +527,6 @@ function applyRolePermissions() {
         }
     });
     
-    // Khusus untuk tombol announcement
     const btnAnnouncement = document.querySelector('.btn-announcement');
     if (btnAnnouncement) {
         if (role === 'admin' || role === 'guru') {
@@ -513,7 +537,6 @@ function applyRolePermissions() {
         }
     }
     
-    // Tampilkan floating button
     const floatingBtn = document.getElementById('floatingAnnouncementBtn');
     if (floatingBtn) {
         if (role === 'admin' || role === 'guru') {
@@ -523,21 +546,33 @@ function applyRolePermissions() {
         }
     }
     
-    // Sembunyikan tab yang tidak sesuai role
+    const floatingFriendsBtn = document.getElementById('floatingFriendsBtn');
+    if (floatingFriendsBtn) {
+        floatingFriendsBtn.style.display = 'flex';
+    }
+    
+    const floatingChatBtn = document.getElementById('floatingChatBtn');
+    if (floatingChatBtn) {
+        floatingChatBtn.style.display = 'flex';
+    }
+    
     const navTabs = document.getElementById('nav-tabs-container');
     if (navTabs && role === 'siswa') {
-        // Untuk siswa, hanya tampilkan tab yang relevan
         const configBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => 
             b.textContent.includes('Pengaturan') || b.textContent.includes('Config')
         );
         if (configBtn) configBtn.style.display = 'none';
+        
+        const usersBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => 
+            b.textContent.includes('Manajemen Pengguna')
+        );
+        if (usersBtn) usersBtn.style.display = 'none';
     } else if (navTabs) {
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.style.display = '';
         });
     }
     
-    // Update UI logo berdasarkan role
     updateSchoolLogoUI();
 }
 
@@ -561,25 +596,23 @@ function updateClock() {
 function switchTab(tabId) {
     console.log("📑 Switching to tab:", tabId);
     
-    // Hide all tab contents
     document.querySelectorAll('.tab-content').forEach(el => {
         el.classList.remove('active');
     });
     
-    // Remove active class from all tab buttons
     document.querySelectorAll('.tab-btn').forEach(el => {
         el.classList.remove('active');
     });
     
-    // Show selected tab content
     const targetTab = document.getElementById(`tab-${tabId}`);
     if (targetTab) {
         targetTab.classList.add('active');
     } else {
         console.warn(`Tab content #tab-${tabId} not found`);
+        const directTab = document.getElementById(tabId);
+        if (directTab) directTab.classList.add('active');
     }
     
-    // Find and activate the corresponding button
     const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => {
         const onclick = b.getAttribute('onclick');
         return onclick && onclick.includes(tabId);
@@ -588,7 +621,6 @@ function switchTab(tabId) {
         activeBtn.classList.add('active');
     }
     
-    // Refresh data saat pindah tab
     setTimeout(() => {
         if (tabId === 'attendance' && typeof renderTable === 'function') {
             renderTable();
@@ -598,6 +630,11 @@ function switchTab(tabId) {
             renderUsersTable();
         } else if (tabId === 'rekap' && typeof loadRekap === 'function') {
             loadRekap();
+        } else if (tabId === 'friends' && typeof loadFriendRequests === 'function') {
+            loadFriendRequests();
+            loadFriendsList();
+        } else if (tabId === 'chat' && typeof loadChatList === 'function') {
+            loadChatList();
         }
     }, 50);
 }
@@ -621,43 +658,30 @@ function showToast(msg, type = 'success') {
     }, 3000);
 }
 
-/**
- * Filter dropdown untuk tab Absensi
- * Menggunakan daftar kelas dari currentSchoolConfig.classes (pengaturan sekolah)
- * Juga menambahkan kelas dari data siswa yang ada untuk kompatibilitas
- * 
- * PERBAIKAN: Guard condition untuk memastikan currentSchoolConfig tersedia
- * sebelum mengakses propertinya, dan fallback yang lebih robust.
- */
 function populateFilters() {
     const filterKelas = document.getElementById('filterKelas');
     const filterJurusan = document.getElementById('filterJurusan');
     
-    // Guard: pastikan currentSchoolConfig terdefinisi
     if (typeof currentSchoolConfig === 'undefined') {
         console.warn("populateFilters: currentSchoolConfig belum didefinisikan, coba lagi nanti");
         setTimeout(populateFilters, 500);
         return;
     }
     
-    // ======================== POPULATE KELAS ========================
     if (filterKelas) {
         const currentValue = filterKelas.value;
         let kelasOptions = [];
         
-        // Prioritaskan daftar kelas dari pengaturan sekolah
         if (currentSchoolConfig && currentSchoolConfig.classes && currentSchoolConfig.classes.length > 0) {
             kelasOptions = currentSchoolConfig.classes;
             console.log(`📚 Filter kelas: menggunakan ${kelasOptions.length} kelas dari pengaturan sekolah`);
         } else {
-            // Fallback: ambil dari data siswa yang sudah ada
             if (dbData && dbData.users && dbData.users.length > 0) {
                 kelasOptions = [...new Set(dbData.users.map(s => s.kelas).filter(Boolean))].sort();
                 console.log(`📚 Filter kelas: fallback dari data siswa (${kelasOptions.length} kelas)`);
             }
         }
         
-        // Jika masih kosong, gunakan default berdasarkan tipe sekolah (asumsi SMP)
         if (kelasOptions.length === 0) {
             const schoolType = (currentSchoolConfig && currentSchoolConfig.type) ? currentSchoolConfig.type : 'smp';
             if (schoolType === 'smp') {
@@ -678,24 +702,20 @@ function populateFilters() {
         }
     }
     
-    // ======================== POPULATE JURUSAN ========================
     if (filterJurusan) {
         const currentValue = filterJurusan.value;
         let jurusanOptions = [];
         
-        // Prioritaskan daftar jurusan dari pengaturan sekolah
         if (currentSchoolConfig && currentSchoolConfig.majors && currentSchoolConfig.majors.length > 0) {
             jurusanOptions = currentSchoolConfig.majors;
             console.log(`🎓 Filter jurusan: menggunakan ${jurusanOptions.length} jurusan dari pengaturan sekolah`);
         } else {
-            // Fallback: ambil dari data siswa yang sudah ada
             if (dbData && dbData.users && dbData.users.length > 0) {
                 jurusanOptions = [...new Set(dbData.users.map(s => s.jurusan).filter(Boolean))].sort();
                 console.log(`🎓 Filter jurusan: fallback dari data siswa (${jurusanOptions.length} jurusan)`);
             }
         }
         
-        // Jika masih kosong, gunakan default
         if (jurusanOptions.length === 0) {
             jurusanOptions = ['UMUM'];
         }
@@ -726,7 +746,6 @@ function openProfileModal() {
         return;
     }
     
-    // Update semua field profil
     document.getElementById('profileImg').src = currentUser.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.nama || 'User')}&background=random`;
     document.getElementById('profileNameInput').value = currentUser.nama || '';
     document.getElementById('profileEmail').textContent = currentUser.email || '';
@@ -740,7 +759,6 @@ function openProfileModal() {
     const subjectGroup = document.getElementById('group-subject');
     const saveBtn = document.querySelector('#modal-profile .btn-save');
     
-    // Elemen untuk menampilkan delay (khusus siswa)
     let delayGroup = document.getElementById('group-profile-delay');
     if (!delayGroup) {
         const jurusanDiv = document.getElementById('profileJurusan')?.parentElement;
@@ -759,7 +777,6 @@ function openProfileModal() {
     }
 
     if (currentUser.role === 'siswa') {
-        // Mode Siswa: hanya baca
         nameInput.readOnly = true;
         nameInput.style.border = 'none';
         nameInput.style.background = 'transparent';
@@ -776,7 +793,6 @@ function openProfileModal() {
         if (delayGroup) delayGroup.style.display = 'block';
         updateProfileDelayDisplay();
     } else {
-        // Mode Guru/Admin: bisa edit
         nameInput.readOnly = false;
         nameInput.style.border = '1px solid var(--border)';
         nameInput.style.background = '#2c2c2c';
@@ -859,13 +875,11 @@ function handleUpdateProfileInfo() {
     
     db.ref(`users_auth/${currentUser.uid}`).update(updateData)
         .then(() => {
-            // Update currentUser
             currentUser.nama = newNama;
             currentUser.kelas = newKelas;
             currentUser.jurusan = newJurusan;
             currentUser.subject = newSubject;
             
-            // Update localStorage
             if (typeof saveUserToLocalStorage === 'function') {
                 saveUserToLocalStorage(currentUser);
             }
@@ -873,7 +887,6 @@ function handleUpdateProfileInfo() {
             showToast('✅ Profil berhasil diperbarui');
             document.getElementById('userProfileDisplay').textContent = newNama;
             
-            // Sinkronisasi ke data fingerprint jika siswa
             if (currentUser.role === 'siswa' && currentUser.fpId) {
                 db.ref(`users/${currentUser.fpId}`).update({
                     nama: newNama,
@@ -885,7 +898,6 @@ function handleUpdateProfileInfo() {
             
             closeModal('modal-profile');
             
-            // Refresh data yang terkait
             if (typeof populateFilters === 'function') populateFilters();
             if (typeof renderStudentsTable === 'function') renderStudentsTable();
             if (typeof renderUsersTable === 'function') renderUsersTable();
@@ -1238,7 +1250,6 @@ function renderUsersTable() {
     console.log(`📊 renderUsersTable: ${data.length} users displayed`);
 }
 
-// Fungsi escapeHtml untuk keamanan
 function escapeHtmlString(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
@@ -1251,9 +1262,6 @@ function escapeHtmlString(str) {
 
 // ======================== FUNGSI DELAY UNTUK PROFIL ========================
 
-/**
- * Update tampilan delay di profil (dipanggil saat data users berubah)
- */
 function updateProfileDelayDisplay() {
     if (!currentUser || currentUser.role !== 'siswa' || !currentUser.fpId) return;
     
@@ -1274,9 +1282,6 @@ function updateProfileDelayDisplay() {
 
 // ======================== CLEANUP ========================
 
-/**
- * Cleanup semua interval dan listener saat logout
- */
 function cleanupUI() {
     if (clockInterval) {
         clearInterval(clockInterval);
@@ -1286,7 +1291,7 @@ function cleanupUI() {
     console.log("🧹 UI cleanup completed");
 }
 
-// Export ke global scope
+// ======================== EXPORT KE GLOBAL ========================
 window.initApp = initApp;
 window.switchTab = switchTab;
 window.showToast = showToast;
@@ -1304,8 +1309,9 @@ window.saveSchoolName = saveSchoolName;
 window.renderUsersTable = renderUsersTable;
 window.updateProfileDelayDisplay = updateProfileDelayDisplay;
 window.cleanupUI = cleanupUI;
-// Export fungsi logo sekolah
 window.loadSchoolLogo = loadSchoolLogo;
 window.uploadSchoolLogo = uploadSchoolLogo;
 window.removeSchoolLogo = removeSchoolLogo;
 window.updateSchoolLogoUI = updateSchoolLogoUI;
+window.toggleFriendsModal = toggleFriendsModal;
+window.openChatModal = openChatModal;

@@ -1,4 +1,4 @@
-// users.js - VERSION 2.0
+// users.js - VERSION 2.1 (FIXED - Manajemen Pengguna)
 // Fungsi untuk mengelola user, kode registrasi, dan role management
 // Dengan real-time updates dan enhanced UI
 
@@ -161,10 +161,7 @@ function createCodesStatsContainer() {
  * Play notifikasi suara
  */
 function playNotificationSound() {
-    // Menggunakan Web Audio API untuk beep sederhana
     if (typeof Audio !== 'undefined') {
-        const audio = new Audio();
-        // Gunakan base64 beep sound jika diperlukan
         try {
             const beep = new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA==');
             beep.volume = 0.3;
@@ -175,7 +172,6 @@ function playNotificationSound() {
 
 // ======================= DROPDOWN SISWA =======================
 
-// Fungsi untuk mengisi Dropdown Siswa pada Tab Users (Generate Code)
 function populateStudentSelectForCode() {
     const select = document.getElementById('selectStudentForCode');
     if(!select) return;
@@ -185,7 +181,6 @@ function populateStudentSelectForCode() {
 
     select.innerHTML = '<option value="">-- Pilih Siswa --</option>';
     
-    // Filter siswa yang belum memiliki akun
     const registeredUserIds = dbData.users_auth?.map(u => u.fpId) || [];
     const availableStudents = dbData.users.filter(s => !registeredUserIds.includes(s.id));
     
@@ -197,11 +192,9 @@ function populateStudentSelectForCode() {
         });
     }
     
-    // Kembalikan pilihan jika masih valid
     if (currentVal && availableStudents.some(s => s.id == currentVal)) {
         select.value = currentVal;
     } else if (currentSelectedText && currentVal) {
-        // Coba cari berdasarkan teks
         const match = availableStudents.find(s => 
             s.nama === currentSelectedText.split('(')[0].trim()
         );
@@ -228,7 +221,6 @@ function generateRegistrationCode() {
         return;
     }
     
-    // Generate kode unik dengan timestamp
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     const code = `REG-${timestamp.slice(-3)}${random}`;
@@ -258,7 +250,6 @@ function generateRegistrationCode() {
             return;
         }
 
-        // Cek duplikasi: sudah terdaftar sebagai user?
         const existingUser = dbData.users_auth?.find(u => u.fpId == selectedId);
         if (existingUser) {
             showToast(`❌ GAGAL: ID Siswa (${selectedId}) sudah terdaftar pada akun (${existingUser.email}).`, "error");
@@ -269,7 +260,6 @@ function generateRegistrationCode() {
             return;
         }
 
-        // Cek duplikasi: masih punya kode aktif?
         const existingCode = dbData.codes?.find(c => 
             c.linkedId == selectedId && !c.used && c.type === 'siswa'
         );
@@ -312,7 +302,6 @@ function generateRegistrationCode() {
         });
 
     } else {
-        // Generate untuk Guru
         db.ref('codes/' + code).set(codeData).then(() => {
             const display = document.getElementById('generatedKeyDisplay');
             display.style.display = 'block';
@@ -339,9 +328,6 @@ function generateRegistrationCode() {
     }
 }
 
-/**
- * Copy teks ke clipboard
- */
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
         showToast("📋 Kode berhasil disalin!", "success");
@@ -422,14 +408,11 @@ function renderCodesTable() {
     updateCodesStatistics();
 }
 
-/**
- * Hitung sisa waktu kode registrasi
- */
 function getCodeTimeRemaining(createdAt) {
     if (!createdAt) return null;
     
     const now = Date.now();
-    const expiredAt = createdAt + (5 * 60 * 60 * 1000); // 5 jam
+    const expiredAt = createdAt + (5 * 60 * 60 * 1000);
     const remaining = expiredAt - now;
     
     if (remaining <= 0) return 'Expired';
@@ -437,13 +420,9 @@ function getCodeTimeRemaining(createdAt) {
     const hours = Math.floor(remaining / (60 * 60 * 1000));
     const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
     
-    if (hours > 0) {
-        return `${hours} jam ${minutes} menit`;
-    } else if (minutes > 0) {
-        return `${minutes} menit`;
-    } else {
-        return '< 1 menit';
-    }
+    if (hours > 0) return `${hours} jam ${minutes} menit`;
+    else if (minutes > 0) return `${minutes} menit`;
+    else return '< 1 menit';
 }
 
 // ======================= UPDATE USER ROLE =======================
@@ -473,18 +452,11 @@ function updateUserRole(uid, newRole) {
     }).then(() => {
         showToast(`✅ Role ${user.nama} berhasil diubah menjadi ${roleNames[newRole]}`, "success");
         
-        // Jika yang diubah adalah current user, update UI
         if (currentUser.uid === uid) {
             currentUser.role = newRole;
-            if (typeof saveUserToLocalStorage === 'function') {
-                saveUserToLocalStorage(currentUser);
-            }
-            if (typeof applyRolePermissions === 'function') {
-                applyRolePermissions();
-            }
-            if (typeof updateUserInterface === 'function') {
-                updateUserInterface();
-            }
+            if (typeof saveUserToLocalStorage === 'function') saveUserToLocalStorage(currentUser);
+            if (typeof applyRolePermissions === 'function') applyRolePermissions();
+            if (typeof updateUserInterface === 'function') updateUserInterface();
         }
     }).catch((err) => {
         console.error("Update role error:", err);
@@ -494,36 +466,43 @@ function updateUserRole(uid, newRole) {
     });
 }
 
-// ======================= RENDER USERS TABLE =======================
+// ======================= RENDER USERS TABLE (DIPERBAIKI) =======================
 
 function renderUsersTable() {
+    console.log("🎨 renderUsersTable dipanggil");
+    
     const tbody = document.getElementById('tbody-users');
     const searchInput = document.getElementById('searchUser');
     const search = searchInput?.value.toLowerCase() || '';
     
-    if (!tbody) return;
+    if (!tbody) {
+        console.warn("⚠️ tbody-users tidak ditemukan!");
+        return;
+    }
     
     tbody.innerHTML = '';
 
     if (!dbData.users_auth || dbData.users_auth.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
+        console.log("📭 Tidak ada data users_auth");
+        tbody.innerHTML = `<td><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             👥 Belum ada pengguna terdaftar.
         </td></tr>`;
         return;
     }
 
-    let data = dbData.users_auth.filter(u => 
-        u.nama && u.nama.toLowerCase().includes(search)
-    );
+    console.log(`📊 Memproses ${dbData.users_auth.length} user, filter: "${search}"`);
     
-    // Sort by role (admin first, then guru, then siswa)
+    // Filter user yang memiliki nama (abaikan yang tidak punya nama)
+    let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
+    
+    // Sort by role
     const roleOrder = { admin: 0, guru: 1, siswa: 2 };
     data.sort((a, b) => (roleOrder[a.role] || 3) - (roleOrder[b.role] || 3));
 
     if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
+        tbody.innerHTML = `</table><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             🔍 Tidak ada pengguna yang cocok dengan pencarian.
-        </td></tr>`;
+        <\/td><\/tr>`;
         return;
     }
 
@@ -587,28 +566,25 @@ function renderUsersTable() {
             <tr class="${isMe ? 'current-user-row' : ''}">
                 <td style="text-align:center;">
                     <img src="${avatar}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
-                </td>
+                <\/td>
                 <td>
                     <strong>${escapeHtmlString(u.nama)}</strong>
                     ${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}
-                </td>
-                <td style="color:#aaa; font-size:0.85rem;">${u.email || '-'}</td>
-                <td>${roleHtml}</td>
+                <\/td>
+                <td style="color:#aaa; font-size:0.85rem;">${u.email || '-'}<\/td>
+                <td>${roleHtml}<\/td>
                 <td style="color:#888; font-size:0.8rem;">
                     ${detailIcon} ${escapeHtmlString(detailText)}<br>
                     <small>📅 ${registeredDate}</small>
-                </td>
-                <td style="text-align:center;">${actionsHtml}</td>
-            </tr>
+                <\/td>
+                <td style="text-align:center;">${actionsHtml}<\/td>
+            <\/tr>
         `;
     });
     
-    console.log(`📊 renderUsersTable: ${data.length} users displayed`);
+    console.log(`✅ renderUsersTable: ${data.length} users ditampilkan`);
 }
 
-/**
- * Reset password user (kirim email reset)
- */
 function resetUserPassword(email) {
     if (!email) {
         showToast("❌ Email tidak valid!", "error");
@@ -631,8 +607,6 @@ function resetUserPassword(email) {
         });
 }
 
-// ======================= DELETE USER =======================
-
 function deleteUser(uid, nama) {
     if (!currentUser || currentUser.role !== 'admin') {
         showToast("⛔ Hanya Admin yang dapat menghapus user!", "error");
@@ -649,13 +623,9 @@ function deleteUser(uid, nama) {
     const btn = document.querySelector(`button[onclick*="deleteUser('${uid}']`);
     if (btn) btn.disabled = true;
     
-    // Hapus data dari Database Firebase (users_auth)
     db.ref('users_auth/' + uid).remove()
         .then(() => {
             showToast(`✅ User "${nama}" berhasil dihapus dari Database.`, "success");
-            
-            // Catatan: Akun Auth Firebase tidak bisa dihapus dari client-side
-            // Namun user tidak akan bisa login karena data di users_auth sudah hilang
         })
         .catch((err) => {
             console.error("Delete user error:", err);
@@ -665,8 +635,6 @@ function deleteUser(uid, nama) {
             if (btn) btn.disabled = false;
         });
 }
-
-// ======================= SYSTEM RESET =======================
 
 function resetSystemData() {
     if (!currentUser || currentUser.role !== 'admin') {
@@ -694,7 +662,6 @@ function resetSystemData() {
     Promise.all(promises)
         .then(() => {
             showToast("✅ Semua data berhasil direset!", "success");
-            // Logout semua user setelah reset
             setTimeout(() => {
                 auth.signOut().then(() => {
                     location.reload();
@@ -735,7 +702,6 @@ function escapeHtmlString(str) {
 
 // ======================= AUTO INIT =======================
 
-// Auto-init realtime users saat DOM siap
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
