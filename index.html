@@ -10,6 +10,9 @@
     <!-- CSS -->
     <link rel="stylesheet" href="style.css">
 
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -142,6 +145,16 @@
                     <button class="btn-action btn-success" onclick="exportToExcel()">📥 Download Excel</button>
                 </div>
             </div>
+            <!-- CHART RINGKASAN HARI INI -->
+            <div class="chart-container" style="margin-bottom: 20px;">
+                <div style="background: var(--bg-card); border-radius: 20px; padding: 15px;">
+                    <h4 style="margin:0 0 10px 0;">📊 Ringkasan Hari Ini</h4>
+                    <div style="max-width: 250px; margin: 0 auto;">
+                        <canvas id="attendanceDonutChart" style="max-height: 200px;"></canvas>
+                    </div>
+                    <div id="todayStatsText" class="text-small text-center" style="margin-top: 10px;"></div>
+                </div>
+            </div>
             <div class="table-container">
                 <table>
                     <thead><tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr></thead>
@@ -212,6 +225,19 @@
                 <div class="filter-group"><label>📅 Periode:</label><select id="rekapPeriod" onchange="loadRekap()"><option value="minggu">Minggu Ini</option><option value="bulan">Bulan Ini</option><option value="semester">Semester Ini</option><option value="custom">Custom Range</option></select></div>
                 <div id="customRangeGroup" style="display: none; gap: 10px; align-items: center;"><input type="date" id="rekapStartDate" onchange="loadRekap()"><span>s/d</span><input type="date" id="rekapEndDate" onchange="loadRekap()"></div>
                 <div style="margin-left: auto; display: flex; gap: 10px;"><button class="btn-action btn-success" onclick="exportRekapToExcel()">📥 Export Excel</button><button class="btn-action btn-primary" onclick="exportRekapToPDF()">📄 Export PDF</button></div>
+            </div>
+            <!-- CHART REKAP -->
+            <div class="chart-container" style="margin-bottom: 25px;">
+                <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <canvas id="rekapPieChart" style="max-height: 300px;"></canvas>
+                        <p class="text-small text-center">Distribusi Status Kehadiran</p>
+                    </div>
+                    <div style="flex: 2; min-width: 300px;">
+                        <canvas id="rekapBarChart" style="max-height: 300px;"></canvas>
+                        <p class="text-small text-center">Absensi per Hari</p>
+                    </div>
+                </div>
             </div>
             <div class="table-container">
                 <table><thead><tr><th>No</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th><th>Persentase</th><th>Status</th></tr></thead>
@@ -312,7 +338,7 @@
     <!-- MODAL STATUS VIEWER -->
     <div id="modal-status-viewer" class="modal-overlay"><div class="modal-box" style="max-width: 500px; background: #000; padding: 0;"><div id="statusViewerContent"></div></div></div>
 
-    <!-- ======================= MODAL ATUR KETIDAKHADIRAN ======================= -->
+    <!-- MODAL ATUR KETIDAKHADIRAN -->
     <div id="modal-absence" class="modal-overlay">
         <div class="modal-box" style="max-width: 700px;">
             <div class="modal-title">
