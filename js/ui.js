@@ -1,7 +1,8 @@
-// FILE: ui.js - VERSION 3.0 (FULLY FIXED DASHBOARD CHART)
+// FILE: ui.js - VERSION 3.1 (WITH SENSOR STATUS LISTENER)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // Dengan dukungan real-time data refresh & session persistence
 // FIX: Auto-detect tahun dari data absensi untuk chart
+// NEW: Sensor status listener untuk monitoring 16 fingerprint sensor
 
 // ======================== GLOBAL UI STATE ========================
 let clockInterval = null;
@@ -157,6 +158,14 @@ function initApp() {
             console.log("📸 Status system initialized from initApp");
         }
     }, 1800);
+    
+    // ========== INISIALISASI SENSOR STATUS LISTENER ==========
+    setTimeout(function() {
+        if (typeof initSensorStatusListener === 'function') {
+            initSensorStatusListener();
+            console.log("🔍 Sensor status listener initialized from initApp");
+        }
+    }, 2500);
     
     console.log("✅ initApp completed successfully");
 }
@@ -1240,7 +1249,7 @@ function renderUsersTable() {
     }
     let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
     if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">🔍 Tidak ada pengguna yang cocok dengan pencarian.</td></tr>`;
+        tbody.innerHTML = `<td><td colspan="6" style="text-align:center; padding:20px; color:#888;">🔍 Tidak ada pengguna yang cocok dengan pencarian.<\/td><\/tr>`;
         return;
     }
     data.forEach(u => {
@@ -1313,6 +1322,11 @@ function cleanupUI() {
     if (dashboardChartRetryTimeout) {
         clearTimeout(dashboardChartRetryTimeout);
         dashboardChartRetryTimeout = null;
+    }
+    
+    // Cleanup sensor status listener
+    if (typeof cleanupSensorStatus === 'function') {
+        cleanupSensorStatus();
     }
     
     console.log("🧹 UI cleanup completed");

@@ -1,6 +1,7 @@
-// ======================= SETTING.JS - VERSION 2.2 (DENGAN MANAJEMEN KELAS) =======================
+// ======================= SETTING.JS - VERSION 2.3 (DENGAN SENSOR STATUS) =======================
 // PENGATURAN SEKOLAH (SCHOOL CONFIG) & DELAY GLOBAL
 // Dengan dukungan manajemen KELAS dan JURUSAN yang bisa diedit
+// NEW: Sensor Status Listener untuk monitoring 16 fingerprint sensor
 
 let currentSchoolConfig = {
     type: 'smp',        // 'smp', 'smk', 'both'
@@ -11,6 +12,10 @@ let currentSchoolConfig = {
 let settingsRealtimeListener = null;
 let delayRealtimeListener = null;
 let schoolConfigListener = null;
+
+// ======================= SENSOR STATUS GLOBAL ========================
+let sensorStatusListener = null;
+let sensorStatusRetryTimeout = null;
 
 // ======================= REAL-TIME INITIALIZATION =======================
 
@@ -605,6 +610,192 @@ function importSchoolConfig(file) {
     reader.readAsText(file);
 }
 
+// ======================= SENSOR STATUS FINGERPRINT ========================
+// Fitur untuk menampilkan status 16 sensor fingerprint dari ESP32
+// Hanya ditampilkan untuk role admin
+
+/**
+ * Inisialisasi listener untuk status sensor fingerprint
+ * Hanya ditampilkan untuk role admin
+ */
+function initSensorStatusListener() {
+    if (!currentUser) {
+        setTimeout(initSensorStatusListener, 1000);
+        return;
+    }
+    
+    // Hanya admin yang bisa melihat status sensor
+    if (currentUser.role !== 'admin') {
+        const panel = document.getElementById('sensorStatusPanel');
+        if (panel) panel.style.display = 'none';
+        return;
+    }
+    
+    const panel = document.getElementById('sensorStatusPanel');
+    if (panel) panel.style.display = 'block';
+    
+    if (sensorStatusListener) {
+        db.ref('status/esp32/sensors').off('value', sensorStatusListener);
+    }
+    
+    sensorStatusListener = db.ref('status/esp32/sensors').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            renderSensorGrid(data);
+            updateSensorHeaderInfo(data);
+        } else {
+            renderNoSensorData();
+        }
+    });
+}
+
+/**
+ * Render grid 16 sensor fingerprint
+ */
+function renderSensorGrid(data) {
+    const container = document.getElementById('sensorGrid');
+    if (!container) return;
+    
+    if (!data.sensors || !Array.isArray(data.sensors)) {
+        container.innerHTML = '<div class="sensor-loading">📡 Menunggu data dari ESP32...</div>';
+        return;
+    }
+    
+    let html = '';
+    data.sensors.forEach(sensor => {
+        const isOnline = sensor.status === 'online';
+        const statusIcon = isOnline ? '✅' : '❌';
+        const statusText = isOnline ? 'ONLINE' : 'OFFLINE';
+        const statusClass = isOnline ? 'online' : 'offline';
+        const templates = sensor.templateCount || 0;
+        
+        html += `
+            <div class="sensor-card ${statusClass}">
+                <div class="sensor-number">#${sensor.id}</div>
+                <div class="sensor-status-icon">${statusIcon}</div>
+                <div class="sensor-status-text ${statusClass}">${statusText}</div>
+                <div class="sensor-templates">📁 ${templates} sidik</div>
+                ${sensor.error ? `<div class="sensor-error" style="font-size:10px;color:#f44336;margin-top:4px;">${escapeHtmlStr(sensor.error)}</div>` : ''}
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Update header panel sensor (badge jumlah online & waktu update)
+ */
+function updateSensorHeaderInfo(data) {
+    const onlineCount = data.onlineCount || 0;
+    const totalTemplates = data.totalTemplates || 0;
+    const timestamp = data.timestamp;
+    
+    const badge = document.getElementById('sensorOnlineBadge');
+    if (badge) {
+        badge.textContent = `${onlineCount}/16 Online`;
+        if (onlineCount === 16) {
+            badge.className = 'badge-success';
+        } else if (onlineCount >= 12) {
+            badge.className = 'badge-warning';
+        } else {
+            badge.className = 'badge-danger';
+        }
+    }
+    
+    const lastUpdateSpan = document.getElementById('sensorLastUpdate');
+    if (lastUpdateSpan && timestamp) {
+        const date = new Date(timestamp);
+        lastUpdateSpan.textContent = `🕐 ${date.toLocaleTimeString('id-ID')}`;
+        lastUpdateSpan.className = 'badge-info';
+    } else if (lastUpdateSpan) {
+        lastUpdateSpan.textContent = 'Menunggu data...';
+    }
+    
+    // Update tooltip header dengan total template
+    const header = document.querySelector('#sensorStatusPanel .sensor-header h4');
+    if (header) {
+        header.setAttribute('title', `Total ${totalTemplates} sidik jari tersimpan di semua sensor`);
+    }
+}
+
+/**
+ * Tampilkan pesan ketika tidak ada data sensor
+ */
+function renderNoSensorData() {
+    const container = document.getElementById('sensorGrid');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="sensor-loading">
+            📡 Belum ada data dari ESP32<br>
+            <small>Pastikan ESP32 terhubung ke internet dan mengirim data status</small>
+        </div>
+    `;
+    
+    const badge = document.getElementById('sensorOnlineBadge');
+    if (badge) {
+        badge.textContent = 'Menunggu data';
+        badge.className = 'badge-warning';
+    }
+}
+
+/**
+ * Refresh manual status sensor (kirim command ke ESP32)
+ */
+function refreshSensorStatus() {
+    if (typeof showToast === 'function') {
+        showToast("📡 Meminta refresh data sensor...", "info");
+    }
+    
+    // Kirim command ke ESP32 via Firebase
+    if (db) {
+        db.ref('commands/esp32/check_sensors').set({
+            requestedBy: currentUser?.nama || 'Admin',
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        }).then(() => {
+            if (typeof showToast === 'function') {
+                showToast("✅ Perintah refresh dikirim ke ESP32", "success");
+            }
+            // Hapus command setelah 5 detik
+            setTimeout(() => {
+                db.ref('commands/esp32/check_sensors').remove();
+            }, 5000);
+        }).catch(err => {
+            console.error("Gagal kirim command:", err);
+            if (typeof showToast === 'function') {
+                showToast("❌ Gagal mengirim perintah", "error");
+            }
+        });
+    }
+    
+    // Force refresh data dari Firebase
+    if (sensorStatusListener) {
+        db.ref('status/esp32/sensors').once('value').then(snapshot => {
+            const data = snapshot.val();
+            if (data) {
+                renderSensorGrid(data);
+                updateSensorHeaderInfo(data);
+            }
+        }).catch(err => console.warn("Refresh error:", err));
+    }
+}
+
+/**
+ * Cleanup listener saat logout
+ */
+function cleanupSensorStatus() {
+    if (sensorStatusListener) {
+        db.ref('status/esp32/sensors').off('value', sensorStatusListener);
+        sensorStatusListener = null;
+    }
+    if (sensorStatusRetryTimeout) {
+        clearTimeout(sensorStatusRetryTimeout);
+        sensorStatusRetryTimeout = null;
+    }
+    console.log("🧹 Sensor status listener cleaned up");
+}
+
 // ======================= CLEANUP =======================
 
 function cleanupSettingsSystem() {
@@ -616,6 +807,7 @@ function cleanupSettingsSystem() {
         db.ref('school_config').off('value', schoolConfigListener);
         schoolConfigListener = null;
     }
+    cleanupSensorStatus();
     console.log("🧹 Settings system cleaned up");
 }
 
@@ -652,7 +844,7 @@ if (document.readyState === 'loading') {
     setTimeout(initAllSettings, 500);
 }
 
-// Export ke global
+// ======================= EXPORT KE GLOBAL =======================
 window.formatDelayText = formatDelayText;
 window.toggleGlobalDelayInput = toggleGlobalDelayInput;
 window.updateGlobalDelayFromMinutes = updateGlobalDelayFromMinutes;
@@ -676,3 +868,7 @@ window.importSchoolConfig = importSchoolConfig;
 window.initAllSettings = initAllSettings;
 window.initRealtimeSettings = initRealtimeSettings;
 window.cleanupSettingsSystem = cleanupSettingsSystem;
+// ========== EXPORT SENSOR STATUS ==========
+window.initSensorStatusListener = initSensorStatusListener;
+window.refreshSensorStatus = refreshSensorStatus;
+window.cleanupSensorStatus = cleanupSensorStatus;
