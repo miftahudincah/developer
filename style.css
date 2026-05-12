@@ -2274,3 +2274,151 @@ hr {
         font-size: 0.6rem;
     }
 }
+/* ==================== SENSOR STATUS PANEL ==================== */
+.sensor-status-container {
+    background: var(--bg-card);
+    border-radius: 20px;
+    padding: 16px;
+    margin-top: 20px;
+    border: 1px solid var(--border);
+}
+
+.sensor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.sensor-header h4 {
+    margin: 0;
+    color: var(--primary);
+}
+
+.sensor-header-info {
+    display: flex;
+    gap: 12px;
+}
+
+.badge-success {
+    background: #4caf50;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+}
+
+.badge-warning {
+    background: #ff9800;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+}
+
+.badge-danger {
+    background: #f44336;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+}
+
+.badge-info {
+    background: #2196f3;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 12px;
+}
+
+.sensor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.sensor-card {
+    background: var(--bg-sidebar);
+    border-radius: 16px;
+    padding: 12px 8px;
+    text-align: center;
+    transition: all 0.2s ease;
+    border: 1px solid var(--border);
+}
+
+.sensor-card.online {
+    border-left: 4px solid #4caf50;
+    background: rgba(76, 175, 80, 0.05);
+}
+
+.sensor-card.offline {
+    border-left: 4px solid #f44336;
+    background: rgba(244, 67, 54, 0.05);
+    opacity: 0.7;
+}
+
+.sensor-number {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.sensor-status-icon {
+    font-size: 1.5rem;
+    margin: 4px 0;
+}
+
+.sensor-status-text {
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.sensor-status-text.online {
+    color: #4caf50;
+}
+
+.sensor-status-text.offline {
+    color: #f44336;
+}
+
+.sensor-templates {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.sensor-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.sensor-loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+    .sensor-grid {
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 8px;
+    }
+    .sensor-card {
+        padding: 8px 4px;
+    }
+    .sensor-number {
+        font-size: 1rem;
+    }
+    .sensor-status-icon {
+        font-size: 1.2rem;
+    }
+}

@@ -228,8 +228,8 @@
             </div>
             <div class="table-container">
                 <table>
-                    <thead><tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr></thead>
-                    <tbody id="tbody-attendance"><tr><td colspan="7">Memuat data...</td></tr></tbody>
+                    <thead>汽<th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr></thead>
+                    <tbody id="tbody-attendance"><tr><td colspan="7">Memuat data...</td></tr>
                 </table>
             </div>
         </div>
@@ -257,8 +257,10 @@
                 <div class="search-box"><input type="text" id="searchStudentName" placeholder="🔍 Cari nama siswa..." oninput="renderStudentsTable()"></div>
             </div>
             <div class="table-container">
-                <table><thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
-                <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr></tbody></table>
+                <table>
+                    <thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
+                    <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr></tbody>
+                </table>
             </div>
         </div>
 
@@ -279,13 +281,17 @@
             <div id="generatedKeyDisplay" style="display:none;"></div>
             <h4 class="role-admin role-guru">📋 Daftar Kode Aktif</h4>
             <div class="table-container role-admin role-guru">
-                <table><thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></tr></thead>
-                <tbody id="tbody-codes"></tbody></table>
+                <table>
+                    <thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></tr></thead>
+                    <tbody id="tbody-codes"></tbody>
+                </table>
             </div>
             <div class="controls-bar role-admin role-guru"><h4>👥 Daftar Pengguna</h4><div class="search-box"><input type="text" id="searchUser" placeholder="🔍 Cari user..." oninput="renderUsersTable()"></div></div>
             <div class="table-container role-admin role-guru">
-                <table><thead><tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Detail</th><th>Aksi</th></tr></thead>
-                <tbody id="tbody-users"></tbody></table>
+                <table>
+                    <thead><tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Detail</th><th>Aksi</th></tr></thead>
+                    <tbody id="tbody-users"></tbody>
+                </table>
             </div>
         </div>
 
@@ -303,8 +309,10 @@
                 </div>
             </div>
             <div class="table-container">
-                <table><thead><tr><th>No</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th><th>Persentase</th><th>Status</th></tr></thead>
-                <tbody id="rekapTbody"><tr><td colspan="12">Memuat data...</td></tr></tbody></table>
+                <table>
+                    <thead><tr><th>No</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th><th>Persentase</th><th>Status</th></tr></thead>
+                    <tbody id="rekapTbody"><tr><td colspan="12">Memuat data...</td></tr></tbody>
+                </table>
             </div>
         </div>
 
@@ -350,6 +358,25 @@
                 <div id="majorsManager" style="display:none;"><h4>🎓 Daftar Jurusan (SMK)</h4><div id="majorsList" style="margin-bottom:10px; min-height:50px;"></div><div style="display:flex; gap:10px;"><input type="text" id="newMajorInput" placeholder="Contoh: RPL, TKJ" style="flex:2;"><button class="btn-action btn-success role-admin" onclick="addMajor()">➕ Tambah</button><button class="btn-action btn-primary role-admin" onclick="saveMajors()">💾 Simpan</button></div></div>
                 <hr>
                 <div class="form-group"><label>⏰ Delay Pulang Global</label><div style="display:flex; gap:10px; flex-wrap:wrap;"><select id="globalDelayUnit"><option value="minutes">Menit</option><option value="hours">Jam</option></select><div id="globalDelayMinutesGroup"><input type="number" id="globalDelayMinutesValue" value="60" style="width:80px;"> menit</div><div id="globalDelayHoursGroup" style="display:none;"><select id="globalDelayHoursValue" style="width:80px;"></select> jam</div><button class="btn-action btn-primary role-admin" onclick="saveGlobalDelay()">Simpan</button></div><div><small>Delay saat ini: <strong id="globalDelayDisplay">60 menit</strong></small></div></div>
+                
+                <!-- ========== PANEL STATUS 16 SENSOR FINGERPRINT ========== -->
+                <div id="sensorStatusPanel" class="sensor-status-container" style="margin-top: 20px; display: none;">
+                    <div class="sensor-header">
+                        <h4>🔍 STATUS 16 SENSOR FINGERPRINT</h4>
+                        <div class="sensor-header-info">
+                            <span id="sensorOnlineBadge" class="badge badge-warning">Menunggu data</span>
+                            <span id="sensorLastUpdate" class="badge badge-info">Belum diperbarui</span>
+                        </div>
+                    </div>
+                    <div id="sensorGrid" class="sensor-grid">
+                        <div class="sensor-loading">⏳ Memuat data sensor...</div>
+                    </div>
+                    <div class="sensor-footer">
+                        <small class="text-small">📡 Data diperbarui setiap 60 detik dari ESP32</small>
+                        <button class="btn-action btn-secondary" onclick="refreshSensorStatus()" style="margin-left: auto;">🔄 Refresh Sekarang</button>
+                    </div>
+                </div>
+
                 <div class="key-box role-admin"><div><strong>⚠️ Reset Data</strong><br><small>Hapus semua data</small></div><button class="btn-action btn-danger" onclick="resetSystemData()">Reset Semua</button></div>
             </div>
         </div>
