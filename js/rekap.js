@@ -1,7 +1,7 @@
-// rekap.js - VERSION 2.0 (Dengan Chart Pie & Bar)
+// rekap.js - VERSION 2.1 (Dengan Sinkronisasi Manual Status)
 // Fitur Rekap Absensi per Siswa
 // Mendukung periode: Minggu, Bulan, Semester, dan Custom Range
-// Mendukung status: Hadir, Sakit, Izin, Alpha
+// Mendukung status: Hadir, Sakit, Izin, Alpha (termasuk manual dari attendance_status)
 // By: Sistem Absensi Terintegrasi
 
 let currentRekapData = [];
@@ -43,6 +43,16 @@ function initRekap() {
     periodSelect.value = defaultPeriod;
     const customRangeGroup = document.getElementById('customRangeGroup');
     if (customRangeGroup) customRangeGroup.style.display = defaultPeriod === 'custom' ? 'flex' : 'none';
+    
+    // Setup listener untuk perubahan manual status agar rekap refresh otomatis
+    if (typeof db !== 'undefined') {
+        db.ref('attendance_status').on('value', () => {
+            if (document.getElementById('tab-rekap')?.classList.contains('active')) {
+                console.log("🔄 Manual status changed, refreshing rekap...");
+                loadRekap();
+            }
+        });
+    }
     
     rekapInitDone = true;
     setTimeout(() => loadRekap(), 500);
@@ -116,9 +126,30 @@ function countSchoolDays(startDate, endDate) {
     return count > 0 ? count : 1;
 }
 
-// ======================= HITUNG REKAP PER SISWA =======================
+// ======================= AMBIL DATA MANUAL STATUS DALAM RENTANG =======================
 
-function calculateStudentRekap(attendanceData, studentsData, startDate, endDate) {
+async function fetchManualStatusForRange(startDate, endDate) {
+    const manualData = {};
+    const currentDate = new Date(startDate);
+    const end = new Date(endDate);
+    while (currentDate <= end) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        try {
+            const snapshot = await db.ref(`attendance_status/${dateStr}`).once('value');
+            if (snapshot.exists()) {
+                manualData[dateStr] = snapshot.val();
+            }
+        } catch(e) {
+            console.warn(`Gagal mengambil manual status untuk ${dateStr}:`, e);
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return manualData;
+}
+
+// ======================= HITUNG REKAP PER SISWA (DENGAN MANUAL STATUS) =======================
+
+async function calculateStudentRekap(attendanceData, studentsData, startDate, endDate) {
     const studentMap = new Map();
     const filteredAttendance = attendanceData.filter(a => {
         const recordDate = new Date(a.date);
@@ -126,10 +157,15 @@ function calculateStudentRekap(attendanceData, studentsData, startDate, endDate)
     });
     const totalSchoolDays = countSchoolDays(startDate, endDate);
     
+    // Ambil data manual status (sakit, izin, alpha) dalam periode
+    const manualStatusMap = await fetchManualStatusForRange(startDate, endDate);
+    
     console.log(`📊 Periode: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`);
     console.log(`📊 Total hari sekolah: ${totalSchoolDays}`);
-    console.log(`📊 Total data absensi: ${filteredAttendance.length}`);
+    console.log(`📊 Total data absensi fisik: ${filteredAttendance.length}`);
+    console.log(`📊 Total data manual status: ${Object.keys(manualStatusMap).length} tanggal`);
     
+    // Inisialisasi data setiap siswa
     studentsData.forEach(student => {
         if (student && student.id) {
             studentMap.set(student.id.toString(), {
@@ -146,6 +182,7 @@ function calculateStudentRekap(attendanceData, studentsData, startDate, endDate)
         }
     });
     
+    // Proses absensi fisik (scan fingerprint)
     filteredAttendance.forEach(record => {
         const studentId = record.studentId.toString();
         const studentData = studentMap.get(studentId);
@@ -160,6 +197,35 @@ function calculateStudentRekap(attendanceData, studentsData, startDate, endDate)
         }
     });
     
+    // Proses manual status (attendance_status) untuk siswa yang TIDAK memiliki absensi fisik di tanggal tersebut
+    for (const [dateStr, statuses] of Object.entries(manualStatusMap)) {
+        const recordDate = new Date(dateStr);
+        if (recordDate < startDate || recordDate > endDate) continue;
+        
+        for (const [studentId, statusInfo] of Object.entries(statuses)) {
+            const studentData = studentMap.get(studentId);
+            if (!studentData) continue;
+            
+            // Cek apakah di tanggal yang sama sudah ada absensi fisik (hadir/pulang)
+            const hasPhysical = filteredAttendance.some(a => a.date === dateStr && a.studentId == studentId && (a.status === 'Hadir' || a.status === 'Pulang'));
+            if (hasPhysical) {
+                // Jika sudah ada scan, manual status tidak override (biarkan saja)
+                continue;
+            }
+            
+            const manualStatus = statusInfo.status;
+            if (manualStatus === 'sakit') {
+                studentData.sakit++;
+            } else if (manualStatus === 'izin') {
+                studentData.izin++;
+            } else if (manualStatus === 'alpha') {
+                studentData.alpha++;
+            }
+            // manualStatus 'hadir' tidak perlu ditambah karena tidak ada scan
+        }
+    }
+    
+    // Hitung persentase dan status
     const results = [];
     for (const [id, data] of studentMap) {
         const totalKehadiran = data.hadir;
@@ -341,7 +407,7 @@ function renderRekapCharts(data, startDate, endDate) {
 
 // ======================= LOAD REKAP =======================
 
-function loadRekap() {
+async function loadRekap() {
     if (!dbData || !dbData.attendance || !dbData.users) {
         console.log("⏳ Menunggu data siap...");
         setTimeout(loadRekap, 500);
@@ -378,7 +444,8 @@ function loadRekap() {
     console.log(`📊 Load rekap: ${period} (${periodDisplay})`);
     if (typeof showToast === 'function') showToast(`📊 Memuat rekap periode: ${periodDisplay}`, "info");
     
-    currentRekapData = calculateStudentRekap(dbData.attendance, dbData.users, startDate, endDate);
+    // Panggil fungsi async dan tunggu hasilnya
+    currentRekapData = await calculateStudentRekap(dbData.attendance, dbData.users, startDate, endDate);
     renderRekapTable(currentRekapData);
     renderRekapCharts(currentRekapData, startDate, endDate);
     
@@ -474,10 +541,11 @@ function exportRekapToPDF() {
         no++;
     });
     printWindow.document.write(`
-            </tbody></table>
-            <div class="footer"><p>Dicetak oleh: ${escapeHtml(currentUser?.nama || 'Admin')} | Sistem Absensi Terintegrasi - ESP32 Fingerprint</p><p>* Laporan ini dihasilkan secara otomatis oleh sistem</p></div>
-            <div class="no-print" style="text-align:center; margin-top:20px;"><button onclick="window.print()" style="padding:10px 20px; background:#00bcd4; color:white; border:none; border-radius:5px; cursor:pointer;">🖨️ Cetak / Simpan PDF</button><button onclick="window.close()" style="padding:10px 20px; background:#666; color:white; border:none; border-radius:5px; cursor:pointer; margin-left:10px;">✖ Tutup</button></div>
-            <script>console.log("PDF siap dicetak");<\/script>
+            </tbody>
+        </table>
+        <div class="footer"><p>Dicetak oleh: ${escapeHtml(currentUser?.nama || 'Admin')} | Sistem Absensi Terintegrasi - ESP32 Fingerprint</p><p>* Laporan ini dihasilkan secara otomatis oleh sistem</p></div>
+        <div class="no-print" style="text-align:center; margin-top:20px;"><button onclick="window.print()" style="padding:10px 20px; background:#00bcd4; color:white; border:none; border-radius:5px; cursor:pointer;">🖨️ Cetak / Simpan PDF</button><button onclick="window.close()" style="padding:10px 20px; background:#666; color:white; border:none; border-radius:5px; cursor:pointer; margin-left:10px;">✖ Tutup</button></div>
+        <script>console.log("PDF siap dicetak");<\/script>
         </body>
         </html>
     `);
@@ -497,6 +565,9 @@ function cleanupRekap() {
     currentRekapData = [];
     if (rekapPieChart) { rekapPieChart.destroy(); rekapPieChart = null; }
     if (rekapBarChart) { rekapBarChart.destroy(); rekapBarChart = null; }
+    if (typeof db !== 'undefined') {
+        db.ref('attendance_status').off();
+    }
     console.log("🧹 Rekap system cleaned up");
 }
 
