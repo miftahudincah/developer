@@ -1,163 +1,45 @@
-// attendance.js - VERSION 2.3 (Dengan Simulasi Scan Pulang)
+// attendance.js - VERSION 2.4 (FIXED - NO DUPLICATE LISTENERS)
 // Mengelola data absensi, filter, validasi delay pulang, real-time updates,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
 // NEW: Fitur simulasi scan pulang otomatis dan manual pilih siswa.
+//
+// PERUBAHAN: Semua Firebase listener dihapus karena sudah ditangani oleh init.js.
+// attendance.js hanya berisi fungsi-fungsi UI dan interaksi.
 
 // ======================== GLOBAL VARIABLES ========================
-let lastAttendanceCount = 0;
-let attendanceRefreshInterval = null;
-let notificationSound = null;
 let attendanceDonutChart = null; // Chart instance
 
-// ======================== INITIALIZATION ========================
+// ======================== INITIALIZATION (UI ONLY) ========================
 
 /**
- * Inisialisasi fitur real-time absensi
+ * Inisialisasi komponen UI absensi (chart, dll) - TIDAK ADA LISTENER FIREBASE
+ * Fungsi ini dipanggil dari initApp atau saat tab absensi diaktifkan.
  */
-function initRealtimeAttendance() {
-    console.log("🔄 Initializing real-time attendance system...");
+function initAttendanceUI() {
+    console.log("📊 Initializing attendance UI (chart, etc)...");
     
     if (typeof Audio !== 'undefined') {
-        notificationSound = new Audio();
+        // Preload untuk notifikasi suara (opsional)
+        new Audio();
     }
     
-    setupRealtimeAttendanceListener();
-    startAttendancePeriodicRefresh();
-    // Inisialisasi chart (donut) setelah DOM siap
-    setTimeout(() => updateAttendanceDonutChart(), 500);
+    // Inisialisasi donut chart setelah DOM siap
+    setTimeout(() => updateAttendanceDonutChart(), 100);
 }
-
-/**
- * Setup real-time listener untuk perubahan data absensi
- */
-function setupRealtimeAttendanceListener() {
-    if (typeof db === 'undefined' || !db) {
-        console.warn("Firebase not available for attendance listener");
-        return;
-    }
-    
-    db.ref('absensi').on('value', (snapshot) => {
-        const data = snapshot.val();
-        const newCount = data ? Object.keys(data).reduce((count, date) => {
-            return count + (data[date] ? Object.keys(data[date]).length : 0);
-        }, 0) : 0;
-        
-        if (lastAttendanceCount > 0 && newCount > lastAttendanceCount) {
-            const newRecords = newCount - lastAttendanceCount;
-            showRealtimeAttendanceAlert(`📢 ${newRecords} absensi baru masuk!`);
-            updateAttendanceTabBadge(true);
-        } else if (lastAttendanceCount > 0 && newCount !== lastAttendanceCount) {
-            updateAttendanceTabBadge(false);
-        }
-        
-        lastAttendanceCount = newCount;
-        
-        if (typeof renderTable === 'function') {
-            requestAnimationFrame(() => renderTable());
-        }
-        // Update chart setiap ada perubahan data
-        updateAttendanceDonutChart();
-    });
-    
-    db.ref('absensi').on('child_added', (snapshot) => {
-        const date = snapshot.key;
-        console.log(`📋 New attendance record added for date: ${date}`);
-        showToast("📢 Ada absensi baru masuk!", "info");
-        flashAttendanceTable();
-        updateAttendanceDonutChart();
-    });
-    
-    db.ref('absensi').on('child_changed', (snapshot) => {
-        const date = snapshot.key;
-        console.log(`📝 Attendance record updated for date: ${date}`);
-        showToast("📝 Data absensi diperbarui (pulang)", "info");
-        updateAttendanceDonutChart();
-    });
-}
-
-/**
- * Mulai periodic refresh sebagai fallback (setiap 10 detik)
- */
-function startAttendancePeriodicRefresh() {
-    if (attendanceRefreshInterval) clearInterval(attendanceRefreshInterval);
-    attendanceRefreshInterval = setInterval(() => {
-        if (currentUser && typeof db !== 'undefined') {
-            db.ref('absensi').once('value').catch(err => console.warn("Periodic refresh error:", err));
-        }
-    }, 10000);
-}
-
-/**
- * Hentikan periodic refresh
- */
-function stopAttendancePeriodicRefresh() {
-    if (attendanceRefreshInterval) {
-        clearInterval(attendanceRefreshInterval);
-        attendanceRefreshInterval = null;
-    }
-}
-
-// ======================== UI NOTIFICATIONS ========================
-
-function showRealtimeAttendanceAlert(message) {
-    showToast(message, "success");
-    const originalTitle = document.title;
-    let dotCount = 0;
-    const interval = setInterval(() => {
-        if (dotCount >= 3) {
-            document.title = originalTitle;
-            clearInterval(interval);
-        } else {
-            document.title = `🔔 ${message.substring(0, 20)}...`;
-            dotCount++;
-        }
-    }, 500);
-    setTimeout(() => {
-        document.title = originalTitle;
-        clearInterval(interval);
-    }, 3000);
-}
-
-function updateAttendanceTabBadge(hasNew = true) {
-    const attendanceTabBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => 
-        b.textContent.includes('Absensi') || b.getAttribute('onclick')?.includes('attendance')
-    );
-    if (attendanceTabBtn) {
-        if (hasNew) {
-            if (!attendanceTabBtn.querySelector('.badge-new')) {
-                const badge = document.createElement('span');
-                badge.className = 'badge-new';
-                badge.textContent = '●';
-                badge.style.cssText = 'color: #f44336; margin-left: 5px; font-size: 10px; animation: pulse 1s infinite;';
-                attendanceTabBtn.appendChild(badge);
-            }
-        } else {
-            const badge = attendanceTabBtn.querySelector('.badge-new');
-            if (badge) badge.remove();
-        }
-    }
-}
-
-function flashAttendanceTable() {
-    const table = document.querySelector('#tab-attendance .table-container');
-    if (table) {
-        table.style.transition = 'background-color 0.3s';
-        table.style.backgroundColor = 'rgba(74, 144, 226, 0.2)';
-        setTimeout(() => {
-            table.style.backgroundColor = '';
-        }, 500);
-    }
-}
-
-// ======================== CHART RINGKASAN HARI INI ========================
 
 /**
  * Update donut chart untuk ringkasan absensi hari ini
  */
 function updateAttendanceDonutChart() {
-    const ctx = document.getElementById('attendanceDonutChart')?.getContext('2d');
-    if (!ctx) {
-        // console.warn("Canvas attendanceDonutChart not found yet");
+    const canvas = document.getElementById('attendanceDonutChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Pastikan dbData tersedia
+    if (!dbData || !dbData.attendance) {
+        console.warn("Data absensi belum siap untuk chart");
         return;
     }
     
@@ -169,8 +51,10 @@ function updateAttendanceDonutChart() {
     // Hancurkan chart lama jika ada
     if (attendanceDonutChart) {
         attendanceDonutChart.destroy();
+        attendanceDonutChart = null;
     }
     
+    // Buat chart baru
     attendanceDonutChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -255,18 +139,15 @@ async function renderTable() {
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
         </td></tr>`;
         updateAttendanceStatistics(data);
-        updateAttendanceDonutChart(); // refresh chart meski data kosong
+        updateAttendanceDonutChart();
         return;
     }
     
-    // Ambil data status manual untuk hari ini (jika filter date = today atau all)
+    // Ambil data status manual untuk filter yang dipilih
     let manualStatusMap = {};
-    if (fDate === 'today' || fDate === 'all') {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const statusSnapshot = await db.ref(`attendance_status/${todayStr}`).once('value');
-        manualStatusMap = statusSnapshot.val() || {};
-    } else if (fDate !== 'all') {
-        const statusSnapshot = await db.ref(`attendance_status/${fDate}`).once('value');
+    const targetDate = (fDate === 'today' || fDate === 'all') ? new Date().toISOString().split('T')[0] : fDate;
+    if (targetDate !== 'all') {
+        const statusSnapshot = await db.ref(`attendance_status/${targetDate}`).once('value');
         manualStatusMap = statusSnapshot.val() || {};
     }
     
@@ -300,13 +181,13 @@ async function renderTable() {
                 <td>${statusHtml}</td>
                 <td class="role-guru role-admin">
                     <button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button>
-                 </td>
-             </tr>
+                </td>
+            </tr>
         `;
     });
     
     updateAttendanceStatistics(data);
-    updateAttendanceDonutChart(); // perbarui chart setelah render
+    updateAttendanceDonutChart();
 }
 
 /**
@@ -426,11 +307,8 @@ function simulateAttendance() {
         });
 }
 
-// ======================== SIMULATE ATTENDANCE PULANG (NEW) ========================
+// ======================== SIMULATE ATTENDANCE PULANG ========================
 
-/**
- * Simulasi absen PULANG otomatis untuk siswa yang sudah absen masuk hari ini
- */
 function simulateAttendanceOut() {
     if (!currentUser) {
         showToast("Anda harus login!", "error");
@@ -443,7 +321,6 @@ function simulateAttendanceOut() {
     
     const todayStr = new Date().toISOString().split('T')[0];
     
-    // Filter siswa yang sudah absen masuk hari ini (status Hadir, belum pulang)
     const todayAttendance = dbData.attendance.filter(a => 
         a.date === todayStr && a.status === 'Hadir'
     );
@@ -453,7 +330,6 @@ function simulateAttendanceOut() {
         return;
     }
     
-    // Pilih random dari siswa yang sudah masuk
     const selected = todayAttendance[Math.floor(Math.random() * todayAttendance.length)];
     const student = dbData.users.find(s => s.id == selected.studentId);
     
@@ -465,7 +341,6 @@ function simulateAttendanceOut() {
     const now = new Date();
     const timeOutStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
     
-    // Validasi delay pulang
     const delayMinutes = parseInt(student.delayOut) || 60;
     const timeInDate = new Date(`${selected.date}T${selected.timeIn}`);
     const timeOutDate = new Date();
@@ -492,7 +367,6 @@ function simulateAttendanceOut() {
     })
         .then(() => {
             showToast(`✅ Simulasi Absen Pulang Berhasil: ${student.nama} (${timeOutStr})${warningMsg}`, "success");
-            // Refresh table
             if (typeof renderTable === 'function') setTimeout(() => renderTable(), 500);
         })
         .catch((err) => {
@@ -506,9 +380,6 @@ function simulateAttendanceOut() {
         });
 }
 
-/**
- * Membuka modal untuk memilih siswa yang akan dipulangkan
- */
 function openSimulateOutModal() {
     if (!currentUser || currentUser.role === 'siswa') {
         showToast("⛔ Akses ditolak!", "error");
@@ -525,11 +396,9 @@ function openSimulateOutModal() {
         return;
     }
     
-    // Hapus modal lama jika ada
     const existingModal = document.getElementById('modal-simulate-out');
     if (existingModal) existingModal.remove();
     
-    // Buat modal HTML
     let modalHtml = `
         <div id="modal-simulate-out" class="modal-overlay open">
             <div class="modal-box" style="max-width: 450px;">
@@ -564,7 +433,6 @@ function openSimulateOutModal() {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    // Update warning delay saat pilihan berubah
     const select = document.getElementById('simulateOutStudentSelect');
     if (select) {
         select.addEventListener('change', function() {
@@ -590,14 +458,10 @@ function openSimulateOutModal() {
                 }
             }
         });
-        // Trigger pertama
         select.dispatchEvent(new Event('change'));
     }
 }
 
-/**
- * Simulasi pulang untuk siswa yang dipilih dari dropdown
- */
 async function simulateOutForSelected() {
     const select = document.getElementById('simulateOutStudentSelect');
     if (!select) return;
@@ -629,7 +493,6 @@ async function simulateOutForSelected() {
     const now = new Date();
     const timeOutStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
     
-    // Validasi delay
     const delayMinutes = parseInt(student.delayOut) || 60;
     let warningMsg = '';
     if (timeIn) {
@@ -753,9 +616,6 @@ function renderFilteredTable(filteredData) {
 
 // ======================== MANUAL ATTENDANCE STATUS (IZIN, SAKIT, ALPHA) ========================
 
-/**
- * Buka modal untuk mengatur ketidakhadiran siswa
- */
 function openAbsenceModal() {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'guru')) {
         showToast("⛔ Hanya Admin/Guru yang dapat mengatur ketidakhadiran!", "error");
@@ -828,7 +688,7 @@ async function loadAbsenceList() {
         const hasIn = attendance && attendance.in;
         const isPresent = hasIn;
         
-        let statusValue = 'alpha'; // default bolos
+        let statusValue = 'alpha';
         let disabled = false;
         let note = '';
         
@@ -898,7 +758,6 @@ async function saveAllAbsenceStatus() {
                 updatedAt: firebase.database.ServerValue.TIMESTAMP
             };
         } else if (status === 'hadir') {
-            // Jika status hadir secara manual, kita hapus dari database manual agar tidak bentrok
             updates[studentId] = null;
         }
     }
@@ -950,27 +809,15 @@ function getTodayAttendanceStats() {
     };
 }
 
-function cleanupAttendanceListeners() {
-    stopAttendancePeriodicRefresh();
-    if (typeof db !== 'undefined' && db) db.ref('absensi').off();
+function cleanupAttendanceUI() {
     if (attendanceDonutChart) {
         attendanceDonutChart.destroy();
         attendanceDonutChart = null;
     }
-    console.log("🧹 Attendance listeners cleaned up");
+    console.log("🧹 Attendance UI cleaned up");
 }
 
-// ======================== AUTO INIT ========================
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => { if (currentUser) initRealtimeAttendance(); }, 1000);
-    });
-} else {
-    setTimeout(() => { if (currentUser) initRealtimeAttendance(); }, 1000);
-}
-
-// Export ke global scope
+// ======================== EKSPOR KE GLOBAL ========================
 window.renderTable = renderTable;
 window.deleteAttendance = deleteAttendance;
 window.simulateAttendance = simulateAttendance;
@@ -981,9 +828,11 @@ window.exportToExcel = exportToExcel;
 window.resetAttendanceFilters = resetAttendanceFilters;
 window.filterByDateRange = filterByDateRange;
 window.getTodayAttendanceStats = getTodayAttendanceStats;
-window.cleanupAttendanceListeners = cleanupAttendanceListeners;
-window.initRealtimeAttendance = initRealtimeAttendance;
+window.cleanupAttendanceUI = cleanupAttendanceUI;
+window.initAttendanceUI = initAttendanceUI;
 window.openAbsenceModal = openAbsenceModal;
 window.loadAbsenceList = loadAbsenceList;
 window.saveAllAbsenceStatus = saveAllAbsenceStatus;
 window.updateAttendanceDonutChart = updateAttendanceDonutChart;
+
+console.log("✅ attendance.js V2.4 loaded - No Firebase listeners (UI only)");

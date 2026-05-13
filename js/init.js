@@ -1,8 +1,12 @@
-// init.js - INISIALISASI TERURUT
-// Tempatkan setelah file config.js, sebelum file lainnya
-// VERSION 2.1 - Dengan dukungan Rekap Absensi
+// init.js - VERSION 3.0 (FIXED - NO DUPLICATE LISTENERS)
+// INISIALISASI DATA DENGAN FLAG SYSTEM
+// HANYA SATU KALI INISIALISASI, TIDAK DUPLIKAT DENGAN main.js
+// ============================================================================
 
 let appInitialized = false;
+let initListenersAttached = false;
+
+// Flags untuk mengecek ketersediaan data
 let dataReady = {
     users: false,
     users_auth: false,
@@ -12,68 +16,106 @@ let dataReady = {
     globalDelay: false
 };
 
+// Callback ketika semua data siap
 function checkAllDataReady() {
-    // Semua data harus ready sebelum render
     const allReady = dataReady.users && dataReady.users_auth && 
                      dataReady.attendance && dataReady.schoolConfig && 
                      dataReady.globalDelay;
     
     if (allReady && currentUser && !appInitialized) {
-        console.log("✅ Semua data siap, memulai render...");
+        console.log("✅ All data ready, initializing app...");
         appInitialized = true;
-        renderAllData();
+        
+        // Beri sedikit delay untuk memastikan DOM siap
+        setTimeout(() => {
+            renderAllData();
+            // Trigger dashboard render setelah data siap
+            if (typeof renderDashboard === 'function') {
+                renderDashboard();
+            }
+            // Trigger chart update
+            if (typeof updateDashboardChart === 'function') {
+                setTimeout(() => updateDashboardChart(), 200);
+            }
+        }, 100);
     }
 }
 
+// Render semua komponen setelah data siap
 function renderAllData() {
-    // Populate dropdowns terlebih dahulu
-    if (typeof populateKelasOptions === 'function') populateKelasOptions();
-    if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-    if (typeof populateStudentFilters === 'function') populateStudentFilters();
-    if (typeof populateFilters === 'function') populateFilters();
-    if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
+    console.log("🎨 renderAllData - Rendering all components...");
     
-    // Render semua tabel
-    if (typeof renderStudentsTable === 'function') renderStudentsTable();
-    if (typeof renderTable === 'function') renderTable();
-    if (typeof renderUsersTable === 'function') renderUsersTable();
-    if (typeof renderCodesTable === 'function') renderCodesTable();
-    
-    // System announcement
-    if (typeof initAnnouncementSystem === 'function') {
-        setTimeout(() => initAnnouncementSystem(), 300);
+    // 1. Populate semua dropdown dinamis
+    if (typeof populateKelasOptions === 'function') {
+        try { populateKelasOptions(); } catch(e) { console.warn("populateKelasOptions error:", e); }
+    }
+    if (typeof populateJurusanOptions === 'function') {
+        try { populateJurusanOptions(); } catch(e) { console.warn("populateJurusanOptions error:", e); }
+    }
+    if (typeof populateStudentFilters === 'function') {
+        try { populateStudentFilters(); } catch(e) { console.warn("populateStudentFilters error:", e); }
+    }
+    if (typeof populateFilters === 'function') {
+        try { populateFilters(); } catch(e) { console.warn("populateFilters error:", e); }
+    }
+    if (typeof populateStudentSelectForCode === 'function') {
+        try { populateStudentSelectForCode(); } catch(e) { console.warn("populateStudentSelectForCode error:", e); }
     }
     
-    // ========== INISIALISASI REKAP ABSENSI ==========
+    // 2. Render semua tabel
+    if (typeof renderStudentsTable === 'function') {
+        try { renderStudentsTable(); } catch(e) { console.warn("renderStudentsTable error:", e); }
+    }
+    if (typeof renderTable === 'function') {
+        try { renderTable(); } catch(e) { console.warn("renderTable error:", e); }
+    }
+    if (typeof renderUsersTable === 'function') {
+        try { renderUsersTable(); } catch(e) { console.warn("renderUsersTable error:", e); }
+    }
+    if (typeof renderCodesTable === 'function') {
+        try { renderCodesTable(); } catch(e) { console.warn("renderCodesTable error:", e); }
+    }
+    
+    // 3. Inisialisasi sistem pengumuman (hanya sekali)
+    if (typeof initAnnouncementSystem === 'function') {
+        setTimeout(() => {
+            try { initAnnouncementSystem(); } catch(e) { console.warn("initAnnouncementSystem error:", e); }
+        }, 300);
+    }
+    
+    // 4. Inisialisasi sistem rekap absensi
     if (typeof initRekap === 'function') {
         setTimeout(() => {
-            initRekap();
-            console.log("📊 Rekap system initialized from renderAllData");
+            try { 
+                initRekap(); 
+                console.log("📊 Rekap system initialized");
+            } catch(e) { console.warn("initRekap error:", e); }
         }, 500);
     }
     
-    // Update UI tambahan
-    if (typeof updateProfileDelayDisplay === 'function') updateProfileDelayDisplay();
+    // 5. Update UI tambahan
+    if (typeof updateProfileDelayDisplay === 'function') {
+        try { updateProfileDelayDisplay(); } catch(e) { console.warn("updateProfileDelayDisplay error:", e); }
+    }
     
-    // Floating button
+    // 6. Setup floating buttons berdasarkan role
     const floatingBtn = document.getElementById('floatingAnnouncementBtn');
     if (floatingBtn && currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru')) {
         floatingBtn.style.display = 'flex';
     }
     
-    // Set default date untuk rekap custom range (30 hari terakhir)
+    // 7. Setup default dates untuk rekap custom range
     setupRekapDefaultDates();
+    
+    console.log("✅ renderAllData completed");
 }
 
-/**
- * Setup default dates untuk rekap custom range
- */
+// Setup default dates untuk rekap custom range (30 hari terakhir)
 function setupRekapDefaultDates() {
     const startInput = document.getElementById('rekapStartDate');
     const endInput = document.getElementById('rekapEndDate');
     
     if (startInput && endInput) {
-        // Hanya set jika belum ada value
         if (!startInput.value) {
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - 30);
@@ -86,154 +128,346 @@ function setupRekapDefaultDates() {
     }
 }
 
-// Override listener di db.js untuk track data ready
-// Hapus atau modifikasi listener yang ada di db.js, lalu tambahkan:
+// ======================== LISTENER INITIALIZATION ========================
+// HANYA SATU KALI - TIDAK DUPLIKAT DENGAN main.js
 
-// Data Users (Siswa FP)
-db.ref('users').on('value', (snapshot) => {
-    const data = snapshot.val();
-    dbData.users = [];
-    if (data) {
-        Object.keys(data).forEach(key => {
-            dbData.users.push({ id: key, ...data[key] });
-        });
+function initDataListeners() {
+    if (initListenersAttached) {
+        console.log("⚠️ Data listeners already attached, skipping...");
+        return;
     }
-    dataReady.users = true;
-    checkAllDataReady();
-});
-
-// Data Auth Users
-db.ref('users_auth').on('value', (snapshot) => {
-    const data = snapshot.val();
-    dbData.users_auth = [];
-    if (data) {
-        Object.keys(data).forEach(uid => {
-            dbData.users_auth.push({ uid: uid, ...data[uid] });
-        });
-    }
-    dataReady.users_auth = true;
-    checkAllDataReady();
-});
-
-// Data Absensi
-db.ref('absensi').on('value', (snapshot) => {
-    const data = snapshot.val();
-    dbData.attendance = [];
-    if (data) {
-        Object.keys(data).forEach(date => {
-            const dailyRecords = data[date];
-            if (dailyRecords) {
-                Object.keys(dailyRecords).forEach(id => {
-                    const record = dailyRecords[id];
-                    if (record) {
-                        dbData.attendance.push({
-                            id: date + "-" + id,
-                            studentId: id,
-                            timestamp: date + "T" + (record.in || "00:00"),
-                            date: date,
-                            timeIn: record.in,
-                            timeOut: record.out,
-                            nama: record.nama,
-                            kelas: record.kelas,
-                            jurusan: record.jurusan,
-                            status: (record.out) ? "Pulang" : "Hadir"
-                        });
-                    }
-                });
+    
+    console.log("🔌 Attaching Firebase data listeners (ONCE)...");
+    initListenersAttached = true;
+    
+    // ========== 1. LISTENER DATA SISWA (users) ==========
+    db.ref('users').on('value', (snapshot) => {
+        const data = snapshot.val();
+        const oldCount = dbData.users?.length || 0;
+        
+        dbData.users = [];
+        if (data) {
+            Object.keys(data).forEach(key => {
+                dbData.users.push({ id: key, ...data[key] });
+            });
+        }
+        
+        const newCount = dbData.users.length;
+        if (oldCount !== newCount) {
+            console.log(`📊 Users data updated: ${oldCount} → ${newCount} students`);
+        }
+        
+        dataReady.users = true;
+        checkAllDataReady();
+        
+        // Trigger UI updates yang bergantung pada data siswa
+        if (typeof renderStudentsTable === 'function' && document.getElementById('tab-students')?.classList.contains('active')) {
+            renderStudentsTable();
+        }
+        if (typeof populateStudentFilters === 'function') {
+            populateStudentFilters();
+        }
+        if (typeof populateFilters === 'function') {
+            populateFilters();
+        }
+        if (typeof populateStudentSelectForCode === 'function') {
+            populateStudentSelectForCode();
+        }
+        if (typeof updateStudentStatistics === 'function') {
+            updateStudentStatistics();
+        }
+    });
+    
+    // ========== 2. LISTENER DATA USER AUTH (users_auth) ==========
+    db.ref('users_auth').on('value', (snapshot) => {
+        const data = snapshot.val();
+        const oldCount = dbData.users_auth?.length || 0;
+        
+        dbData.users_auth = [];
+        if (data) {
+            Object.keys(data).forEach(uid => {
+                dbData.users_auth.push({ uid: uid, ...data[uid] });
+            });
+        }
+        
+        const newCount = dbData.users_auth.length;
+        if (oldCount !== newCount) {
+            console.log(`👥 Users auth updated: ${oldCount} → ${newCount} users`);
+        }
+        
+        dataReady.users_auth = true;
+        checkAllDataReady();
+        
+        // Update currentUser jika data berubah
+        if (currentUser && currentUser.uid) {
+            const updatedUser = dbData.users_auth.find(u => u.uid === currentUser.uid);
+            if (updatedUser) {
+                const oldRole = currentUser.role;
+                currentUser = { ...currentUser, ...updatedUser };
+                if (typeof saveUserToLocalStorage === 'function') {
+                    saveUserToLocalStorage(currentUser);
+                }
+                if (oldRole !== currentUser.role && typeof applyRolePermissions === 'function') {
+                    applyRolePermissions();
+                }
             }
-        });
-    }
-    dbData.attendance.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    dataReady.attendance = true;
-    checkAllDataReady();
+        }
+        
+        // Render tabel users jika aktif
+        if (typeof renderUsersTable === 'function' && document.getElementById('tab-users')?.classList.contains('active')) {
+            renderUsersTable();
+        }
+    });
     
-    // Jika rekap sudah diinisialisasi, refresh data rekap
-    if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
-        setTimeout(() => loadRekap(), 100);
-    }
-});
+    // ========== 3. LISTENER DATA ABSENSI ==========
+    db.ref('absensi').on('value', (snapshot) => {
+        const data = snapshot.val();
+        const oldCount = dbData.attendance?.length || 0;
+        
+        dbData.attendance = [];
+        if (data) {
+            Object.keys(data).forEach(date => {
+                const dailyRecords = data[date];
+                if (dailyRecords) {
+                    Object.keys(dailyRecords).forEach(id => {
+                        const record = dailyRecords[id];
+                        if (record) {
+                            dbData.attendance.push({
+                                id: date + "-" + id,
+                                studentId: id,
+                                timestamp: date + "T" + (record.in || "00:00"),
+                                date: date,
+                                timeIn: record.in,
+                                timeOut: record.out,
+                                nama: record.nama,
+                                kelas: record.kelas,
+                                jurusan: record.jurusan,
+                                status: (record.out) ? "Pulang" : "Hadir"
+                            });
+                        }
+                    });
+                }
+            });
+        }
+        dbData.attendance.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        const newCount = dbData.attendance.length;
+        if (oldCount !== newCount) {
+            console.log(`📋 Attendance updated: ${oldCount} → ${newCount} records`);
+        }
+        
+        dataReady.attendance = true;
+        checkAllDataReady();
+        
+        // Trigger UI updates
+        if (typeof renderTable === 'function' && document.getElementById('tab-attendance')?.classList.contains('active')) {
+            renderTable();
+        }
+        
+        // Update dashboard jika aktif
+        if (document.getElementById('tab-dashboard')?.classList.contains('active')) {
+            if (typeof renderDashboard === 'function') {
+                renderDashboard();
+            }
+            if (typeof updateDashboardChart === 'function') {
+                setTimeout(() => updateDashboardChart(), 100);
+            }
+            if (typeof updateAttendanceDonutChart === 'function') {
+                updateAttendanceDonutChart();
+            }
+        }
+        
+        // Update rekap jika aktif
+        if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
+            setTimeout(() => loadRekap(), 100);
+        }
+    });
+    
+    // ========== 4. LISTENER SCHOOL CONFIG ==========
+    db.ref('school_config').on('value', (snapshot) => {
+        const data = snapshot.val();
+        
+        if (data) {
+            if (typeof currentSchoolConfig !== 'undefined') {
+                currentSchoolConfig.type = data.type || 'smp';
+                currentSchoolConfig.majors = data.majors || [];
+                currentSchoolConfig.classes = data.classes || [];
+            }
+        } else {
+            if (typeof currentSchoolConfig !== 'undefined') {
+                currentSchoolConfig.type = 'smp';
+                currentSchoolConfig.majors = [];
+                currentSchoolConfig.classes = [];
+            }
+        }
+        
+        console.log(`🏫 School config loaded: type=${currentSchoolConfig?.type}, classes=${currentSchoolConfig?.classes?.length}, majors=${currentSchoolConfig?.majors?.length}`);
+        
+        dataReady.schoolConfig = true;
+        checkAllDataReady();
+        
+        // Update UI
+        const typeSelect = document.getElementById('schoolTypeSelect');
+        if (typeSelect && currentSchoolConfig) {
+            typeSelect.value = currentSchoolConfig.type;
+        }
+        
+        const majorsDiv = document.getElementById('majorsManager');
+        if (majorsDiv && currentSchoolConfig) {
+            majorsDiv.style.display = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both') ? 'block' : 'none';
+        }
+        
+        if (typeof renderMajorsList === 'function') {
+            renderMajorsList();
+        }
+        if (typeof renderClassesList === 'function') {
+            renderClassesList();
+        }
+        if (typeof populateKelasOptions === 'function') {
+            populateKelasOptions();
+        }
+        if (typeof populateJurusanOptions === 'function') {
+            populateJurusanOptions();
+        }
+        if (typeof populateStudentFilters === 'function') {
+            populateStudentFilters();
+        }
+        
+        // Refresh rekap jika perlu
+        if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
+            setTimeout(() => loadRekap(), 100);
+        }
+    });
+    
+    // ========== 5. LISTENER GLOBAL DELAY ==========
+    db.ref('settings/delayOut').on('value', (snapshot) => {
+        const delay = snapshot.val();
+        console.log(`⏰ Global delay: ${delay || 60} minutes`);
+        
+        const displaySpan = document.getElementById('globalDelayDisplay');
+        if (displaySpan) {
+            if (typeof formatDelayText === 'function') {
+                displaySpan.textContent = formatDelayText(delay || 60);
+            } else {
+                displaySpan.textContent = delay ? `${delay} menit` : '60 menit';
+            }
+        }
+        
+        if (typeof setGlobalDelayFormValue === 'function') {
+            setGlobalDelayFormValue(delay || 60);
+        }
+        
+        dataReady.globalDelay = true;
+        checkAllDataReady();
+    });
+    
+    // ========== 6. LISTENER KODE REGISTRASI (non-blocking) ==========
+    db.ref('codes').on('value', (snapshot) => {
+        const data = snapshot.val();
+        
+        // Cleanup expired codes (5 jam)
+        const now = Date.now();
+        const fiveHoursInMs = 5 * 60 * 60 * 1000;
+        if (data) {
+            Object.keys(data).forEach(key => {
+                const item = data[key];
+                if (item && item.createdAt && (now - item.createdAt > fiveHoursInMs)) {
+                    db.ref('codes/' + key).remove();
+                    console.log(`🗑️ Expired code removed: ${key}`);
+                }
+            });
+        }
+        
+        dbData.codes = [];
+        if (data) {
+            Object.keys(data).forEach(key => {
+                dbData.codes.push({ code: key, ...data[key] });
+            });
+        }
+        
+        if (typeof renderCodesTable === 'function') {
+            renderCodesTable();
+        }
+        if (typeof updateCodesStatistics === 'function') {
+            updateCodesStatistics();
+        }
+    });
+    
+    // ========== 7. LISTENER NAMA SEKOLAH ==========
+    db.ref('system_config/schoolName').on('value', (snapshot) => {
+        const name = snapshot.val();
+        const display = name || 'Sistem Absensi';
+        
+        const headerTitle = document.getElementById('schoolNameDisplay');
+        if (headerTitle) headerTitle.textContent = display;
+        
+        const inputField = document.getElementById('inputSchoolName');
+        if (inputField && inputField.value !== name) {
+            inputField.value = name || '';
+        }
+    });
+    
+    console.log("✅ All Firebase data listeners attached successfully");
+}
 
-// School Config
-db.ref('school_config').on('value', (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-        currentSchoolConfig.type = data.type || 'smp';
-        currentSchoolConfig.majors = data.majors || [];
-        currentSchoolConfig.classes = data.classes || [];
+// ======================== CLEANUP FUNCTION ========================
+function cleanupInitListeners() {
+    if (initListenersAttached) {
+        console.log("🧹 Cleaning up init.js listeners...");
+        
+        // Hentikan semua listener yang dibuat di init.js
+        db.ref('users').off();
+        db.ref('users_auth').off();
+        db.ref('absensi').off();
+        db.ref('school_config').off();
+        db.ref('settings/delayOut').off();
+        db.ref('codes').off();
+        db.ref('system_config/schoolName').off();
+        
+        initListenersAttached = false;
+        appInitialized = false;
+        
+        // Reset flags
+        dataReady = {
+            users: false,
+            users_auth: false,
+            attendance: false,
+            codes: false,
+            schoolConfig: false,
+            globalDelay: false
+        };
+        
+        console.log("✅ Init listeners cleaned up");
+    }
+}
+
+// ======================== AUTO INITIALIZATION ========================
+// Tunggu Firebase dan DOM siap sebelum attach listeners
+
+function waitForFirebaseAndInit() {
+    if (typeof db === 'undefined' || !db) {
+        console.log("⏳ Waiting for Firebase...");
+        setTimeout(waitForFirebaseAndInit, 500);
+        return;
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => initDataListeners(), 100);
+        });
     } else {
-        currentSchoolConfig.type = 'smp';
-        currentSchoolConfig.majors = [];
-        currentSchoolConfig.classes = [];
+        setTimeout(() => initDataListeners(), 100);
     }
-    dataReady.schoolConfig = true;
-    checkAllDataReady();
-    
-    // Update UI langsung
-    const typeSelect = document.getElementById('schoolTypeSelect');
-    if (typeSelect) typeSelect.value = currentSchoolConfig.type;
-    const majorsDiv = document.getElementById('majorsManager');
-    if (majorsDiv) {
-        majorsDiv.style.display = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both') ? 'block' : 'none';
-    }
-    if (typeof renderMajorsList === 'function') renderMajorsList();
-    if (typeof renderClassesList === 'function') renderClassesList();
-    
-    // Refresh rekap jika perlu
-    if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
-        setTimeout(() => loadRekap(), 100);
-    }
-});
+}
 
-// Global Delay
-db.ref('settings/delayOut').on('value', (snapshot) => {
-    const delay = snapshot.val();
-    const displaySpan = document.getElementById('globalDelayDisplay');
-    if (displaySpan) {
-        displaySpan.textContent = typeof formatDelayText === 'function' ? formatDelayText(delay) : (delay ? `${delay} menit` : '60 menit');
-    }
-    if (typeof setGlobalDelayFormValue === 'function') {
-        setGlobalDelayFormValue(delay || 60);
-    }
-    dataReady.globalDelay = true;
-    checkAllDataReady();
-});
+// Mulai inisialisasi
+waitForFirebaseAndInit();
 
-// Codes (tidak blocking untuk render awal)
-db.ref('codes').on('value', (snapshot) => {
-    const data = snapshot.val();
-    if (typeof cleanupOldCodes === 'function') cleanupOldCodes(data);
-    dbData.codes = [];
-    if (data) {
-        Object.keys(data).forEach(key => {
-            dbData.codes.push({ code: key, ...data[key] });
-        });
-    }
-    if (typeof renderCodesTable === 'function') renderCodesTable();
-});
+// ======================== EXPORT KE GLOBAL ========================
+window.checkAllDataReady = checkAllDataReady;
+window.renderAllData = renderAllData;
+window.setupRekapDefaultDates = setupRekapDefaultDates;
+window.initDataListeners = initDataListeners;
+window.cleanupInitListeners = cleanupInitListeners;
 
-// ========== LISTENER UNTUK REKAP ==========
-// Refresh rekap ketika ada perubahan data absensi
-db.ref('absensi').on('child_added', (snapshot) => {
-    // Jika tab rekap sedang aktif, refresh data
-    if (document.getElementById('tab-rekap')?.classList.contains('active') && typeof loadRekap === 'function') {
-        setTimeout(() => loadRekap(), 200);
-    }
-});
-
-db.ref('absensi').on('child_changed', (snapshot) => {
-    // Jika tab rekap sedang aktif, refresh data
-    if (document.getElementById('tab-rekap')?.classList.contains('active') && typeof loadRekap === 'function') {
-        setTimeout(() => loadRekap(), 200);
-    }
-});
-
-// ========== LISTENER UNTUK SISWA ==========
-// Refresh rekap ketika ada perubahan data siswa (nama, kelas, jurusan)
-db.ref('users').on('child_changed', (snapshot) => {
-    // Jika tab rekap sedang aktif, refresh data
-    if (document.getElementById('tab-rekap')?.classList.contains('active') && typeof loadRekap === 'function') {
-        setTimeout(() => loadRekap(), 200);
-    }
-});
-
-console.log("✅ init.js loaded - Realtime listeners configured");
+console.log("✅ init.js V3.0 loaded - No duplicate listeners");

@@ -1,7 +1,26 @@
+// ==================== auth.js - VERSION 3.0 (SECURE) ====================
+// Fitur: Login, Registrasi via Cloud Function, Logout, Reset Password
+// Perubahan utama:
+// 1. Registrasi dipindahkan ke Cloud Function (server-side)
+// 2. Menambahkan rate limiting sederhana untuk registrasi
+// 3. Sanitasi input email sebelum dikirim
+// 4. Re-authentication untuk aksi sensitif (opsional)
+// =========================================================================
+
+// --- RATE LIMITING untuk Registrasi (client-side) ---
+let lastRegisterAttempt = 0;
+const REGISTER_COOLDOWN = 30000; // 30 detik
+
+// --- Fungsi Login (tetap sama, namun dengan validasi tambahan) ---
 function handleLogin(e) {
     e.preventDefault();
-    const email = document.getElementById('loginEmail').value;
+    const email = document.getElementById('loginEmail').value.trim();
     const pass = document.getElementById('loginPassword').value;
+
+    if (!email || !pass) {
+        showToast("Email dan password wajib diisi!", "error");
+        return;
+    }
 
     const btn = document.getElementById('btnLoginSubmit');
     btn.innerText = "Memproses...";
@@ -11,12 +30,11 @@ function handleLogin(e) {
         .then((userCredential) => {
             const user = userCredential.user;
             // Ambil data role dan detail user dari database
-            db.ref('users_auth/' + user.uid).once('value').then((snapshot) => {
+            return db.ref('users_auth/' + user.uid).once('value').then((snapshot) => {
                 const userData = snapshot.val();
                 if (userData) {
-                    // Normalisasi Kelas di local agar format konsisten
-                    if(userData.kelas) userData.kelas = userData.kelas.toUpperCase();
-
+                    // Normalisasi Kelas
+                    if (userData.kelas) userData.kelas = userData.kelas.toUpperCase();
                     currentUser = { uid: user.uid, email: user.email, ...userData };
                     initApp();
                     showToast(`Selamat datang, ${userData.nama}`);
@@ -27,7 +45,11 @@ function handleLogin(e) {
             });
         })
         .catch((error) => {
-            showToast(error.message, "error");
+            let msg = error.message;
+            if (error.code === 'auth/user-not-found') msg = "Email tidak terdaftar!";
+            else if (error.code === 'auth/wrong-password') msg = "Password salah!";
+            else if (error.code === 'auth/invalid-email') msg = "Format email tidak valid!";
+            showToast(msg, "error");
         })
         .finally(() => {
             btn.innerText = "MASUK";
@@ -35,147 +57,236 @@ function handleLogin(e) {
         });
 }
 
-function handleRegister(e) {
+// --- Fungsi Registrasi (Menggunakan Cloud Function) ---
+async function handleRegister(e) {
     e.preventDefault();
-    
-    // 1. Ambil Tipe Role (Siswa atau Guru)
-    const regType = document.querySelector('input[name="regRoleType"]:checked').value;
-    
-    const codeInput = document.getElementById('regCode').value.toUpperCase();
-    const email = document.getElementById('regEmail').value;
+
+    // Rate limiting
+    const now = Date.now();
+    if (now - lastRegisterAttempt < REGISTER_COOLDOWN) {
+        const wait = Math.ceil((REGISTER_COOLDOWN - (now - lastRegisterAttempt)) / 1000);
+        showToast(`Tunggu ${wait} detik sebelum mencoba lagi`, "error");
+        return;
+    }
+    lastRegisterAttempt = now;
+
+    // Ambil data form
+    const regType = document.querySelector('input[name="regRoleType"]:checked')?.value;
+    const codeInput = document.getElementById('regCode').value.trim().toUpperCase();
+    const email = document.getElementById('regEmail').value.trim();
     const pass = document.getElementById('regPassword').value;
+    const confirmPass = document.getElementById('regConfirmPassword')?.value; // (optional, tambahkan field confirm password di HTML)
 
-    // 2. Cek Kode Terlebih Dahulu di Database
-    db.ref('codes/' + codeInput).once('value').then((snapshot) => {
-        const codeData = snapshot.val();
-        
-        // Validasi Kode Umum
-        if (!codeData) {
-            showToast("Kode Pendaftaran tidak valid!", "error");
+    // Validasi dasar
+    if (!regType || !codeInput || !email || !pass) {
+        showToast("Semua bidang wajib diisi!", "error");
+        return;
+    }
+    if (!isValidEmail(email)) {
+        showToast("Format email tidak valid!", "error");
+        return;
+    }
+    if (pass.length < 6) {
+        showToast("Password minimal 6 karakter!", "error");
+        return;
+    }
+    if (confirmPass !== undefined && pass !== confirmPass) {
+        showToast("Password dan konfirmasi tidak cocok!", "error");
+        return;
+    }
+
+    // Data tambahan tergantung tipe
+    let extraData = {};
+    if (regType === 'siswa') {
+        const inputId = document.getElementById('regGeneratedId').value.trim();
+        if (!inputId) {
+            showToast("Masukkan ID Siswa!", "error");
             return;
         }
-        if (codeData.used) {
-            showToast("Kode Pendaftaran sudah dipakai!", "error");
+        extraData = { fpId: inputId };
+    } else {
+        const namaGuru = document.getElementById('regNama').value.trim();
+        const subjectGuru = document.getElementById('regSubject').value.trim();
+        if (!namaGuru) {
+            showToast("Nama Guru wajib diisi!", "error");
             return;
         }
+        extraData = { nama: namaGuru, subject: subjectGuru };
+    }
 
-        // 3. Validasi Berdasarkan Tipe (SISWA vs GURU)
-        if (regType === 'siswa') {
-            // --- FLOW SISWA (Data Otomatis dari FP) ---
-            if (codeData.type !== 'siswa') {
-                showToast("Kode ini bukan untuk Siswa!", "error");
-                return;
-            }
-            
-            const inputId = document.getElementById('regGeneratedId').value.trim();
-            if (!inputId) {
-                showToast("Masukkan ID Siswa (Generated ID)!", "error");
-                return;
-            }
+    // Tampilkan loading
+    const btn = document.getElementById('btnRegSubmit');
+    const originalText = btn.innerText;
+    btn.innerText = "⏳ Mendaftar...";
+    btn.disabled = true;
 
-            // Cek apakah ID Input cocok dengan Linked ID di Kode
-            if (codeData.linkedId != inputId) {
-                showToast("ID Siswa tidak cocok dengan Kode!", "error");
-                return;
-            }
+    try {
+        // Panggil Cloud Function (harus sudah dideploy)
+        const registerFunction = firebase.functions().httpsCallable('registerUser');
+        const result = await registerFunction({
+            type: regType,
+            code: codeInput,
+            email: email,
+            password: pass,
+            extraData: extraData
+        });
 
-            // 4. AMBIL DATA SISWA DARI NODE 'users' (DATA FINGERPRINT)
-            db.ref('users/' + inputId).once('value').then((snapUser) => {
-                const studentFpData = snapUser.val();
-
-                if (!studentFpData) {
-                    showToast("ID Siswa tidak ditemukan di Database Fingerprint!", "error");
-                    return;
-                }
-
-                // Data Nama, Kelas, Jurusan DIAMBIL OTOMATIS dari Data Fingerprint
-                // TAMBAHKAN fpId UNTUK TRACKING DUPLIKASI
-                createUserAccount(email, pass, {
-                    nama: studentFpData.nama,        // Ambil dari FP
-                    kelas: studentFpData.kelas,      // Ambil dari FP
-                    jurusan: studentFpData.jurusan,  // Ambil dari FP
-                    fpId: inputId,                   // <--- PENTING: Simpan ID Fingerprint
-                    email: email,
-                    role: "siswa",
-                    subject: "",                    // Siswa kosong
-                    photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(studentFpData.nama)}&background=random`,
-                    registeredAt: firebase.database.ServerValue.TIMESTAMP
-                }, codeInput);
-            });
-
-        } else {
-            // --- FLOW GURU (Input Manual) ---
-            if (codeData.type !== 'guru') {
-                showToast("Kode ini bukan untuk Guru!", "error");
-                return;
-            }
-
-            const namaGuru = document.getElementById('regNama').value;
-            const subjectGuru = document.getElementById('regSubject').value; // AMBIL MATA PELAJARAN
-
-            if(!namaGuru) {
-                showToast("Nama Guru wajib diisi!", "error");
-                return;
-            }
-
-            // Proses Buat User Guru
-            // Guru tidak mengisi kelas/jurusan di form ini, di-set kosong
-            // TAMBAHKAN fpId: null
-            createUserAccount(email, pass, {
-                nama: namaGuru, 
-                email: email, 
-                role: "guru",
-                fpId: null, // <--- PENTING: Guru tidak punya ID Fingerprint
-                kelas: "", 
-                jurusan: "",
-                subject: subjectGuru,          // <--- PENTING: Simpan Mata Pelajaran
-                photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(namaGuru)}&background=random`,
-                registeredAt: firebase.database.ServerValue.TIMESTAMP
-            }, codeInput);
-        }
-    });
-}
-
-// Helper Function untuk membuat akun agar kode tidak berulang
-function createUserAccount(email, pass, userData, codeInput) {
-    auth.createUserWithEmailAndPassword(email, pass)
-        .then((userCredential) => {
-            const user = userCredential.user;
-            
-            // Simpan data user ke Database (node users_auth)
-            db.ref('users_auth/' + user.uid).set(userData);
-
-            // Tandai kode sebagai terpakai
-            db.ref('codes/' + codeInput).update({ used: true, userId: user.uid });
-
-            showToast("Pendaftaran Berhasil! Silakan Login.");
+        if (result.data.success) {
+            showToast("Pendaftaran Berhasil! Silakan Login.", "success");
             toggleAuth('login');
             document.getElementById('registerForm').reset();
-            
-            // Reset tampilan radio button ke default (Siswa)
-            if(typeof toggleRegisterInput === 'function') toggleRegisterInput();
-        })
-        .catch((err) => {
-            showToast(err.message, "error");
-        });
-}
-
-function handleLogout() {
-    auth.signOut().then(() => { location.reload(); });
-}
-
-function toggleAuth(mode) {
-    if(mode === 'register') {
-        document.getElementById('login-card').style.display = 'none';
-        document.getElementById('register-card').style.display = 'block';
-    } else {
-        document.getElementById('login-card').style.display = 'block';
-        document.getElementById('register-card').style.display = 'none';
+            if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
+        } else {
+            showToast(result.data.message || "Pendaftaran gagal", "error");
+        }
+    } catch (error) {
+        console.error("Register error:", error);
+        let msg = error.message;
+        if (error.code === 'functions/internal') msg = "Server error, coba lagi nanti.";
+        else if (msg.includes('Kode tidak valid')) msg = "Kode pendaftaran tidak valid atau sudah kadaluarsa.";
+        showToast(msg, "error");
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
     }
 }
 
+// --- Helper validasi email ---
+function isValidEmail(email) {
+    return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
+}
+
+// --- Fungsi Logout (dengan cleanup global) ---
+function handleLogout() {
+    // Panggil semua fungsi cleanup dari berbagai modul (pastikan sudah didefinisikan)
+    if (typeof cleanupAttendanceListeners === 'function') cleanupAttendanceListeners();
+    if (typeof cleanupStudentsSystem === 'function') cleanupStudentsSystem();
+    if (typeof cleanupUsersSystem === 'function') cleanupUsersSystem();
+    if (typeof cleanupChatSystem === 'function') cleanupChatSystem();
+    if (typeof cleanupFriendsSystem === 'function') cleanupFriendsSystem();
+    if (typeof cleanupStatusSystem === 'function') cleanupStatusSystem();
+    if (typeof cleanupSettingsSystem === 'function') cleanupSettingsSystem();
+    if (typeof cleanupRekap === 'function') cleanupRekap();
+    if (typeof cleanupUI === 'function') cleanupUI();
+    if (typeof cleanupAnnouncementSystem === 'function') cleanupAnnouncementSystem();
+
+    auth.signOut().then(() => {
+        // Hapus session local
+        if (typeof clearUserSession === 'function') clearUserSession();
+        location.reload();
+    }).catch(err => {
+        console.error("Logout error:", err);
+        location.reload();
+    });
+}
+
+// --- Fungsi Reset Password (tetap sama) ---
+function processForgot() {
+    const email = document.getElementById('forgotEmail').value.trim();
+    if (!email) {
+        showToast('Masukkan email terlebih dahulu!', 'error');
+        return;
+    }
+    const btn = document.querySelector('#modal-forgot .btn-save');
+    if (btn) {
+        btn.innerText = '📧 Mengirim...';
+        btn.disabled = true;
+    }
+    auth.sendPasswordResetEmail(email)
+        .then(() => {
+            showToast(`✅ Link reset password telah dikirim ke ${email}`, 'success');
+            closeModal('modal-forgot');
+        })
+        .catch(error => {
+            let msg = error.message;
+            if (error.code === 'auth/user-not-found') msg = '❌ Email tersebut belum terdaftar!';
+            else if (error.code === 'auth/invalid-email') msg = '❌ Format email tidak valid!';
+            showToast(msg, 'error');
+        })
+        .finally(() => {
+            if (btn) {
+                btn.innerText = 'Kirim Link';
+                btn.disabled = false;
+            }
+        });
+}
+
+// --- Fungsi Ganti Password (memerlukan re-authentication untuk keamanan) ---
+async function handleChangePassword(e) {
+    e.preventDefault();
+    const oldPass = document.getElementById('cpOld').value;
+    const newPass = document.getElementById('cpNew').value;
+    const confirmPass = document.getElementById('cpConfirm').value;
+
+    if (!oldPass || !newPass || !confirmPass) {
+        showToast("Semua field harus diisi!", "error");
+        return;
+    }
+    if (newPass !== confirmPass) {
+        showToast("Password baru tidak cocok!", "error");
+        return;
+    }
+    if (newPass.length < 6) {
+        showToast("Password minimal 6 karakter!", "error");
+        return;
+    }
+
+    const btn = document.querySelector('#modal-change-pass button[type="submit"]');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Memproses...";
+    }
+
+    const user = auth.currentUser;
+    const credential = firebase.auth.EmailAuthProvider.credential(user.email, oldPass);
+    try {
+        await user.reauthenticateWithCredential(credential);
+        await user.updatePassword(newPass);
+        showToast("✅ Password berhasil diubah!", "success");
+        closeModal('modal-change-pass');
+        document.getElementById('cpNew').value = '';
+        document.getElementById('cpConfirm').value = '';
+    } catch (err) {
+        console.error(err);
+        if (err.code === 'auth/wrong-password') showToast("Password lama salah!", "error");
+        else if (err.code === 'auth/requires-recent-login') showToast("Silakan logout dan login kembali untuk ubah password.", "error");
+        else showToast("Gagal: " + err.message, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Simpan";
+        }
+    }
+}
+
+// --- Fungsi toggle tampilan form login/register ---
+function toggleAuth(mode) {
+    const loginCard = document.getElementById('login-card');
+    const registerCard = document.getElementById('register-card');
+    if (mode === 'register') {
+        if (loginCard) loginCard.style.display = 'none';
+        if (registerCard) registerCard.style.display = 'block';
+    } else {
+        if (loginCard) loginCard.style.display = 'block';
+        if (registerCard) registerCard.style.display = 'none';
+    }
+}
+
+// --- Toggle password visibility ---
 function togglePassword(id, icon) {
     const input = document.getElementById(id);
+    if (!input) return;
     input.type = input.type === "password" ? "text" : "password";
-    icon.style.color = input.type === "text" ? "var(--primary)" : "#aaa";
+    if (icon) icon.style.color = input.type === "text" ? "var(--primary)" : "#aaa";
 }
+
+// --- Ekspor ke global ---
+window.handleLogin = handleLogin;
+window.handleRegister = handleRegister;
+window.handleLogout = handleLogout;
+window.toggleAuth = toggleAuth;
+window.togglePassword = togglePassword;
+window.processForgot = processForgot;
+window.handleChangePassword = handleChangePassword;
+
+console.log("✅ auth.js (secure) loaded");
