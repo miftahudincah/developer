@@ -1,6 +1,7 @@
-// attendance.js - VERSION 2.2 (Dengan Chart Ringkasan Hari Ini)
+// attendance.js - VERSION 2.3 (Dengan Simulasi Scan Pulang)
 // Mengelola data absensi, filter, validasi delay pulang, real-time updates,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
+// NEW: Fitur simulasi scan pulang otomatis dan manual pilih siswa.
 
 // ======================== GLOBAL VARIABLES ========================
 let lastAttendanceCount = 0;
@@ -299,8 +300,8 @@ async function renderTable() {
                 <td>${statusHtml}</td>
                 <td class="role-guru role-admin">
                     <button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button>
-                </td>
-            </tr>
+                 </td>
+             </tr>
         `;
     });
     
@@ -368,7 +369,7 @@ function deleteAttendance(id) {
         });
 }
 
-// ======================== SIMULATE ATTENDANCE ========================
+// ======================== SIMULATE ATTENDANCE MASUK ========================
 
 function simulateAttendance() {
     if (!currentUser) {
@@ -421,8 +422,252 @@ function simulateAttendance() {
         .then(() => showToast(`✅ Simulasi Absen Masuk Berhasil: ${s.nama} (${timeStr})`, "success"))
         .catch((err) => showToast("❌ Gagal simulasi: " + err.message, "error"))
         .finally(() => {
-            if (btn) { btn.disabled = false; btn.innerHTML = originalText || '📷 Simulasi Scan FP'; }
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText || '📷 Simulasi Scan Masuk'; }
         });
+}
+
+// ======================== SIMULATE ATTENDANCE PULANG (NEW) ========================
+
+/**
+ * Simulasi absen PULANG otomatis untuk siswa yang sudah absen masuk hari ini
+ */
+function simulateAttendanceOut() {
+    if (!currentUser) {
+        showToast("Anda harus login!", "error");
+        return;
+    }
+    if (currentUser.role === 'siswa') {
+        showToast("⛔ Simulasi hanya untuk Admin/Guru!", "error");
+        return;
+    }
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    // Filter siswa yang sudah absen masuk hari ini (status Hadir, belum pulang)
+    const todayAttendance = dbData.attendance.filter(a => 
+        a.date === todayStr && a.status === 'Hadir'
+    );
+    
+    if (todayAttendance.length === 0) {
+        showToast("⚠️ Tidak ada siswa yang absen masuk hari ini!", "warning");
+        return;
+    }
+    
+    // Pilih random dari siswa yang sudah masuk
+    const selected = todayAttendance[Math.floor(Math.random() * todayAttendance.length)];
+    const student = dbData.users.find(s => s.id == selected.studentId);
+    
+    if (!student) {
+        showToast("❌ Data siswa tidak ditemukan!", "error");
+        return;
+    }
+    
+    const now = new Date();
+    const timeOutStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+    
+    // Validasi delay pulang
+    const delayMinutes = parseInt(student.delayOut) || 60;
+    const timeInDate = new Date(`${selected.date}T${selected.timeIn}`);
+    const timeOutDate = new Date();
+    const diffMinutes = (timeOutDate - timeInDate) / (1000 * 60);
+    
+    let warningMsg = '';
+    if (diffMinutes < delayMinutes) {
+        const remaining = Math.ceil(delayMinutes - diffMinutes);
+        warningMsg = ` ⚠️ (Belum ${remaining} menit lagi, force pulang?)`;
+        if (!confirm(`⚠️ Siswa ${student.nama} absen masuk pukul ${selected.timeIn}. Delay pulang ${delayMinutes} menit.\n\nBelum mencapai waktu minimal pulang (kurang ${remaining} menit).\nTetap lanjutkan scan pulang?`)) {
+            return;
+        }
+    }
+    
+    const btn = document.querySelector('button[onclick="simulateAttendanceOut()"]');
+    const originalText = btn?.innerHTML;
+    if (btn) { 
+        btn.disabled = true; 
+        btn.innerHTML = '⏳ Memproses...'; 
+    }
+    
+    db.ref(`absensi/${todayStr}/${student.id}`).update({
+        out: timeOutStr
+    })
+        .then(() => {
+            showToast(`✅ Simulasi Absen Pulang Berhasil: ${student.nama} (${timeOutStr})${warningMsg}`, "success");
+            // Refresh table
+            if (typeof renderTable === 'function') setTimeout(() => renderTable(), 500);
+        })
+        .catch((err) => {
+            showToast("❌ Gagal simulasi pulang: " + err.message, "error");
+        })
+        .finally(() => {
+            if (btn) { 
+                btn.disabled = false; 
+                btn.innerHTML = originalText || '🏠 Simulasi Scan Pulang'; 
+            }
+        });
+}
+
+/**
+ * Membuka modal untuk memilih siswa yang akan dipulangkan
+ */
+function openSimulateOutModal() {
+    if (!currentUser || currentUser.role === 'siswa') {
+        showToast("⛔ Akses ditolak!", "error");
+        return;
+    }
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayAttendance = dbData.attendance.filter(a => 
+        a.date === todayStr && a.status === 'Hadir'
+    );
+    
+    if (todayAttendance.length === 0) {
+        showToast("⚠️ Tidak ada siswa yang absen masuk hari ini!", "warning");
+        return;
+    }
+    
+    // Hapus modal lama jika ada
+    const existingModal = document.getElementById('modal-simulate-out');
+    if (existingModal) existingModal.remove();
+    
+    // Buat modal HTML
+    let modalHtml = `
+        <div id="modal-simulate-out" class="modal-overlay open">
+            <div class="modal-box" style="max-width: 450px;">
+                <div class="modal-title">
+                    <span>🏠 Simulasi Scan Pulang</span>
+                    <span onclick="closeModal('modal-simulate-out')">✖</span>
+                </div>
+                <div style="padding: 20px;">
+                    <div class="form-group">
+                        <label>Pilih Siswa yang Sudah Absen Masuk</label>
+                        <select id="simulateOutStudentSelect" class="form-control" style="width:100%; padding:10px;">
+    `;
+    
+    todayAttendance.forEach(a => {
+        const student = dbData.users.find(s => s.id == a.studentId);
+        const name = student?.nama || a.nama;
+        modalHtml += `<option value="${a.studentId}" data-timein="${a.timeIn}">${name} (ID: ${a.studentId}) - Masuk: ${a.timeIn}</option>`;
+    });
+    
+    modalHtml += `
+                        </select>
+                    </div>
+                    <div id="simulateOutDelayWarning" class="text-small" style="color:#ff9800; margin-top: 5px;"></div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="closeModal('modal-simulate-out')">Batal</button>
+                    <button class="btn-save" onclick="simulateOutForSelected()">🏠 Simpan Pulang</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Update warning delay saat pilihan berubah
+    const select = document.getElementById('simulateOutStudentSelect');
+    if (select) {
+        select.addEventListener('change', function() {
+            const selectedOption = select.options[select.selectedIndex];
+            const timeIn = selectedOption.getAttribute('data-timein');
+            if (timeIn) {
+                const studentId = select.value;
+                const student = dbData.users.find(u => u.id == studentId);
+                const delayMinutes = parseInt(student?.delayOut) || 60;
+                const now = new Date();
+                const [hours, minutes] = timeIn.split(':');
+                const timeInDate = new Date();
+                timeInDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                const diffMinutes = (now - timeInDate) / (1000 * 60);
+                const warningSpan = document.getElementById('simulateOutDelayWarning');
+                if (diffMinutes < delayMinutes) {
+                    const remaining = Math.ceil(delayMinutes - diffMinutes);
+                    warningSpan.innerHTML = `⚠️ Delay pulang ${delayMinutes} menit. Belum mencapai waktu minimal (kurang ${remaining} menit). Tetap bisa dipulangkan secara paksa.`;
+                    warningSpan.style.color = '#ff9800';
+                } else {
+                    warningSpan.innerHTML = `✅ Sudah memenuhi delay pulang (${delayMinutes} menit).`;
+                    warningSpan.style.color = '#4caf50';
+                }
+            }
+        });
+        // Trigger pertama
+        select.dispatchEvent(new Event('change'));
+    }
+}
+
+/**
+ * Simulasi pulang untuk siswa yang dipilih dari dropdown
+ */
+async function simulateOutForSelected() {
+    const select = document.getElementById('simulateOutStudentSelect');
+    if (!select) return;
+    
+    const studentId = select.value;
+    const selectedOption = select.options[select.selectedIndex];
+    const timeIn = selectedOption.getAttribute('data-timein');
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const selectedAttendance = dbData.attendance.find(a => 
+        a.date === todayStr && 
+        a.studentId == studentId && 
+        a.status === 'Hadir'
+    );
+    
+    if (!selectedAttendance) {
+        showToast("❌ Data absensi tidak ditemukan!", "error");
+        closeModal('modal-simulate-out');
+        return;
+    }
+    
+    const student = dbData.users.find(u => u.id == studentId);
+    if (!student) {
+        showToast("❌ Data siswa tidak ditemukan!", "error");
+        closeModal('modal-simulate-out');
+        return;
+    }
+    
+    const now = new Date();
+    const timeOutStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+    
+    // Validasi delay
+    const delayMinutes = parseInt(student.delayOut) || 60;
+    let warningMsg = '';
+    if (timeIn) {
+        const [hours, minutes] = timeIn.split(':');
+        const timeInDate = new Date();
+        timeInDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        const diffMinutes = (now - timeInDate) / (1000 * 60);
+        if (diffMinutes < delayMinutes) {
+            const remaining = Math.ceil(delayMinutes - diffMinutes);
+            warningMsg = ` (Belum ${remaining} menit lagi, force pulang)`;
+            if (!confirm(`⚠️ Siswa ${student.nama} absen masuk pukul ${timeIn}. Delay pulang ${delayMinutes} menit.\n\nBelum mencapai waktu minimal pulang (kurang ${remaining} menit).\nTetap lanjutkan scan pulang?`)) {
+                return;
+            }
+        }
+    }
+    
+    const btn = document.querySelector('#modal-simulate-out .btn-save');
+    const originalText = btn?.innerHTML;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Memproses...';
+    }
+    
+    try {
+        await db.ref(`absensi/${todayStr}/${studentId}`).update({
+            out: timeOutStr
+        });
+        showToast(`✅ ${student.nama} berhasil absen pulang pukul ${timeOutStr}${warningMsg}`, "success");
+        closeModal('modal-simulate-out');
+        if (typeof renderTable === 'function') setTimeout(() => renderTable(), 500);
+    } catch (err) {
+        showToast("❌ Gagal: " + err.message, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
 }
 
 // ======================== EXPORT FUNCTIONS ========================
@@ -729,6 +974,9 @@ if (document.readyState === 'loading') {
 window.renderTable = renderTable;
 window.deleteAttendance = deleteAttendance;
 window.simulateAttendance = simulateAttendance;
+window.simulateAttendanceOut = simulateAttendanceOut;
+window.openSimulateOutModal = openSimulateOutModal;
+window.simulateOutForSelected = simulateOutForSelected;
 window.exportToExcel = exportToExcel;
 window.resetAttendanceFilters = resetAttendanceFilters;
 window.filterByDateRange = filterByDateRange;
