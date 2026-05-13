@@ -121,7 +121,7 @@
             <div id="statusBar" class="status-bar-scroll"></div>
         </div>
 
-        <!-- NAV TABS (Dashboard sebagai tab pertama) -->
+        <!-- NAV TABS -->
         <div class="nav-tabs" id="nav-tabs-container">
             <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
             <button class="tab-btn" onclick="switchTab('attendance')">📋 Absensi</button>
@@ -134,10 +134,9 @@
             <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
         </div>
 
-        <!-- TAB DASHBOARD (Modern) -->
+        <!-- TAB DASHBOARD -->
         <div id="tab-dashboard" class="tab-content active">
             <div class="dashboard-modern">
-                <!-- Baris Card Statistik -->
                 <div class="dashboard-cards-row">
                     <div class="stat-card">
                         <div class="stat-title">Kehadiran Bulan Ini</div>
@@ -160,8 +159,6 @@
                         <div class="stat-change neutral">Terdaftar</div>
                     </div>
                 </div>
-
-                <!-- Dua Kolom: Grafik + Aktivitas -->
                 <div class="dashboard-two-col">
                     <div class="dashboard-chart">
                         <div class="chart-header">
@@ -191,8 +188,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Baris Bawah: Pengumuman & Tugas -->
                 <div class="dashboard-tasks">
                     <div class="tasks-header">
                         <span>📋 Pengumuman & Tugas</span>
@@ -213,7 +208,9 @@
                 <div class="filter-group"><label>Tanggal:</label><select id="filterDate" onchange="renderTable()"><option value="all">Semua</option><option value="today">Hari Ini</option></select></div>
                 <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
                     <button class="btn-action btn-warning role-admin role-guru" onclick="openAbsenceModal()">📝 Atur Ketidakhadiran</button>
-                    <button class="btn-action btn-primary" onclick="simulateAttendance()">📷 Simulasi Scan FP</button>
+                    <button class="btn-action btn-primary" onclick="simulateAttendance()">📷 Simulasi Scan Masuk</button>
+                    <button class="btn-action btn-secondary" onclick="simulateAttendanceOut()" style="background:#ff9800;">🏠 Simulasi Scan Pulang</button>
+                    <button class="btn-action btn-info" onclick="openSimulateOutModal()" style="background:#2196f3;">📋 Pilih Siswa Pulang</button>
                     <button class="btn-action btn-success" onclick="exportToExcel()">📥 Download Excel</button>
                 </div>
             </div>
@@ -228,8 +225,8 @@
             </div>
             <div class="table-container">
                 <table>
-                    <thead>汽<th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr></thead>
-                    <tbody id="tbody-attendance"><tr><td colspan="7">Memuat data...</td></tr>
+                    <thead><tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr></thead>
+                    <tbody id="tbody-attendance"><tr><td colspan="7">Memuat data...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -329,8 +326,15 @@
 
         <!-- TAB CHAT -->
         <div id="tab-chat" class="tab-content">
-            <div class="chat-header-info" style="margin-bottom:15px;"><h3>💬 Pesan dengan Teman</h3><p class="text-small">Hanya bisa chat dengan teman yang sudah terdaftar.</p></div>
-            <div id="chatPanel" class="chat-panel"></div>
+            <div class="chat-header-info" style="margin-bottom:15px;">
+                <h3>💬 Pesan dengan Teman</h3>
+                <p class="text-small">Hanya bisa chat dengan teman yang sudah terdaftar.</p>
+            </div>
+            <div id="chatPanel" class="chat-panel" style="min-height: 500px;">
+                <div class="chat-loading" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                    ⏳ Memuat fitur chat...
+                </div>
+            </div>
         </div>
 
         <!-- TAB CONFIG -->
@@ -359,7 +363,6 @@
                 <hr>
                 <div class="form-group"><label>⏰ Delay Pulang Global</label><div style="display:flex; gap:10px; flex-wrap:wrap;"><select id="globalDelayUnit"><option value="minutes">Menit</option><option value="hours">Jam</option></select><div id="globalDelayMinutesGroup"><input type="number" id="globalDelayMinutesValue" value="60" style="width:80px;"> menit</div><div id="globalDelayHoursGroup" style="display:none;"><select id="globalDelayHoursValue" style="width:80px;"></select> jam</div><button class="btn-action btn-primary role-admin" onclick="saveGlobalDelay()">Simpan</button></div><div><small>Delay saat ini: <strong id="globalDelayDisplay">60 menit</strong></small></div></div>
                 
-                <!-- ========== PANEL STATUS 16 SENSOR FINGERPRINT ========== -->
                 <div id="sensorStatusPanel" class="sensor-status-container" style="margin-top: 20px; display: none;">
                     <div class="sensor-header">
                         <h4>🔍 STATUS 16 SENSOR FINGERPRINT</h4>
@@ -398,18 +401,33 @@
         </div>
     </div>
 
-    <!-- ======================= MODALS ======================= -->
+    <!-- MODALS -->
     <div id="modal-profile" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📸 Profil Saya</span><span onclick="closeModal('modal-profile')">✖</span></div><div class="profile-upload-wrapper" onclick="document.getElementById('profileFileInput').click()"><img id="profileImg" class="avatar-lg"><input type="file" id="profileFileInput" hidden accept="image/*" onchange="uploadProfilePhoto(this)"></div><div class="form-group"><input type="text" id="profileNameInput" placeholder="Nama Lengkap"></div><p id="profileEmail"></p><div class="form-group" id="group-subject"><input type="text" id="profileSubject" placeholder="Mata Pelajaran"></div><div class="form-group"><input type="text" id="profileKelas" placeholder="Kelas"></div><div class="form-group"><input type="text" id="profileJurusan" placeholder="Jurusan"></div><div class="modal-actions"><button class="btn-save" onclick="handleUpdateProfileInfo()">💾 Simpan</button><button class="btn-cancel" onclick="closeModal('modal-profile')">Tutup</button></div><hr><div style="text-align:center;"><button class="btn-action" onclick="openChangePasswordModal()">🔑 Ganti Password</button></div></div></div>
     <div id="modal-change-pass" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>🔑 Ganti Password</span><span onclick="closeModal('modal-change-pass')">✖</span></div><form onsubmit="handleChangePassword(event)"><div class="form-group"><input type="password" id="cpOld" placeholder="Password Lama" required></div><div class="form-group"><input type="password" id="cpNew" placeholder="Password Baru (min. 6)" required></div><div class="form-group"><input type="password" id="cpConfirm" placeholder="Konfirmasi" required></div><div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeModal('modal-change-pass')">Batal</button><button type="submit" class="btn-save">Simpan</button></div></form></div></div>
     <div id="modal-forgot" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>🔐 Reset Password</span><span onclick="closeModal('modal-forgot')">✖</span></div><p>Masukkan email Anda</p><div class="form-group"><input type="email" id="forgotEmail" placeholder="Email"></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-forgot')">Batal</button><button class="btn-save" onclick="processForgot()">Kirim Link</button></div></div></div>
     <div id="modal-announcement" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📢 Pengumuman</span><span onclick="closeModal('modal-announcement')">✖</span></div><input type="hidden" id="announcementId"><div class="form-group"><input type="text" id="annTitle" placeholder="Judul"></div><div class="form-group"><textarea id="annMessage" rows="3" placeholder="Isi"></textarea></div><div class="form-group"><select id="annPriority"><option value="low">🔵 Rendah</option><option value="normal" selected>🟢 Normal</option><option value="high">🔴 Penting</option></select></div><div class="form-group"><select id="annExpiryType" onchange="toggleExpiryInput()"><option value="none">Tanpa Batas</option><option value="time">Jam</option><option value="date">Tanggal</option><option value="both">Tanggal & Jam</option></select></div><div id="annExpiryDateGroup" class="form-group" style="display:none;"><input type="date" id="annExpiryDate"></div><div id="annExpiryTimeGroup" class="form-group" style="display:none;"><input type="time" id="annExpiryTime"></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-announcement')">Batal</button><button class="btn-save" onclick="saveAnnouncement()">Simpan</button></div></div></div>
     <div id="modal-friends" class="modal-overlay"><div class="modal-box" style="max-width:500px;"><div class="modal-title"><span>👥 Teman</span><span onclick="closeModal('modal-friends')">✖</span></div><div id="friendsPanel"></div></div></div>
-    <div id="modal-chat" class="modal-overlay"><div class="modal-box" style="max-width:800px; height:80vh;"><div class="modal-title"><span>💬 Pesan</span><span onclick="closeModal('modal-chat')">✖</span></div><div id="chatModalPanel" style="height:calc(100% - 60px);"></div></div></div>
+    
+    <!-- MODAL CHAT -->
+    <div id="modal-chat" class="modal-overlay">
+        <div class="modal-box" style="max-width:800px; height:80vh;">
+            <div class="modal-title">
+                <span>💬 Pesan</span>
+                <span onclick="closeModal('modal-chat')">✖</span>
+            </div>
+            <div id="chatModalPanel" style="height:calc(100% - 60px); overflow: hidden;">
+                <div class="chat-loading" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                    ⏳ Memuat chat...
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div id="modal-create-status" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📸 Buat Status</span><span onclick="closeModal('modal-create-status')">✖</span></div><div class="form-group"><label>Teks</label><textarea id="statusText" rows="3"></textarea></div><div class="form-group"><label>Gambar</label><input type="file" id="statusImageInput" accept="image/*"><div id="statusImagePreviewContainer" style="display:none;"><img id="statusImagePreview" style="max-width:100%;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-create-status')">Batal</button><button class="btn-save" onclick="createStatus()">Upload</button></div></div></div>
     <div id="modal-status-viewer" class="modal-overlay"><div class="modal-box" style="background:#000;"><div id="statusViewerContent"></div></div></div>
     <div id="modal-absence" class="modal-overlay"><div class="modal-box" style="max-width:700px;"><div class="modal-title"><span>📋 Atur Ketidakhadiran</span><span onclick="closeModal('modal-absence')">✖</span></div><div class="modal-body"><div style="display:flex; gap:10px; flex-wrap:wrap;"><input type="date" id="absenceDate"><select id="absenceKelas"><option value="all">Semua Kelas</option></select><select id="absenceJurusan"><option value="all">Semua Jurusan</option></select><button class="btn-action" onclick="loadAbsenceList()">Tampilkan</button></div><div id="absenceListContainer" style="max-height:55vh; overflow-y:auto;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-absence')">Tutup</button><button class="btn-save" onclick="saveAllAbsenceStatus()">Simpan</button></div></div></div>
 
-    <!-- SCRIPTS -->
+    <!-- SCRIPTS - Urutan penting! config.js harus pertama -->
     <script src="js/config.js"></script>
     <script src="js/db.js"></script>
     <script src="js/auth.js"></script>
@@ -419,46 +437,102 @@
     <script src="js/users.js"></script>
     <script src="js/setting.js"></script>
     <script src="js/announcement.js"></script>
-    <script src="js/chat.js"></script>
+    <script src="js/friends.js"></script>
     <script src="js/status.js"></script>
+    <script src="js/chat.js"></script>
     <script src="js/main.js"></script>
     <script src="js/rekap.js"></script>
-    <script src="js/friends.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             console.log("DOM Ready - Dashboard Modern");
+            
+            // Setup delay hours dropdowns
             var dh = document.getElementById('delayHoursValue');
             if(dh && dh.children.length===0) for(var i=1;i<=24;i++) dh.innerHTML+='<option value="'+i+'">'+i+' Jam</option>';
             var gh = document.getElementById('globalDelayHoursValue');
             if(gh && gh.children.length===0) for(var j=1;j<=24;j++) gh.innerHTML+='<option value="'+j+'">'+j+'</option>';
+            
+            // Delay minutes listener
             var dm = document.getElementById('delayMinutesValue');
-            if(dm && !dm._listenerAdded) { dm.addEventListener('input',function(){var h=document.getElementById('newDelay');if(h)h.value=this.value;}); dm._listenerAdded=true; }
+            if(dm && !dm._listenerAdded) { 
+                dm.addEventListener('input',function(){var h=document.getElementById('newDelay');if(h)h.value=this.value;}); 
+                dm._listenerAdded=true; 
+            }
+            
             var dh2 = document.getElementById('delayHoursValue');
-            if(dh2 && !dh2._listenerAdded) { dh2.addEventListener('change',function(){var h=document.getElementById('newDelay');if(h)h.value=this.value*60;}); dh2._listenerAdded=true; }
+            if(dh2 && !dh2._listenerAdded) { 
+                dh2.addEventListener('change',function(){var h=document.getElementById('newDelay');if(h)h.value=this.value*60;}); 
+                dh2._listenerAdded=true; 
+            }
+            
             var du = document.getElementById('delayUnit');
-            if(du && !du._listenerAdded) { du.addEventListener('change',function(){if(typeof toggleDelayInput==='function') toggleDelayInput();}); du._listenerAdded=true; }
+            if(du && !du._listenerAdded) { 
+                du.addEventListener('change',function(){if(typeof toggleDelayInput==='function') toggleDelayInput();}); 
+                du._listenerAdded=true; 
+            }
+            
             var gdm = document.getElementById('globalDelayMinutesValue');
-            if(gdm && !gdm._listenerAdded) { gdm.addEventListener('input',function(){var h=document.getElementById('globalDelayHidden');if(h)h.value=this.value;}); gdm._listenerAdded=true; }
+            if(gdm && !gdm._listenerAdded) { 
+                gdm.addEventListener('input',function(){var h=document.getElementById('globalDelayHidden');if(h)h.value=this.value;}); 
+                gdm._listenerAdded=true; 
+            }
+            
             var gdh2 = document.getElementById('globalDelayHoursValue');
-            if(gdh2 && !gdh2._listenerAdded) { gdh2.addEventListener('change',function(){var h=document.getElementById('globalDelayHidden');if(h)h.value=this.value*60;}); gdh2._listenerAdded=true; }
+            if(gdh2 && !gdh2._listenerAdded) { 
+                gdh2.addEventListener('change',function(){var h=document.getElementById('globalDelayHidden');if(h)h.value=this.value*60;}); 
+                gdh2._listenerAdded=true; 
+            }
+            
             var gdu = document.getElementById('globalDelayUnit');
-            if(gdu && !gdu._listenerAdded) { gdu.addEventListener('change',function(){if(typeof toggleGlobalDelayInput==='function') toggleGlobalDelayInput();}); gdu._listenerAdded=true; }
-            setTimeout(function(){ if(typeof toggleDelayInput==='function') toggleDelayInput(); if(typeof toggleGlobalDelayInput==='function') toggleGlobalDelayInput(); },100);
+            if(gdu && !gdu._listenerAdded) { 
+                gdu.addEventListener('change',function(){if(typeof toggleGlobalDelayInput==='function') toggleGlobalDelayInput();}); 
+                gdu._listenerAdded=true; 
+            }
+            
+            setTimeout(function(){ 
+                if(typeof toggleDelayInput==='function') toggleDelayInput(); 
+                if(typeof toggleGlobalDelayInput==='function') toggleGlobalDelayInput(); 
+            },100);
+            
+            // Setup rekap period
             var periodSelect=document.getElementById('rekapPeriod'), customRangeGroup=document.getElementById('customRangeGroup');
             if(periodSelect && customRangeGroup) {
-                var today=new Date(), startDate=new Date(); startDate.setDate(today.getDate()-30);
+                var today=new Date(), startDate=new Date(); 
+                startDate.setDate(today.getDate()-30);
                 var startInput=document.getElementById('rekapStartDate'), endInput=document.getElementById('rekapEndDate');
                 if(startInput && !startInput.value) startInput.value=startDate.toISOString().split('T')[0];
                 if(endInput && !endInput.value) endInput.value=today.toISOString().split('T')[0];
                 function toggleCustomRange(){ customRangeGroup.style.display=periodSelect.value==='custom'?'flex':'none'; }
-                periodSelect.addEventListener('change',toggleCustomRange); toggleCustomRange();
+                periodSelect.addEventListener('change',toggleCustomRange); 
+                toggleCustomRange();
             }
-            setTimeout(function(){ if(typeof populateFilters==='function') populateFilters(); if(typeof populateStudentFilters==='function') populateStudentFilters(); if(typeof populateKelasOptions==='function') populateKelasOptions(); if(typeof populateJurusanOptions==='function') populateJurusanOptions(); },200);
+            
+            setTimeout(function(){ 
+                if(typeof populateFilters==='function') populateFilters(); 
+                if(typeof populateStudentFilters==='function') populateStudentFilters(); 
+                if(typeof populateKelasOptions==='function') populateKelasOptions(); 
+                if(typeof populateJurusanOptions==='function') populateJurusanOptions(); 
+            },200);
         });
-        function showToast(msg,type){ var t=document.getElementById('toast'); if(t){ t.textContent=msg; t.style.borderLeftColor=type==='error'?'#f44336':'#00bcd4'; t.className='toast show'; setTimeout(()=>{t.className=t.className.replace('show','');},3000); } }
-        function closeModal(id){ var m=document.getElementById(id); if(m) m.classList.remove('open'); }
-        window.showToast=showToast; window.closeModal=closeModal;
+        
+        function showToast(msg,type){ 
+            var t=document.getElementById('toast'); 
+            if(t){ 
+                t.textContent=msg; 
+                t.style.borderLeftColor=type==='error'?'#f44336':'#00bcd4'; 
+                t.className='toast show'; 
+                setTimeout(()=>{t.className=t.className.replace('show','');},3000); 
+            } 
+        }
+        
+        function closeModal(id){ 
+            var m=document.getElementById(id); 
+            if(m) m.classList.remove('open'); 
+        }
+        
+        window.showToast=showToast; 
+        window.closeModal=closeModal;
     </script>
 </body>
 </html>
