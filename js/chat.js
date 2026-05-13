@@ -1,19 +1,30 @@
-// chat.js - VERSION 2.0 (DENGAN DUKUNGAN MODAL & UPLOAD GAMBAR)
+// chat.js - VERSION 3.0 (FULLY FIXED)
 // Fitur Chat Pribadi antar teman
 // Mendukung: kirim pesan, gambar, hapus pesan, real-time, notifikasi
+// DIPERBAIKI: 
+// - Mengatasi masalah DOM not found
+// - Menambahkan fallback container
+// - Memperbaiki async/await issues
 
 let chatListeners = {};
 let currentChatWith = null;
 let chatMessagesListener = null;
 let unreadCounts = {};
+let chatInitialized = false;
 
 // ======================= INISIALISASI =======================
 
 function initChatSystem() {
-    console.log("💬 Initializing chat system...");
+    console.log("💬 Initializing chat system...", "currentUser:", currentUser?.uid);
     
     if (!currentUser) {
         console.log("No user logged in, skipping chat init");
+        setTimeout(initChatSystem, 1000);
+        return;
+    }
+    
+    if (chatInitialized) {
+        console.log("Chat already initialized");
         return;
     }
     
@@ -23,11 +34,8 @@ function initChatSystem() {
     // Setup listener untuk notifikasi chat
     setupChatNotifications();
     
-    // Render chat interface
-    renderChatInterface();
-    
-    // Load daftar chat terbaru
-    loadChatList();
+    chatInitialized = true;
+    console.log("✅ Chat system initialized");
 }
 
 function setupIncomingMessagesListener() {
@@ -39,13 +47,27 @@ function setupIncomingMessagesListener() {
         const data = snapshot.val();
         if (data) {
             updateUnreadBadge(data);
-            loadChatList();
+            // Render chat list jika container tersedia
+            renderChatListIfContainerReady();
             if (currentChatWith) {
                 loadChatMessages(currentChatWith);
             }
             playChatNotification();
         }
     });
+}
+
+function renderChatListIfContainerReady() {
+    // Coba render di tab chat
+    let container = document.getElementById('chatList');
+    if (container && container.parentElement && container.parentElement.closest('#tab-chat')?.classList.contains('active')) {
+        loadChatList();
+    }
+    // Coba render di modal chat
+    let modalContainer = document.querySelector('#chatModalPanel #chatList');
+    if (modalContainer && document.getElementById('modal-chat')?.classList.contains('open')) {
+        loadChatList();
+    }
 }
 
 function setupChatNotifications() {
@@ -58,15 +80,18 @@ function updateUnreadBadge(inboxData) {
     let totalUnread = 0;
     const unreadByUser = {};
     
-    for (const [fromUid, data] of Object.entries(inboxData)) {
-        if (data.unreadCount && data.unreadCount > 0) {
-            totalUnread += data.unreadCount;
-            unreadByUser[fromUid] = data.unreadCount;
+    if (inboxData) {
+        for (const [fromUid, data] of Object.entries(inboxData)) {
+            if (data.unreadCount && data.unreadCount > 0) {
+                totalUnread += data.unreadCount;
+                unreadByUser[fromUid] = data.unreadCount;
+            }
         }
     }
     
     unreadCounts = unreadByUser;
     
+    // Update badge di tab chat
     const chatTabBtn = document.querySelector('.tab-btn[onclick*="chat"]');
     if (chatTabBtn) {
         let badge = chatTabBtn.querySelector('.chat-badge');
@@ -83,6 +108,7 @@ function updateUnreadBadge(inboxData) {
         }
     }
     
+    // Update badge di floating button
     const floatingChatBtn = document.getElementById('floatingChatBtn');
     if (floatingChatBtn) {
         let badge = floatingChatBtn.querySelector('.chat-badge-count');
@@ -113,58 +139,89 @@ function playChatNotification() {
 
 // ======================= RENDER CHAT INTERFACE =======================
 
-function renderChatInterface() {
-    // Coba cari container di tab-chat dulu
-    let container = document.getElementById('chatPanel');
+function renderChatInterface(containerId = 'chatPanel') {
+    console.log("🎨 renderChatInterface called for:", containerId);
     
-    // Jika tidak ditemukan, coba di modal
+    let container = document.getElementById(containerId);
+    
     if (!container) {
-        container = document.getElementById('chatModalPanel');
+        console.warn(`Chat container ${containerId} not found`);
+        // Coba cari container alternatif
+        if (containerId === 'chatPanel') {
+            container = document.getElementById('chatModalPanel');
+            if (container) console.log("Found chatModalPanel as alternative");
+        }
     }
     
     if (!container) {
-        console.warn("Chat container not found");
-        return;
+        console.error("No chat container found!");
+        return false;
+    }
+    
+    // Cek apakah sudah dirender sebelumnya
+    if (container.querySelector('.chat-container')) {
+        console.log("Chat already rendered, skipping");
+        return true;
     }
     
     container.innerHTML = `
-        <div class="chat-container">
-            <div class="chat-sidebar">
-                <div class="chat-search">
-                    <input type="text" id="chatSearchInput" placeholder="🔍 Cari chat..." oninput="filterChatList()">
+        <div class="chat-container" style="display: flex; height: 100%; background: var(--bg-card); border-radius: 20px; overflow: hidden;">
+            <div class="chat-sidebar" style="width: 300px; border-right: 1px solid var(--border); background: var(--bg-sidebar); display: flex; flex-direction: column;">
+                <div class="chat-search" style="padding: 12px; border-bottom: 1px solid var(--border);">
+                    <input type="text" id="chatSearchInput" placeholder="🔍 Cari chat..." style="width: 100%; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 30px; color: var(--text-primary);">
                 </div>
-                <div id="chatList" class="chat-list">
+                <div id="chatList" class="chat-list" style="flex: 1; overflow-y: auto;">
                     <p class="text-small" style="color: var(--text-muted); text-align:center; padding:20px;">Memuat chat...</p>
                 </div>
             </div>
-            <div class="chat-main">
-                <div class="chat-header" id="chatHeader">
+            <div class="chat-main" style="flex: 1; display: flex; flex-direction: column;">
+                <div class="chat-header" id="chatHeader" style="padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-sidebar);">
                     <p class="text-small" style="color: var(--text-muted); text-align:center; padding:20px;">Pilih chat untuk memulai percakapan</p>
                 </div>
-                <div class="chat-messages" id="chatMessages">
-                    <div class="chat-messages-empty">👈 Pilih chat di sebelah kiri</div>
+                <div class="chat-messages" id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px;">
+                    <div class="chat-messages-empty" style="text-align:center; color:var(--text-muted); padding:40px;">👈 Pilih chat di sebelah kiri</div>
                 </div>
-                <div class="chat-input-area" id="chatInputArea" style="display: none;">
+                <div class="chat-input-area" id="chatInputArea" style="display: none; gap: 10px; padding: 12px; border-top: 1px solid var(--border); background: var(--bg-sidebar);">
                     <div class="chat-input-tools">
-                        <label class="btn-icon" style="cursor:pointer; background:transparent;" title="Kirim Gambar">
+                        <label class="btn-icon" style="cursor:pointer; background:transparent; padding:8px;" title="Kirim Gambar">
                             📷 <input type="file" id="chatImageInput" accept="image/*" style="display:none;" onchange="sendChatMedia(this)">
                         </label>
                     </div>
-                    <textarea id="chatMessageInput" placeholder="Tulis pesan... (Enter untuk kirim, Shift+Enter untuk new line)" rows="2" onkeydown="handleChatKeyPress(event)"></textarea>
-                    <button class="btn-action btn-primary" onclick="sendChatMessage()">📤 Kirim</button>
+                    <textarea id="chatMessageInput" placeholder="Tulis pesan... (Enter untuk kirim)" rows="1" style="flex: 1; resize: none; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 28px; color: var(--text-primary); font-family: inherit;"></textarea>
+                    <button class="btn-action btn-primary" onclick="sendChatMessage()" style="padding: 10px 18px;">📤 Kirim</button>
                 </div>
             </div>
         </div>
     `;
     
+    // Setup event listeners
+    const searchInput = document.getElementById('chatSearchInput');
+    if (searchInput) {
+        searchInput.oninput = () => filterChatList();
+    }
+    
+    const messageInput = document.getElementById('chatMessageInput');
+    if (messageInput) {
+        messageInput.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        };
+    }
+    
+    // Load chat list
     loadChatList();
+    
+    console.log("✅ Chat interface rendered");
+    return true;
 }
 
 async function loadChatList() {
-    // Coba cari container di beberapa tempat
     let container = document.getElementById('chatList');
     if (!container) {
-        container = document.querySelector('#chatPanel #chatList');
+        // Coba cari di dalam modal
+        container = document.querySelector('#chatModalPanel #chatList');
     }
     if (!container) return;
     
@@ -198,25 +255,23 @@ async function loadChatList() {
         chatList.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
         
         container.innerHTML = chatList.map(chat => `
-            <div class="chat-item ${currentChatWith === chat.uid ? 'active' : ''}" data-uid="${chat.uid}" onclick="selectChat('${chat.uid}')">
-                <div class="chat-avatar">
-                    <img src="${chat.photoUrl || getAvatarUrl(chat.nama)}" alt="${escapeHtml(chat.nama)}">
-                    ${chat.unreadCount > 0 ? `<span class="chat-unread-badge">${chat.unreadCount}</span>` : ''}
+            <div class="chat-item ${currentChatWith === chat.uid ? 'active' : ''}" data-uid="${chat.uid}" onclick="selectChat('${chat.uid}')" style="display: flex; align-items: center; gap: 12px; padding: 12px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid var(--border);">
+                <div class="chat-avatar" style="position: relative; flex-shrink: 0;">
+                    <img src="${chat.photoUrl || getAvatarUrl(chat.nama)}" alt="${escapeHtml(chat.nama)}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover;">
+                    ${chat.unreadCount > 0 ? `<span class="chat-unread-badge" style="position: absolute; bottom: -2px; right: -2px; background: #f44336; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; display: flex; align-items: center; justify-content: center; border: 2px solid var(--bg-sidebar);">${chat.unreadCount}</span>` : ''}
                 </div>
-                <div class="chat-info">
-                    <div class="chat-name">${escapeHtml(chat.nama)}</div>
-                    <div class="chat-last-message">
+                <div class="chat-info" style="flex: 1; min-width: 0;">
+                    <div class="chat-name" style="font-weight: bold; font-size: 0.9rem;">${escapeHtml(chat.nama)}</div>
+                    <div class="chat-last-message" style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                         ${chat.lastMessageType === 'image' ? '📷 Gambar' : escapeHtml(chat.lastMessage?.substring(0, 30) || '')}
                     </div>
                 </div>
-                <div class="chat-time">${formatChatTime(chat.lastMessageTime)}</div>
+                <div class="chat-time" style="font-size: 0.7rem; color: var(--text-muted); flex-shrink: 0;">${formatChatTime(chat.lastMessageTime)}</div>
             </div>
         `).join('');
         
-        const searchInput = document.getElementById('chatSearchInput');
-        if (searchInput && searchInput.value) {
-            filterChatList();
-        }
+        const searchValue = document.getElementById('chatSearchInput')?.value.toLowerCase() || '';
+        if (searchValue) filterChatList();
         
     } catch (error) {
         console.error("Load chat list error:", error);
@@ -262,6 +317,7 @@ function formatChatTime(timestamp) {
 // ======================= FUNGSI CHAT =======================
 
 async function selectChat(friendUid) {
+    console.log("💬 Selecting chat with:", friendUid);
     currentChatWith = friendUid;
     
     await markMessagesAsRead(friendUid);
@@ -275,14 +331,14 @@ async function selectChat(friendUid) {
     
     if (header && friendData) {
         header.innerHTML = `
-            <div class="chat-header-info">
-                <img src="${friendData.photoUrl || getAvatarUrl(friendData.nama)}" alt="${escapeHtml(friendData.nama)}" style="width:40px; height:40px; border-radius:50%;">
+            <div class="chat-header-info" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <img src="${friendData.photoUrl || getAvatarUrl(friendData.nama)}" alt="${escapeHtml(friendData.nama)}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
                 <div>
-                    <div class="chat-header-name">${escapeHtml(friendData.nama)}</div>
-                    <div class="chat-header-email">${escapeHtml(friendData.email)}</div>
+                    <div class="chat-header-name" style="font-weight: bold;">${escapeHtml(friendData.nama)}</div>
+                    <div class="chat-header-email" style="font-size: 0.7rem; color: var(--text-muted);">${escapeHtml(friendData.email)}</div>
                 </div>
-                <div class="chat-header-actions">
-                    <button class="btn-icon" onclick="clearChat('${friendUid}')" title="Hapus semua pesan">🗑️</button>
+                <div class="chat-header-actions" style="margin-left: auto;">
+                    <button class="btn-icon" onclick="clearChat('${friendUid}')" title="Hapus semua pesan" style="background:transparent; border:none; cursor:pointer; padding:8px;">🗑️</button>
                 </div>
             </div>
         `;
@@ -306,7 +362,7 @@ async function loadChatMessages(friendUid) {
     const messagesContainer = document.getElementById('chatMessages');
     if (!messagesContainer) return;
     
-    messagesContainer.innerHTML = '<div class="chat-messages-loading">Memuat pesan...</div>';
+    messagesContainer.innerHTML = '<div class="chat-messages-loading" style="text-align:center; color:var(--text-muted); padding:20px;">Memuat pesan...</div>';
     
     chatMessagesListener = db.ref(`chats/${currentUser.uid}/messages/${friendUid}`).on('value', (snapshot) => {
         const data = snapshot.val();
@@ -322,7 +378,9 @@ async function loadChatMessages(friendUid) {
         renderChatMessages(messages, friendUid);
         
         setTimeout(() => {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            if (messagesContainer) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
         }, 100);
     });
 }
@@ -332,7 +390,7 @@ function renderChatMessages(messages, friendUid) {
     if (!container) return;
     
     if (!messages || messages.length === 0) {
-        container.innerHTML = '<div class="chat-messages-empty">💬 Belum ada pesan. Kirim pesan pertama!</div>';
+        container.innerHTML = '<div class="chat-messages-empty" style="text-align:center; color:var(--text-muted); padding:40px;">💬 Belum ada pesan. Kirim pesan pertama!</div>';
         return;
     }
     
@@ -345,24 +403,37 @@ function renderChatMessages(messages, friendUid) {
         if (msg.type === 'image') {
             contentHtml = `<a href="${msg.mediaUrl}" target="_blank"><img src="${msg.mediaUrl}" style="max-width:200px; max-height:150px; border-radius:8px; cursor:pointer;"></a>`;
         } else {
-            contentHtml = `<div class="chat-message-text">${escapeHtml(msg.message)}</div>`;
+            contentHtml = `<div class="chat-message-text" style="word-wrap: break-word;">${escapeHtml(msg.message)}</div>`;
         }
         
         return `
-            <div class="chat-message ${isMe ? 'me' : 'friend'}" data-msg-id="${msg.id}">
-                <div class="chat-message-bubble">
+            <div class="chat-message ${isMe ? 'me' : 'friend'}" data-msg-id="${msg.id}" style="display: flex; ${isMe ? 'justify-content: flex-end;' : 'justify-content: flex-start;'} margin-bottom: 12px;">
+                <div class="chat-message-bubble" style="max-width: 80%; padding: 10px 14px; border-radius: 22px; position: relative; ${isMe ? 'background: var(--primary); color: white; border-bottom-right-radius: 6px;' : 'background: var(--bg-hover); color: var(--text-primary); border-bottom-left-radius: 6px;'}">
                     ${contentHtml}
-                    <div class="chat-message-time">${date} ${time}</div>
-                    ${isMe ? `<span class="chat-message-delete" onclick="deleteChatMessage('${friendUid}', '${msg.id}')" title="Hapus pesan">🗑️</span>` : ''}
+                    <div class="chat-message-time" style="font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-align: right;">${date} ${time}</div>
+                    ${isMe ? `<span class="chat-message-delete" onclick="deleteChatMessage('${friendUid}', '${msg.id}')" title="Hapus pesan" style="position: absolute; top: -10px; right: -10px; font-size: 14px; cursor: pointer; opacity: 0; transition: opacity 0.2s; background: var(--bg-card); border-radius: 50%; padding: 4px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;">🗑️</span>` : ''}
                 </div>
             </div>
         `;
     }).join('');
+    
+    // Hover effect untuk delete button
+    const bubbles = container.querySelectorAll('.chat-message-bubble');
+    bubbles.forEach(bubble => {
+        bubble.addEventListener('mouseenter', () => {
+            const deleteBtn = bubble.querySelector('.chat-message-delete');
+            if (deleteBtn) deleteBtn.style.opacity = '1';
+        });
+        bubble.addEventListener('mouseleave', () => {
+            const deleteBtn = bubble.querySelector('.chat-message-delete');
+            if (deleteBtn) deleteBtn.style.opacity = '0';
+        });
+    });
 }
 
 async function sendChatMessage() {
     const input = document.getElementById('chatMessageInput');
-    const message = input.value.trim();
+    const message = input?.value.trim();
     
     if (!message) return;
     if (!currentChatWith) {
@@ -376,7 +447,7 @@ async function sendChatMessage() {
         return;
     }
     
-    input.disabled = true;
+    if (input) input.disabled = true;
     
     const messageId = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const timestamp = firebase.database.ServerValue.TIMESTAMP;
@@ -409,14 +480,24 @@ async function sendChatMessage() {
             })
         ]);
         
-        input.value = '';
-        input.disabled = false;
-        input.focus();
+        if (input) {
+            input.value = '';
+            input.disabled = false;
+            input.focus();
+        }
+        
+        // Scroll to bottom
+        const messagesContainer = document.getElementById('chatMessages');
+        if (messagesContainer) {
+            setTimeout(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 100);
+        }
         
     } catch (error) {
         console.error("Send message error:", error);
         showToast("❌ Gagal mengirim pesan", "error");
-        input.disabled = false;
+        if (input) input.disabled = false;
     }
 }
 
@@ -531,7 +612,7 @@ async function clearChat(friendUid) {
             const messagesContainer = document.getElementById('chatMessages');
             const inputArea = document.getElementById('chatInputArea');
             if (header) header.innerHTML = '<p class="text-small" style="color: var(--text-muted); text-align:center; padding:20px;">Pilih chat untuk memulai percakapan</p>';
-            if (messagesContainer) messagesContainer.innerHTML = '<div class="chat-messages-empty">👈 Pilih chat di sebelah kiri</div>';
+            if (messagesContainer) messagesContainer.innerHTML = '<div class="chat-messages-empty" style="text-align:center; color:var(--text-muted); padding:40px;">👈 Pilih chat di sebelah kiri</div>';
             if (inputArea) inputArea.style.display = 'none';
         }
         
@@ -540,13 +621,6 @@ async function clearChat(friendUid) {
     } catch (error) {
         console.error("Clear chat error:", error);
         showToast("❌ Gagal membersihkan chat", "error");
-    }
-}
-
-function handleChatKeyPress(event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendChatMessage();
     }
 }
 
@@ -563,8 +637,17 @@ async function startChatWithFriend(friendUid, friendName, friendEmail) {
         switchTab('chat');
     }
     
+    // Tunggu sejenak sampai DOM chat ter-render
     setTimeout(() => {
-        selectChat(friendUid);
+        // Render chat interface jika belum
+        const chatPanel = document.getElementById('chatPanel');
+        if (chatPanel && (!chatPanel.querySelector('.chat-container') || chatPanel.innerHTML.includes('Memuat fitur chat'))) {
+            renderChatInterface('chatPanel');
+        }
+        
+        setTimeout(() => {
+            selectChat(friendUid);
+        }, 300);
     }, 500);
 }
 
@@ -572,8 +655,8 @@ function openChatModal() {
     const modal = document.getElementById('modal-chat');
     if (modal) {
         modal.classList.add('open');
-        renderChatInterface();
-        loadChatList();
+        // Render chat di modal
+        renderChatInterface('chatModalPanel');
     }
 }
 
@@ -606,8 +689,20 @@ function cleanupChatSystem() {
         db.ref(`chats/${currentUser.uid}/inbox`).off('value', chatListeners.incoming);
         chatListeners.incoming = null;
     }
+    chatInitialized = false;
     console.log("🧹 Chat system cleaned up");
 }
+
+// ======================= AUTO INIT =======================
+
+// Tunggu currentUser ready
+const checkChatUserReady = setInterval(() => {
+    if (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) {
+        clearInterval(checkChatUserReady);
+        console.log("Chat system: currentUser ready, initializing...");
+        initChatSystem();
+    }
+}, 500);
 
 // ======================= EXPORT KE GLOBAL =======================
 window.initChatSystem = initChatSystem;
@@ -619,5 +714,6 @@ window.clearChat = clearChat;
 window.startChatWithFriend = startChatWithFriend;
 window.openChatModal = openChatModal;
 window.filterChatList = filterChatList;
-window.handleChatKeyPress = handleChatKeyPress;
 window.cleanupChatSystem = cleanupChatSystem;
+window.renderChatInterface = renderChatInterface;
+window.loadChatList = loadChatList;
