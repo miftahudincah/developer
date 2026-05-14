@@ -17,6 +17,62 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <!-- Style tambahan untuk branding (tidak mengganggu tombol chat) -->
+    <style>
+        /* ==================== BRANDING FOOTER (KIRI BAWAH, TIDAK MENGHALANGI TOMBOL CHAT) ==================== */
+        .branding-footer {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(18, 18, 26, 0.75);
+            backdrop-filter: blur(8px);
+            padding: 6px 14px 6px 10px;
+            border-radius: 40px;
+            border: 1px solid rgba(0, 188, 212, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            z-index: 100; /* Lebih rendah dari tombol floating (z-index:200) */
+            transition: opacity 0.3s ease;
+            font-size: 0.7rem;
+            pointer-events: none; /* Klik tetap tembus ke tombol di bawahnya */
+        }
+
+        .branding-footer:hover {
+            opacity: 0.9;
+            background: rgba(18, 18, 26, 0.9);
+        }
+
+        .branding-logo {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid var(--primary, #00bcd4);
+        }
+
+        .branding-text {
+            color: var(--text-primary, #ffffff);
+            font-weight: 500;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 480px) {
+            .branding-footer {
+                bottom: 8px;
+                left: 8px;
+                padding: 4px 10px 4px 8px;
+                font-size: 0.6rem;
+            }
+            .branding-logo {
+                width: 20px;
+                height: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
 
@@ -534,5 +590,11 @@
         window.showToast=showToast; 
         window.closeModal=closeModal;
     </script>
+
+    <!-- ==================== BRANDING (KIRI BAWAH, TIDAK MENGHALANGI TOMBOL CHAT) ==================== -->
+    <div class="branding-footer">
+        <img src="https://i.ibb.co.com/j9dVXQdc/Chat-GPT-Image-11-Mei-2026-10-31-44.png" alt="Logo CV Haka Jaya" class="branding-logo">
+        <span class="branding-text">Dikembangkan oleh CV Haka Jaya</span>
+    </div>
 </body>
 </html>
