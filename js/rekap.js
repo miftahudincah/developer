@@ -1,13 +1,50 @@
-// rekap.js - VERSION 2.1 (Dengan Sinkronisasi Manual Status)
+// rekap.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
 // Fitur Rekap Absensi per Siswa
 // Mendukung periode: Minggu, Bulan, Semester, dan Custom Range
 // Mendukung status: Hadir, Sakit, Izin, Alpha (termasuk manual dari attendance_status)
-// By: Sistem Absensi Terintegrasi
+// PERUBAHAN: Menghapus auto-init, menggunakan event 'dataReady' dan 'uiReady'
+// ============================================================================
 
 let currentRekapData = [];
 let rekapInitDone = false;
 let rekapPieChart = null;
 let rekapBarChart = null;
+let rekapDataReadyListenerAdded = false;
+let rekapUiReadyListenerAdded = false;
+
+// ======================= EVENT LISTENER ========================
+
+function setupRekapDataReadyListener() {
+    if (rekapDataReadyListenerAdded) return;
+    rekapDataReadyListenerAdded = true;
+    console.log("📡 Setting up dataReady event listener for rekap module");
+
+    window.addEventListener('dataReady', (e) => {
+        console.log("📊 rekap.js: dataReady received, initializing rekap system");
+        if (!rekapInitDone) {
+            initRekap();
+        } else {
+            // Jika sudah diinisialisasi, tetap refresh data
+            loadRekap();
+        }
+    });
+}
+
+function setupRekapUiReadyListener() {
+    if (rekapUiReadyListenerAdded) return;
+    rekapUiReadyListenerAdded = true;
+    console.log("📡 Setting up uiReady event listener for rekap module");
+
+    window.addEventListener('uiReady', () => {
+        // Pastikan event listener DOM sudah terpasang
+        if (rekapInitDone) {
+            // Refresh jika tab rekap aktif
+            if (document.getElementById('tab-rekap')?.classList.contains('active')) {
+                loadRekap();
+            }
+        }
+    });
+}
 
 // ======================= INISIALISASI =======================
 
@@ -22,7 +59,11 @@ function initRekap() {
         return;
     }
     
-    periodSelect.addEventListener('change', function() {
+    // Hapus listener lama jika ada (mencegah duplikasi)
+    const newPeriodSelect = periodSelect.cloneNode(true);
+    periodSelect.parentNode.replaceChild(newPeriodSelect, periodSelect);
+    
+    newPeriodSelect.addEventListener('change', function() {
         const customGroup = document.getElementById('customRangeGroup');
         if (customGroup) customGroup.style.display = this.value === 'custom' ? 'flex' : 'none';
         loadRekap();
@@ -30,32 +71,41 @@ function initRekap() {
     
     const startInput = document.getElementById('rekapStartDate');
     const endInput = document.getElementById('rekapEndDate');
-    if (startInput) startInput.addEventListener('change', () => { if (periodSelect.value === 'custom') loadRekap(); });
-    if (endInput) endInput.addEventListener('change', () => { if (periodSelect.value === 'custom') loadRekap(); });
+    if (startInput) {
+        const newStart = startInput.cloneNode(true);
+        startInput.parentNode.replaceChild(newStart, startInput);
+        newStart.addEventListener('change', () => {
+            if (newPeriodSelect.value === 'custom') loadRekap();
+        });
+    }
+    if (endInput) {
+        const newEnd = endInput.cloneNode(true);
+        endInput.parentNode.replaceChild(newEnd, endInput);
+        newEnd.addEventListener('change', () => {
+            if (newPeriodSelect.value === 'custom') loadRekap();
+        });
+    }
     
     const today = new Date();
     const startDate = new Date();
     startDate.setDate(today.getDate() - 30);
-    if (startInput && !startInput.value) startInput.value = formatDateForInput(startDate);
-    if (endInput && !endInput.value) endInput.value = formatDateForInput(today);
+    const startInputElem = document.getElementById('rekapStartDate');
+    const endInputElem = document.getElementById('rekapEndDate');
+    if (startInputElem && !startInputElem.value) startInputElem.value = formatDateForInput(startDate);
+    if (endInputElem && !endInputElem.value) endInputElem.value = formatDateForInput(today);
     
     const defaultPeriod = localStorage.getItem('rekapLastPeriod') || 'minggu';
-    periodSelect.value = defaultPeriod;
+    newPeriodSelect.value = defaultPeriod;
     const customRangeGroup = document.getElementById('customRangeGroup');
     if (customRangeGroup) customRangeGroup.style.display = defaultPeriod === 'custom' ? 'flex' : 'none';
     
-    // Setup listener untuk perubahan manual status agar rekap refresh otomatis
-    if (typeof db !== 'undefined') {
-        db.ref('attendance_status').on('value', () => {
-            if (document.getElementById('tab-rekap')?.classList.contains('active')) {
-                console.log("🔄 Manual status changed, refreshing rekap...");
-                loadRekap();
-            }
-        });
-    }
+    // Hapus listener Firebase attendance_status karena akan dipicu oleh dataReady/refresh manual
+    // (Tidak perlu listener terpisah, karena data sudah diupdate oleh init.js)
     
     rekapInitDone = true;
-    setTimeout(() => loadRekap(), 500);
+    
+    // Load data pertama kali
+    setTimeout(() => loadRekap(), 100);
 }
 
 function formatDateForInput(date) {
@@ -209,7 +259,6 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
             // Cek apakah di tanggal yang sama sudah ada absensi fisik (hadir/pulang)
             const hasPhysical = filteredAttendance.some(a => a.date === dateStr && a.studentId == studentId && (a.status === 'Hadir' || a.status === 'Pulang'));
             if (hasPhysical) {
-                // Jika sudah ada scan, manual status tidak override (biarkan saja)
                 continue;
             }
             
@@ -221,7 +270,6 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
             } else if (manualStatus === 'alpha') {
                 studentData.alpha++;
             }
-            // manualStatus 'hadir' tidak perlu ditambah karena tidak ada scan
         }
     }
     
@@ -334,7 +382,6 @@ function updateRekapSummary(data) {
 // ======================= CHART FUNCTIONS =======================
 
 function renderRekapCharts(data, startDate, endDate) {
-    // Pie Chart: distribusi status (aggregat dari data siswa)
     const totalHadir = data.reduce((sum, d) => sum + d.hadir, 0);
     const totalSakit = data.reduce((sum, d) => sum + d.sakit, 0);
     const totalIzin = data.reduce((sum, d) => sum + d.izin, 0);
@@ -364,7 +411,6 @@ function renderRekapCharts(data, startDate, endDate) {
         });
     }
     
-    // Bar Chart: jumlah absensi per hari dalam rentang
     const attendanceByDate = {};
     const filteredAttendance = dbData.attendance.filter(a => {
         const recordDate = new Date(a.date);
@@ -381,7 +427,7 @@ function renderRekapCharts(data, startDate, endDate) {
         rekapBarChart = new Chart(barCtx, {
             type: 'bar',
             data: {
-                labels: sortedDates.map(d => d.split('-').slice(2).join('-')), // DD-MM
+                labels: sortedDates.map(d => d.split('-').slice(2).join('-')),
                 datasets: [{
                     label: 'Jumlah Absensi',
                     data: sortedDates.map(d => attendanceByDate[d]),
@@ -409,7 +455,7 @@ function renderRekapCharts(data, startDate, endDate) {
 
 async function loadRekap() {
     if (!dbData || !dbData.attendance || !dbData.users) {
-        console.log("⏳ Menunggu data siap...");
+        console.log("⏳ Menunggu data siap untuk loadRekap...");
         setTimeout(loadRekap, 500);
         return;
     }
@@ -444,7 +490,6 @@ async function loadRekap() {
     console.log(`📊 Load rekap: ${period} (${periodDisplay})`);
     if (typeof showToast === 'function') showToast(`📊 Memuat rekap periode: ${periodDisplay}`, "info");
     
-    // Panggil fungsi async dan tunggu hasilnya
     currentRekapData = await calculateStudentRekap(dbData.attendance, dbData.users, startDate, endDate);
     renderRekapTable(currentRekapData);
     renderRekapCharts(currentRekapData, startDate, endDate);
@@ -565,36 +610,29 @@ function cleanupRekap() {
     currentRekapData = [];
     if (rekapPieChart) { rekapPieChart.destroy(); rekapPieChart = null; }
     if (rekapBarChart) { rekapBarChart.destroy(); rekapBarChart = null; }
-    if (typeof db !== 'undefined') {
-        db.ref('attendance_status').off();
-    }
+    // Hapus event listener jika perlu (tidak ada listener Firebase lagi)
+    rekapDataReadyListenerAdded = false;
+    rekapUiReadyListenerAdded = false;
     console.log("🧹 Rekap system cleaned up");
 }
 
-// ======================= AUTO INIT =======================
+// ======================= INISIALISASI EVENT LISTENER ========================
+setupRekapDataReadyListener();
+setupRekapUiReadyListener();
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-            if (typeof currentUser !== 'undefined' && currentUser) initRekap();
-            else {
-                const checkUser = setInterval(() => {
-                    if (typeof currentUser !== 'undefined' && currentUser) {
-                        clearInterval(checkUser);
-                        initRekap();
-                    }
-                }, 500);
-            }
-        }, 1000);
-    });
-} else {
+// Jika data sudah siap sebelum event listener dipasang, langsung inisialisasi
+if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance && window.dbData.users) {
+    console.log("📊 rekap.js: Data already available, initializing rekap immediately");
     setTimeout(() => {
-        if (typeof currentUser !== 'undefined' && currentUser) initRekap();
-    }, 1000);
+        if (!rekapInitDone) initRekap();
+    }, 100);
 }
 
+// ======================= EXPORT KE GLOBAL =======================
 window.loadRekap = loadRekap;
 window.exportRekapToExcel = exportRekapToExcel;
 window.exportRekapToPDF = exportRekapToPDF;
 window.initRekap = initRekap;
 window.cleanupRekap = cleanupRekap;
+
+console.log("✅ rekap.js V3.0 loaded - Event-based (no duplicate listeners)");

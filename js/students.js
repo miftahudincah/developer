@@ -1,138 +1,54 @@
-// students.js - VERSION 2.5 (FINAL)
+// students.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
 // ======================= MANAJEMEN DATA SISWA =======================
 // Fitur: CRUD siswa, sinkronisasi dengan ESP32, delay per siswa,
 //        dukungan kelas & jurusan dinamis dari pengaturan sekolah,
 //        real-time update, import/export CSV.
+// PERUBAHAN: Menghapus listener duplikat, menggunakan event 'dataReady'
 // ====================================================================
 
-let studentsRealtimeListener = null;
 let studentFormResetTimer = null;
+let studentsDataReadyListenerAdded = false;
 
-// ======================= REAL-TIME INITIALIZATION =======================
-
-/**
- * Inisialisasi real-time listener untuk data siswa (node 'users')
- * Dipanggil otomatis setelah login dan Firebase siap.
- */
-function initRealtimeStudents() {
-    if (typeof db === 'undefined' || !db) {
-        console.warn("⚠️ Firebase not ready, initRealtimeStudents retry in 1s");
-        setTimeout(initRealtimeStudents, 1000);
+// ======================= EVENT LISTENER DATA READY ========================
+// Setup listener untuk event 'dataReady' dari init.js
+function setupStudentsDataReadyListener() {
+    if (studentsDataReadyListenerAdded) {
+        console.log("⚠️ students dataReady listener already added, skipping");
         return;
     }
-    console.log("🔄 Initializing real-time students system...");
-
-    if (studentsRealtimeListener) {
-        db.ref('users').off('value', studentsRealtimeListener);
-    }
-
-    studentsRealtimeListener = db.ref('users').on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (typeof dbData !== 'undefined') {
-            const oldCount = dbData.users?.length || 0;
-            dbData.users = [];
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    dbData.users.push({ id: key, ...data[key] });
-                });
-            }
-            const newCount = dbData.users.length;
-            if (oldCount !== newCount) {
-                console.log(`📊 Students: ${oldCount} → ${newCount}`);
-                showStudentUpdateNotification(newCount - oldCount);
-            }
-            if (typeof renderStudentsTable === 'function') {
-                requestAnimationFrame(() => renderStudentsTable());
-            }
-            if (typeof populateStudentFilters === 'function') {
-                requestAnimationFrame(() => populateStudentFilters());
-            }
-            if (typeof populateStudentSelectForCode === 'function') {
-                requestAnimationFrame(() => populateStudentSelectForCode());
-            }
-            updateStudentStatistics();
+    
+    studentsDataReadyListenerAdded = true;
+    console.log("📡 Setting up dataReady event listener for students module");
+    
+    window.addEventListener('dataReady', (e) => {
+        console.log("🔄 students.js: dataReady received, updating students UI");
+        
+        // Update dropdown dinamis
+        if (typeof populateKelasOptions === 'function') {
+            populateKelasOptions();
         }
-    });
-
-    db.ref('users').on('child_changed', (snapshot) => {
-        const data = snapshot.val();
-        if (data?.nama) {
-            showToast(`✏️ Data siswa ${data.nama} diperbarui`, "info");
-            highlightStudentRow(snapshot.key);
+        if (typeof populateJurusanOptions === 'function') {
+            populateJurusanOptions();
         }
-    });
-
-    db.ref('users').on('child_removed', (snapshot) => {
-        const data = snapshot.val();
-        showToast(`🗑️ Siswa ${data?.nama || snapshot.key} dihapus`, "warning");
-    });
-}
-
-function showStudentUpdateNotification(changeCount) {
-    if (changeCount > 0) {
-        showToast(`📢 ${changeCount} siswa baru ditambahkan!`, "success");
-        flashStudentsTab();
-    } else if (changeCount < 0) {
-        showToast(`📢 ${Math.abs(changeCount)} siswa dihapus`, "info");
-    }
-}
-
-function flashStudentsTab() {
-    const container = document.querySelector('#tab-students .table-container');
-    if (container && document.getElementById('tab-students').classList.contains('active')) {
-        container.style.transition = 'background-color 0.3s';
-        container.style.backgroundColor = 'rgba(76,175,80,0.1)';
-        setTimeout(() => container.style.backgroundColor = '', 500);
-    }
-    const tabBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.includes('Data Siswa'));
-    if (tabBtn && !tabBtn.querySelector('.badge-update')) {
-        const badge = document.createElement('span');
-        badge.className = 'badge-update';
-        badge.textContent = '●';
-        badge.style.cssText = 'color:#4caf50;margin-left:5px;font-size:10px;';
-        tabBtn.appendChild(badge);
-        setTimeout(() => badge.remove(), 2000);
-    }
-}
-
-function highlightStudentRow(studentId) {
-    const rows = document.querySelectorAll('#tbody-students tr');
-    rows.forEach(row => {
-        if (row.cells[0]?.textContent == studentId) {
-            row.style.backgroundColor = 'rgba(76,175,80,0.2)';
-            setTimeout(() => row.style.backgroundColor = '', 1000);
+        if (typeof populateStudentFilters === 'function') {
+            populateStudentFilters();
         }
+        if (typeof populateStudentSelectForCode === 'function') {
+            populateStudentSelectForCode();
+        }
+        
+        // Render tabel siswa jika tab aktif atau tidak (biar data siap)
+        if (typeof renderStudentsTable === 'function') {
+            renderStudentsTable();
+        }
+        
+        // Update statistik
+        updateStudentStatistics();
     });
-}
-
-function updateStudentStatistics() {
-    let statsContainer = document.getElementById('studentsStats');
-    if (!statsContainer) {
-        const controlsBar = document.querySelector('#tab-students .controls-bar:first-child');
-        if (controlsBar) {
-            statsContainer = document.createElement('div');
-            statsContainer.id = 'studentsStats';
-            statsContainer.style.marginBottom = '10px';
-            controlsBar.insertAdjacentElement('afterend', statsContainer);
-        } else return;
-    }
-
-    const total = dbData.users.length;
-    const kelasCount = {}, jurusanCount = {};
-    dbData.users.forEach(s => {
-        if (s.kelas) kelasCount[s.kelas] = (kelasCount[s.kelas] || 0) + 1;
-        if (s.jurusan) jurusanCount[s.jurusan] = (jurusanCount[s.jurusan] || 0) + 1;
-    });
-    const topKelas = Object.entries(kelasCount).sort((a,b) => b[1]-a[1])[0];
-    const topJurusan = Object.entries(jurusanCount).sort((a,b) => b[1]-a[1])[0];
-
-    statsContainer.innerHTML = `
-        <div style="display:flex;gap:20px;flex-wrap:wrap;padding:10px;background:#1e1e1e;border-radius:8px;margin-bottom:15px;">
-            <div><span style="color:#4a90e2;">👥 Total Siswa:</span> <strong>${total}</strong></div>
-            <div><span style="color:#4a90e2;">📚 Kelas Terbanyak:</span> <strong>${topKelas ? `${topKelas[0]} (${topKelas[1]})` : '-'}</strong></div>
-            <div><span style="color:#4a90e2;">🎓 Jurusan Terbanyak:</span> <strong>${topJurusan ? `${topJurusan[0]} (${topJurusan[1]})` : '-'}</strong></div>
-        </div>
-    `;
+    
+    // Juga listen untuk perubahan data via dbData (sudah diupdate oleh init.js)
+    // Kita gunakan MutationObserver atau cukup polling sederhana untuk update UI
+    // Tapi lebih baik kita mengandalkan event yang sudah ada
 }
 
 // ======================= DROPDOWN DINAMIS =======================
@@ -141,10 +57,10 @@ function populateKelasOptions() {
     const kelasSelect = document.getElementById('newKelas');
     if (!kelasSelect) return;
     let options = [];
-    if (currentSchoolConfig?.classes?.length) {
-        options = currentSchoolConfig.classes;
+    if (window.currentSchoolConfig?.classes?.length) {
+        options = window.currentSchoolConfig.classes;
     } else {
-        const type = currentSchoolConfig?.type || 'smp';
+        const type = window.currentSchoolConfig?.type || 'smp';
         if (type === 'smp') options = ['VII','VIII','IX'];
         else if (type === 'smk') options = ['X','XI','XII'];
         else options = ['VII','VIII','IX','X','XI','XII'];
@@ -159,12 +75,12 @@ function populateJurusanOptions() {
     if (!jurusanSelect) return;
     const currentVal = jurusanSelect.value;
     jurusanSelect.innerHTML = '<option value="">-- Pilih Jurusan --</option>';
-    if (currentSchoolConfig?.majors?.length) {
-        currentSchoolConfig.majors.forEach(j => jurusanSelect.innerHTML += `<option value="${j}">${j}</option>`);
+    if (window.currentSchoolConfig?.majors?.length) {
+        window.currentSchoolConfig.majors.forEach(j => jurusanSelect.innerHTML += `<option value="${j}">${j}</option>`);
     } else {
         jurusanSelect.innerHTML += '<option value="UMUM">UMUM</option>';
     }
-    if (currentVal && currentSchoolConfig?.majors?.includes(currentVal)) jurusanSelect.value = currentVal;
+    if (currentVal && window.currentSchoolConfig?.majors?.includes(currentVal)) jurusanSelect.value = currentVal;
 }
 
 function populateStudentFilters() {
@@ -173,9 +89,10 @@ function populateStudentFilters() {
     if (!kSelect || !jSelect) return;
 
     let kelasOptions = [];
-    if (currentSchoolConfig?.classes?.length) kelasOptions = currentSchoolConfig.classes;
-    else {
-        const type = currentSchoolConfig?.type || 'smp';
+    if (window.currentSchoolConfig?.classes?.length) {
+        kelasOptions = window.currentSchoolConfig.classes;
+    } else {
+        const type = window.currentSchoolConfig?.type || 'smp';
         if (type === 'smp') kelasOptions = ['VII','VIII','IX'];
         else if (type === 'smk') kelasOptions = ['X','XI','XII'];
         else kelasOptions = ['VII','VIII','IX','X','XI','XII'];
@@ -186,12 +103,12 @@ function populateStudentFilters() {
 
     const currentJurusan = jSelect.value;
     jSelect.innerHTML = '<option value="all">🎓 Semua Jurusan</option>';
-    if (currentSchoolConfig?.majors?.length) {
-        currentSchoolConfig.majors.forEach(j => jSelect.innerHTML += `<option value="${j}">${j}</option>`);
+    if (window.currentSchoolConfig?.majors?.length) {
+        window.currentSchoolConfig.majors.forEach(j => jSelect.innerHTML += `<option value="${j}">${j}</option>`);
     } else {
         jSelect.innerHTML += '<option value="UMUM">UMUM</option>';
     }
-    if (currentJurusan !== 'all' && currentSchoolConfig?.majors?.includes(currentJurusan)) jSelect.value = currentJurusan;
+    if (currentJurusan !== 'all' && window.currentSchoolConfig?.majors?.includes(currentJurusan)) jSelect.value = currentJurusan;
 }
 
 // ======================= DELAY INPUT HANDLERS =======================
@@ -262,6 +179,14 @@ function formatDelayDisplay(delayMinutes) {
 function renderStudentsTable() {
     const tbody = document.getElementById('tbody-students');
     if (!tbody) return;
+    
+    // Pastikan dbData ada
+    if (typeof dbData === 'undefined' || !dbData.users) {
+        console.log("⏳ students.js: dbData not ready yet");
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;">⏳ Memuat data siswa...</td></tr>`;
+        return;
+    }
+    
     const search = document.getElementById('searchStudentName')?.value.toLowerCase() || '';
     const kelas = document.getElementById('filterStudentKelas')?.value || 'all';
     const jurusan = document.getElementById('filterStudentJurusan')?.value || 'all';
@@ -282,18 +207,52 @@ function renderStudentsTable() {
         tbody.innerHTML += `
             <tr data-id="${s.id}">
                 <td><strong>${s.id}</strong>${isNew ? '<br><span class="badge-new-student">NEW</span>' : ''}</td>
-                <td>${escapeHtml(s.nama)}</td>
+                <td>${escapeHtmlStudents(s.nama)}</td>
                 <td>${s.kelas || '-'}</td>
                 <td>${s.jurusan || '-'}</td>
                 <td><span class="delay-badge">⏱️ ${formatDelayDisplay(s.delayOut)}</span></td>
                 <td>
                     <button class="btn-icon edit" onclick="editStudent('${s.id}')" title="Edit Siswa">✏️</button>
                     <button class="btn-icon delete" onclick="deleteStudentWithFP('${s.id}')" title="Hapus Siswa (termasuk sidik jari)">🗑️</button>
-                </td>
-            </tr>
+                 </td>
+             </tr>
         `;
     });
     updateStudentStatistics();
+}
+
+// ======================= UPDATE STATISTIK =======================
+
+function updateStudentStatistics() {
+    let statsContainer = document.getElementById('studentsStats');
+    if (!statsContainer) {
+        const controlsBar = document.querySelector('#tab-students .controls-bar:first-child');
+        if (controlsBar) {
+            statsContainer = document.createElement('div');
+            statsContainer.id = 'studentsStats';
+            statsContainer.style.marginBottom = '10px';
+            controlsBar.insertAdjacentElement('afterend', statsContainer);
+        } else return;
+    }
+
+    const total = dbData.users?.length || 0;
+    const kelasCount = {}, jurusanCount = {};
+    if (dbData.users) {
+        dbData.users.forEach(s => {
+            if (s.kelas) kelasCount[s.kelas] = (kelasCount[s.kelas] || 0) + 1;
+            if (s.jurusan) jurusanCount[s.jurusan] = (jurusanCount[s.jurusan] || 0) + 1;
+        });
+    }
+    const topKelas = Object.entries(kelasCount).sort((a,b) => b[1]-a[1])[0];
+    const topJurusan = Object.entries(jurusanCount).sort((a,b) => b[1]-a[1])[0];
+
+    statsContainer.innerHTML = `
+        <div style="display:flex;gap:20px;flex-wrap:wrap;padding:10px;background:#1e1e1e;border-radius:8px;margin-bottom:15px;">
+            <div><span style="color:#4a90e2;">👥 Total Siswa:</span> <strong>${total}</strong></div>
+            <div><span style="color:#4a90e2;">📚 Kelas Terbanyak:</span> <strong>${topKelas ? `${topKelas[0]} (${topKelas[1]})` : '-'}</strong></div>
+            <div><span style="color:#4a90e2;">🎓 Jurusan Terbanyak:</span> <strong>${topJurusan ? `${topJurusan[0]} (${topJurusan[1]})` : '-'}</strong></div>
+        </div>
+    `;
 }
 
 // ======================= CRUD SISWA =======================
@@ -326,7 +285,7 @@ function saveStudent() {
     };
     if (mode === 'add') studentData.createdAt = firebase.database.ServerValue.TIMESTAMP;
 
-    if (mode === 'add' && dbData.users.some(u => u.id == idStr)) {
+    if (mode === 'add' && dbData.users?.some(u => u.id == idStr)) {
         showToast("❌ ID sudah ada!", "error");
         return;
     }
@@ -358,7 +317,7 @@ function saveStudent() {
 }
 
 function editStudent(id) {
-    const s = dbData.users.find(u => u.id == id);
+    const s = dbData.users?.find(u => u.id == id);
     if (!s) { showToast("❌ Data tidak ditemukan", "error"); return; }
     document.querySelector('#tab-students .controls-bar:first-child')?.scrollIntoView({ behavior: 'smooth' });
     document.getElementById('newId').value = s.id;
@@ -398,7 +357,7 @@ async function deleteStudentWithFP(studentId) {
         showToast("⛔ Akses ditolak!", "error");
         return;
     }
-    const student = dbData.users.find(u => u.id == studentId);
+    const student = dbData.users?.find(u => u.id == studentId);
     const name = student?.nama || studentId;
     if (!confirm(`⚠️ Hapus siswa "${name}"?\n\n✅ Data siswa akan dihapus dari DB\n✅ Sidik jari dihapus dari SEMUA sensor ESP32\n✅ Akun terkait (jika ada) juga dihapus\n\nTINDAKAN INI TIDAK DAPAT DIBATALKAN!`)) return;
 
@@ -498,17 +457,14 @@ function escapeCsv(str) {
 // ======================= CLEANUP =======================
 
 function cleanupStudentsSystem() {
-    if (studentsRealtimeListener) {
-        db.ref('users').off('value', studentsRealtimeListener);
-        studentsRealtimeListener = null;
-    }
     if (studentFormResetTimer) clearTimeout(studentFormResetTimer);
+    studentsDataReadyListenerAdded = false;
     console.log("🧹 Students system cleaned up");
 }
 
 // ======================= UTILITY =======================
 
-function escapeHtml(str) {
+function escapeHtmlStudents(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
@@ -523,14 +479,19 @@ function initDelayEventListeners() {
     setTimeout(() => toggleDelayInput(), 100);
 }
 
-// ======================= AUTO INIT =======================
+// ======================= INISIALISASI ========================
+// Setup event listener untuk dataReady
+setupStudentsDataReadyListener();
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => { if (currentUser) initRealtimeStudents(); }, 1500);
-    });
-} else {
-    setTimeout(() => { if (currentUser) initRealtimeStudents(); }, 1500);
+// Jika data sudah siap sebelum event listener dipasang, langsung render
+if (typeof window !== 'undefined' && window.dbData && window.dbData.users) {
+    console.log("📊 students.js: Data already available, rendering immediately");
+    setTimeout(() => {
+        if (typeof populateKelasOptions === 'function') populateKelasOptions();
+        if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
+        if (typeof populateStudentFilters === 'function') populateStudentFilters();
+        if (typeof renderStudentsTable === 'function') renderStudentsTable();
+    }, 100);
 }
 
 // ======================= EXPORT KE GLOBAL =======================
@@ -545,6 +506,7 @@ window.deleteStudent = deleteStudent;
 window.deleteStudentWithFP = deleteStudentWithFP;
 window.importStudentsFromCSV = importStudentsFromCSV;
 window.exportStudentsToCSV = exportStudentsToCSV;
-window.initRealtimeStudents = initRealtimeStudents;
 window.cleanupStudentsSystem = cleanupStudentsSystem;
 window.initDelayEventListeners = initDelayEventListeners;
+
+console.log("✅ students.js V3.0 loaded - Event-based (no duplicate listeners)");

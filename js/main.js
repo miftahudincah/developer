@@ -1,12 +1,13 @@
-// main.js - VERSION 4.1 (DASHBOARD REAL-TIME DENGAN dbData)
+// main.js - VERSION 5.0 (EVENT-BASED DASHBOARD)
 // Fokus: Session persistence, Auth state handler, Periodic refresh,
 //        Dashboard modern real-time update (statistik, chart mingguan, progress bar kelas, absensi terbaru)
-// PERBAIKAN: Menggunakan dbData (global) untuk semua data, bukan query ulang ke Firebase.
+// PERUBAHAN: Menggunakan event 'dataReady' untuk update dashboard, bukan panggilan langsung
 
 // ======================== GLOBAL VARIABLES ========================
 let refreshInterval = null;
 let isInitialized = false;
 let weeklyChart = null; // Chart instance untuk weekly bar chart
+let mainDataReadyListenerAdded = false;
 
 // ======================== SESSION PERSISTENCE ========================
 
@@ -56,6 +57,12 @@ function clearUserSession() {
 async function updateDashboardModern() {
     if (!currentUser || typeof dbData === 'undefined' || !dbData) {
         console.log("⏳ Dashboard update skipped: no user or dbData");
+        return;
+    }
+    
+    // Pastikan data attendance ada
+    if (!dbData.attendance || dbData.attendance.length === 0) {
+        console.log("⏳ Dashboard update skipped: attendance data not ready yet");
         return;
     }
     
@@ -154,7 +161,7 @@ async function updateDashboardModern() {
             } else {
                 classContainer.innerHTML = kelasStats.map(k => `
                     <div class="class-item">
-                        <div class="class-name"><span>${escapeHtml(k.nama)}</span><span>${k.persen}%</span></div>
+                        <div class="class-name"><span>${escapeHtmlMain(k.nama)}</span><span>${k.persen}%</span></div>
                         <div class="progress-bar"><div class="progress-fill" style="width:${k.persen}%"></div></div>
                         <div class="text-small" style="font-size:0.65rem; margin-top:4px;">${k.hadir}/${k.total} siswa</div>
                     </div>
@@ -176,7 +183,7 @@ async function updateDashboardModern() {
                     <div class="recent-item">
                         <div class="recent-avatar">👤</div>
                         <div class="recent-info">
-                            <div class="recent-name">${escapeHtml(r.nama)}</div>
+                            <div class="recent-name">${escapeHtmlMain(r.nama)}</div>
                             <div class="recent-time">${r.timeIn || r.timeOut || ''} • ${r.date}</div>
                         </div>
                     </div>
@@ -239,7 +246,7 @@ async function updateDashboardModern() {
     }
 }
 
-function escapeHtml(str) {
+function escapeHtmlMain(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
@@ -249,7 +256,7 @@ function escapeHtml(str) {
 function startPeriodicRefresh() {
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
-        if (currentUser && typeof dbData !== 'undefined') {
+        if (currentUser && typeof dbData !== 'undefined' && dbData?.attendance) {
             console.log("🔄 Periodic refresh: updating dashboard...");
             updateDashboardModern();
         }
@@ -295,7 +302,15 @@ function initAuthStateHandler() {
                     }
                     await loadDashboardComponents();
                     if (typeof initApp === 'function') initApp();
-                    await updateDashboardModern();
+                    
+                    // ========== HAPUS PANGGILAN LANGSUNG updateDashboardModern ==========
+                    // Dashboard akan diupdate via event 'dataReady' dari init.js
+                    // Tapi jika data sudah siap sebelum event listener, cek manual
+                    if (window.dbData && window.dbData.attendance && window.dbData.attendance.length > 0) {
+                        console.log("📊 Data already ready, updating dashboard immediately");
+                        setTimeout(() => updateDashboardModern(), 100);
+                    }
+                    
                     console.log("✅ Login successful for:", currentUser.nama);
                 } else {
                     console.warn("⚠️ User data not found!");
@@ -316,6 +331,26 @@ function initAuthStateHandler() {
             stopPeriodicRefresh();
             isInitialized = false;
             showAuthScreen();
+        }
+    });
+}
+
+// ======================== EVENT LISTENER DATA READY ========================
+// Setup listener untuk event 'dataReady' dari init.js
+function setupDataReadyListener() {
+    if (mainDataReadyListenerAdded) {
+        console.log("⚠️ dataReady listener already added, skipping");
+        return;
+    }
+    
+    mainDataReadyListenerAdded = true;
+    console.log("📡 Setting up dataReady event listener for dashboard updates");
+    
+    window.addEventListener('dataReady', (e) => {
+        console.log("🔄 main.js: dataReady received, updating dashboard");
+        if (typeof updateDashboardModern === 'function') {
+            // Delay sedikit untuk memastikan DOM siap
+            setTimeout(() => updateDashboardModern(), 100);
         }
     });
 }
@@ -375,6 +410,10 @@ function waitForFirebaseAndInit() {
         setTimeout(waitForFirebaseAndInit, 500);
         return;
     }
+    
+    // Setup dataReady listener sebelum auth state handler
+    setupDataReadyListener();
+    
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => setTimeout(() => initAuthStateHandler(), 100));
     } else {
@@ -383,4 +422,4 @@ function waitForFirebaseAndInit() {
 }
 
 waitForFirebaseAndInit();
-console.log("✅ main.js V4.1 loaded - Dashboard modern with dbData");
+console.log("✅ main.js V5.0 loaded - Event-based dashboard updates");

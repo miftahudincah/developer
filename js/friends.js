@@ -1,32 +1,31 @@
-// friends.js - VERSION 1.1 (DENGAN TOMBOL CHAT)
+// friends.js - VERSION 2.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
 // Fitur Pertemanan (Friendship System)
 // Mengirim request, menerima/menolak, dan daftar teman
 // Dengan integrasi Chat System
+// PERUBAHAN: Inisialisasi via event 'uiReady', bukan auto-init
+// ============================================================================
 
 let friendsRealtimeListener = null;
 let friendRequestsListener = null;
+let friendsUiReadyListenerAdded = false;
 
-// ======================= DATA STRUCTURE =======================
-// Database structure:
-// friendships/requests/{requestId} = {
-//   from: uid,
-//   to: uid,
-//   fromName: nama,
-//   toName: nama,
-//   fromEmail: email,
-//   toEmail: email,
-//   status: 'pending' | 'accepted' | 'rejected',
-//   createdAt: timestamp,
-//   updatedAt: timestamp
-// }
-//
-// friendships/list/{uid}/{friendUid} = {
-//   friendUid: uid,
-//   friendName: nama,
-//   friendEmail: email,
-//   friendPhoto: photoUrl,
-//   createdAt: timestamp
-// }
+// ======================= EVENT LISTENER ========================
+
+function setupFriendsUiReadyListener() {
+    if (friendsUiReadyListenerAdded) return;
+    friendsUiReadyListenerAdded = true;
+    console.log("📡 Setting up uiReady event listener for friends module");
+
+    window.addEventListener('uiReady', (e) => {
+        const user = e.detail.currentUser;
+        if (user) {
+            console.log("👥 friends.js: uiReady received, initializing friends system");
+            initFriendsSystem();
+        } else {
+            console.log("👥 friends.js: no user in uiReady, skipping");
+        }
+    });
+}
 
 // ======================= INISIALISASI =======================
 
@@ -37,6 +36,9 @@ function initFriendsSystem() {
         console.log("No user logged in, skipping friends init");
         return;
     }
+    
+    // Hapus listener lama jika ada (mencegah duplikasi)
+    cleanupFriendsSystem();
     
     // Setup realtime listener untuk request pertemanan
     setupFriendRequestsListener();
@@ -50,14 +52,13 @@ function initFriendsSystem() {
 
 function setupFriendRequestsListener() {
     if (friendRequestsListener) {
-        db.ref(`friendships/requests`).off('value', friendRequestsListener);
+        db.ref('friendships/requests').off('value', friendRequestsListener);
     }
     
-    // Listener untuk request yang ditujukan ke user saat ini
-    friendRequestsListener = db.ref(`friendships/requests`).on('value', (snapshot) => {
+    friendRequestsListener = db.ref('friendships/requests').on('value', (snapshot) => {
+        if (!currentUser) return;
         const data = snapshot.val();
         if (data) {
-            // Filter request untuk current user (sebagai penerima) yang masih pending
             const pendingRequests = Object.keys(data)
                 .filter(key => data[key].to === currentUser.uid && data[key].status === 'pending')
                 .map(key => ({ id: key, ...data[key] }));
@@ -72,11 +73,14 @@ function setupFriendRequestsListener() {
 }
 
 function setupFriendsListListener() {
+    if (!currentUser) return;
+    
     if (friendsRealtimeListener) {
         db.ref(`friendships/list/${currentUser.uid}`).off('value', friendsRealtimeListener);
     }
     
     friendsRealtimeListener = db.ref(`friendships/list/${currentUser.uid}`).on('value', (snapshot) => {
+        if (!currentUser) return;
         const data = snapshot.val();
         const friendsList = data ? Object.values(data) : [];
         renderFriendsList(friendsList);
@@ -92,7 +96,6 @@ function renderFriendsPanel() {
     
     container.innerHTML = `
         <div class="friends-container">
-            <!-- Search Friend -->
             <div class="friends-search-section">
                 <h4>🔍 Cari Teman</h4>
                 <div class="search-box" style="display: flex; gap: 10px;">
@@ -101,10 +104,7 @@ function renderFriendsPanel() {
                 </div>
                 <div id="searchResult" style="margin-top: 10px; display: none;"></div>
             </div>
-            
             <hr>
-            
-            <!-- Friend Requests -->
             <div class="friends-requests-section">
                 <h4>📨 Permintaan Pertemanan 
                     <span id="friendRequestBadge" class="request-badge" style="display: none;">0</span>
@@ -113,10 +113,7 @@ function renderFriendsPanel() {
                     <p class="text-small" style="color: var(--text-muted);">Tidak ada permintaan pertemanan</p>
                 </div>
             </div>
-            
             <hr>
-            
-            <!-- Friends List -->
             <div class="friends-list-section">
                 <h4>👥 Daftar Teman 
                     <span id="friendsCount" class="count-badge">0</span>
@@ -128,7 +125,6 @@ function renderFriendsPanel() {
         </div>
     `;
     
-    // Load data awal
     if (currentUser) {
         loadFriendRequests();
         loadFriendsList();
@@ -148,7 +144,6 @@ function updateFriendRequestBadge(count) {
         }
     }
     
-    // Update floating button
     if (floatingBtn) {
         const existingBadge = floatingBtn.querySelector('.friends-badge-count');
         if (count > 0) {
@@ -184,9 +179,7 @@ function updateFriendRequestBadge(count) {
 
 function updateFriendsCount(count) {
     const countSpan = document.getElementById('friendsCount');
-    if (countSpan) {
-        countSpan.textContent = count;
-    }
+    if (countSpan) countSpan.textContent = count;
 }
 
 function renderFriendRequestsList(requests) {
@@ -225,7 +218,6 @@ function renderFriendsList(friends) {
         return;
     }
     
-    // ========== UPDATE: TAMBAHKAN TOMBOL CHAT ==========
     container.innerHTML = friends.map(friend => `
         <div class="friend-item" data-friend-uid="${friend.friendUid}">
             <div class="friend-avatar">
@@ -347,9 +339,7 @@ async function checkIsFriend(friendUid) {
 async function checkPendingRequest(friendUid) {
     const snapshot = await db.ref('friendships/requests').once('value');
     const requests = snapshot.val();
-    
     if (!requests) return false;
-    
     return Object.values(requests).some(req => 
         req.from === currentUser.uid && req.to === friendUid && req.status === 'pending'
     );
@@ -358,9 +348,7 @@ async function checkPendingRequest(friendUid) {
 async function checkIncomingRequest(friendUid) {
     const snapshot = await db.ref('friendships/requests').once('value');
     const requests = snapshot.val();
-    
     if (!requests) return false;
-    
     return Object.values(requests).some(req => 
         req.from === friendUid && req.to === currentUser.uid && req.status === 'pending'
     );
@@ -371,24 +359,20 @@ async function sendFriendRequest(toUid, toName, toEmail) {
         showToast("Anda harus login!", "error");
         return;
     }
-    
     if (toUid === currentUser.uid) {
         showToast("❌ Anda tidak bisa mengirim request ke diri sendiri!", "error");
         return;
     }
-    
     const isFriend = await checkIsFriend(toUid);
     if (isFriend) {
         showToast("👥 Anda sudah berteman dengan pengguna ini!", "info");
         return;
     }
-    
     const hasPending = await checkPendingRequest(toUid);
     if (hasPending) {
         showToast("⏳ Permintaan pertemanan sudah dikirim sebelumnya!", "info");
         return;
     }
-    
     const hasIncoming = await checkIncomingRequest(toUid);
     if (hasIncoming) {
         const incomingReq = await findIncomingRequest(toUid);
@@ -399,7 +383,6 @@ async function sendFriendRequest(toUid, toName, toEmail) {
     }
     
     const requestId = `${currentUser.uid}_${toUid}_${Date.now()}`;
-    
     const requestData = {
         from: currentUser.uid,
         to: toUid,
@@ -417,16 +400,13 @@ async function sendFriendRequest(toUid, toName, toEmail) {
     try {
         await db.ref(`friendships/requests/${requestId}`).set(requestData);
         showToast(`✅ Permintaan pertemanan dikirim ke ${toName}`, "success");
-        
         const resultContainer = document.getElementById('searchResult');
         if (resultContainer) {
             resultContainer.style.display = 'none';
             resultContainer.innerHTML = '';
         }
-        
         const emailInput = document.getElementById('searchFriendEmail');
         if (emailInput) emailInput.value = '';
-        
     } catch (error) {
         console.error("Send friend request error:", error);
         showToast("❌ Gagal mengirim permintaan", "error");
@@ -436,9 +416,7 @@ async function sendFriendRequest(toUid, toName, toEmail) {
 async function findIncomingRequest(fromUid) {
     const snapshot = await db.ref('friendships/requests').once('value');
     const requests = snapshot.val();
-    
     if (!requests) return null;
-    
     for (const [id, req] of Object.entries(requests)) {
         if (req.from === fromUid && req.to === currentUser.uid && req.status === 'pending') {
             return { id, ...req };
@@ -452,7 +430,6 @@ async function acceptFriendRequest(requestId, fromUid) {
         showToast("Anda harus login!", "error");
         return;
     }
-    
     showToast("⏳ Memproses...", "info");
     
     try {
@@ -462,7 +439,6 @@ async function acceptFriendRequest(requestId, fromUid) {
         });
         
         const now = firebase.database.ServerValue.TIMESTAMP;
-        
         const friendData1 = {
             friendUid: fromUid,
             friendName: currentUser.nama,
@@ -470,7 +446,6 @@ async function acceptFriendRequest(requestId, fromUid) {
             friendPhoto: currentUser.photoUrl || null,
             createdAt: now
         };
-        
         const friendData2 = {
             friendUid: currentUser.uid,
             friendName: currentUser.nama,
@@ -481,7 +456,6 @@ async function acceptFriendRequest(requestId, fromUid) {
         
         const senderSnapshot = await db.ref(`users_auth/${fromUid}`).once('value');
         const senderData = senderSnapshot.val();
-        
         if (senderData) {
             friendData2.friendName = senderData.nama;
             friendData2.friendEmail = senderData.email;
@@ -494,7 +468,6 @@ async function acceptFriendRequest(requestId, fromUid) {
         ]);
         
         showToast(`✅ Anda sekarang berteman!`, "success");
-        
     } catch (error) {
         console.error("Accept friend request error:", error);
         showToast("❌ Gagal menerima permintaan", "error");
@@ -514,7 +487,6 @@ async function rejectFriendRequest(requestId, fromUid) {
         showToast("Anda harus login!", "error");
         return;
     }
-    
     if (!confirm("❌ Tolak permintaan pertemanan ini?")) return;
     
     try {
@@ -522,13 +494,8 @@ async function rejectFriendRequest(requestId, fromUid) {
             status: 'rejected',
             updatedAt: firebase.database.ServerValue.TIMESTAMP
         });
-        
         showToast(`✅ Permintaan pertemanan ditolak`, "info");
-        
-        setTimeout(() => {
-            db.ref(`friendships/requests/${requestId}`).remove();
-        }, 2000);
-        
+        setTimeout(() => db.ref(`friendships/requests/${requestId}`).remove(), 2000);
     } catch (error) {
         console.error("Reject friend request error:", error);
         showToast("❌ Gagal menolak permintaan", "error");
@@ -540,7 +507,6 @@ async function removeFriend(friendUid, friendName) {
         showToast("Anda harus login!", "error");
         return;
     }
-    
     if (!confirm(`⚠️ Hapus ${friendName} dari daftar teman?\n\nAnda tidak akan bisa melihat profil dan chat dengannya.`)) return;
     
     try {
@@ -548,9 +514,7 @@ async function removeFriend(friendUid, friendName) {
             db.ref(`friendships/list/${currentUser.uid}/${friendUid}`).remove(),
             db.ref(`friendships/list/${friendUid}/${currentUser.uid}`).remove()
         ]);
-        
         showToast(`✅ ${friendName} telah dihapus dari daftar teman`, "success");
-        
     } catch (error) {
         console.error("Remove friend error:", error);
         showToast("❌ Gagal menghapus teman", "error");
@@ -560,30 +524,20 @@ async function removeFriend(friendUid, friendName) {
 // ======================= FUNGSI CHAT INTEGRATION =======================
 
 async function startChatWithFriend(friendUid, friendName, friendEmail) {
-    // Cek apakah masih teman
     const isFriend = await checkIsFriend(friendUid);
     if (!isFriend) {
         showToast("Anda tidak bisa chat dengan orang yang bukan teman!", "error");
         return;
     }
-    
-    // Cek apakah fungsi switchTab dan selectChat tersedia
     if (typeof switchTab === 'function') {
-        // Switch ke tab chat
         switchTab('chat');
-    } else {
-        console.warn("switchTab not found, opening modal instead");
-        if (typeof openChatModal === 'function') {
-            openChatModal();
-        }
+    } else if (typeof openChatModal === 'function') {
+        openChatModal();
     }
-    
-    // Tunggu DOM chat siap, lalu select chat
     setTimeout(() => {
         if (typeof selectChat === 'function') {
             selectChat(friendUid);
         } else {
-            console.warn("selectChat not found");
             showToast("⚠️ Fitur chat sedang dimuat, coba lagi nanti", "warning");
         }
     }, 500);
@@ -593,15 +547,12 @@ async function startChatWithFriend(friendUid, friendName, friendEmail) {
 
 async function loadFriendRequests() {
     if (!currentUser) return;
-    
     const snapshot = await db.ref('friendships/requests').once('value');
     const data = snapshot.val();
-    
     if (data) {
         const pendingRequests = Object.keys(data)
             .filter(key => data[key].to === currentUser.uid && data[key].status === 'pending')
             .map(key => ({ id: key, ...data[key] }));
-        
         updateFriendRequestBadge(pendingRequests.length);
         renderFriendRequestsList(pendingRequests);
     }
@@ -609,7 +560,6 @@ async function loadFriendRequests() {
 
 async function loadFriendsList() {
     if (!currentUser) return;
-    
     const snapshot = await db.ref(`friendships/list/${currentUser.uid}`).once('value');
     const data = snapshot.val();
     const friendsList = data ? Object.values(data) : [];
@@ -625,12 +575,10 @@ function getAvatarUrl(name) {
 
 function formatTimeAgo(timestamp) {
     if (!timestamp) return '';
-    const now = Date.now();
-    const diff = now - timestamp;
+    const diff = Date.now() - timestamp;
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
-    
     if (days > 0) return `${days} hari yang lalu`;
     if (hours > 0) return `${hours} jam yang lalu`;
     if (minutes > 0) return `${minutes} menit yang lalu`;
@@ -656,7 +604,6 @@ async function openFriendProfileModal(friendUid) {
     try {
         const snapshot = await db.ref(`users_auth/${friendUid}`).once('value');
         const friendData = snapshot.val();
-        
         if (!friendData) {
             showToast("❌ Data teman tidak ditemukan", "error");
             return;
@@ -694,9 +641,7 @@ async function openFriendProfileModal(friendUid) {
         
         const existingModal = document.getElementById('modal-friend-profile');
         if (existingModal) existingModal.remove();
-        
         document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
     } catch (error) {
         console.error("Load friend profile error:", error);
         showToast("❌ Gagal memuat profil", "error");
@@ -720,11 +665,24 @@ function cleanupFriendsSystem() {
         db.ref('friendships/requests').off('value', friendRequestsListener);
         friendRequestsListener = null;
     }
-    if (friendsRealtimeListener) {
-        db.ref(`friendships/list/${currentUser?.uid}`).off('value', friendsRealtimeListener);
+    if (friendsRealtimeListener && currentUser) {
+        db.ref(`friendships/list/${currentUser.uid}`).off('value', friendsRealtimeListener);
         friendsRealtimeListener = null;
     }
     console.log("🧹 Friends system cleaned up");
+}
+
+// ======================= INISIALISASI EVENT LISTENER ========================
+setupFriendsUiReadyListener();
+
+// Jika currentUser sudah ada sebelum event listener dipasang, langsung inisialisasi
+if (typeof window !== 'undefined' && window.currentUser) {
+    console.log("👥 friends.js: currentUser already exists, initializing immediately");
+    setTimeout(() => {
+        if (window.currentUser && !friendsRealtimeListener) {
+            initFriendsSystem();
+        }
+    }, 100);
 }
 
 // ======================= EXPORT KE GLOBAL =======================
@@ -741,11 +699,4 @@ window.startChatWithFriend = startChatWithFriend;
 window.startChatFromProfile = startChatFromProfile;
 window.cleanupFriendsSystem = cleanupFriendsSystem;
 
-// Auto init
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-            if (currentUser) initFriendsSystem();
-        }, 2000);
-    });
-}
+console.log("✅ friends.js V2.0 loaded - Event-based (no duplicate auto-init)");

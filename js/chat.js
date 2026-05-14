@@ -1,25 +1,41 @@
-// chat.js - VERSION 3.0 (FULLY FIXED)
+// chat.js - VERSION 4.0 (EVENT-BASED, NO AUTO-INIT)
 // Fitur Chat Pribadi antar teman
 // Mendukung: kirim pesan, gambar, hapus pesan, real-time, notifikasi
-// DIPERBAIKI: 
-// - Mengatasi masalah DOM not found
-// - Menambahkan fallback container
-// - Memperbaiki async/await issues
+// PERUBAHAN: Inisialisasi via event 'uiReady', bukan setInterval
+// ============================================================================
 
 let chatListeners = {};
 let currentChatWith = null;
 let chatMessagesListener = null;
 let unreadCounts = {};
 let chatInitialized = false;
+let chatUiReadyListenerAdded = false;
+
+// ======================= EVENT LISTENER ========================
+
+function setupChatUiReadyListener() {
+    if (chatUiReadyListenerAdded) return;
+    chatUiReadyListenerAdded = true;
+    console.log("📡 Setting up uiReady event listener for chat module");
+
+    window.addEventListener('uiReady', (e) => {
+        const user = e.detail.currentUser;
+        if (user && user.uid && !chatInitialized) {
+            console.log("💬 chat.js: uiReady received, initializing chat system");
+            initChatSystem();
+        } else if (user && user.uid && chatInitialized) {
+            console.log("💬 chat.js: uiReady received but chat already initialized");
+        }
+    });
+}
 
 // ======================= INISIALISASI =======================
 
 function initChatSystem() {
     console.log("💬 Initializing chat system...", "currentUser:", currentUser?.uid);
     
-    if (!currentUser) {
+    if (!currentUser || !currentUser.uid) {
         console.log("No user logged in, skipping chat init");
-        setTimeout(initChatSystem, 1000);
         return;
     }
     
@@ -27,6 +43,9 @@ function initChatSystem() {
         console.log("Chat already initialized");
         return;
     }
+    
+    // Hapus listener lama jika ada (pencegahan duplikasi)
+    cleanupChatSystem();
     
     // Setup listener untuk pesan masuk (real-time)
     setupIncomingMessagesListener();
@@ -44,10 +63,10 @@ function setupIncomingMessagesListener() {
     }
     
     chatListeners.incoming = db.ref(`chats/${currentUser.uid}/inbox`).on('value', (snapshot) => {
+        if (!currentUser) return;
         const data = snapshot.val();
         if (data) {
             updateUnreadBadge(data);
-            // Render chat list jika container tersedia
             renderChatListIfContainerReady();
             if (currentChatWith) {
                 loadChatMessages(currentChatWith);
@@ -58,12 +77,10 @@ function setupIncomingMessagesListener() {
 }
 
 function renderChatListIfContainerReady() {
-    // Coba render di tab chat
     let container = document.getElementById('chatList');
     if (container && container.parentElement && container.parentElement.closest('#tab-chat')?.classList.contains('active')) {
         loadChatList();
     }
-    // Coba render di modal chat
     let modalContainer = document.querySelector('#chatModalPanel #chatList');
     if (modalContainer && document.getElementById('modal-chat')?.classList.contains('open')) {
         loadChatList();
@@ -91,7 +108,6 @@ function updateUnreadBadge(inboxData) {
     
     unreadCounts = unreadByUser;
     
-    // Update badge di tab chat
     const chatTabBtn = document.querySelector('.tab-btn[onclick*="chat"]');
     if (chatTabBtn) {
         let badge = chatTabBtn.querySelector('.chat-badge');
@@ -108,7 +124,6 @@ function updateUnreadBadge(inboxData) {
         }
     }
     
-    // Update badge di floating button
     const floatingChatBtn = document.getElementById('floatingChatBtn');
     if (floatingChatBtn) {
         let badge = floatingChatBtn.querySelector('.chat-badge-count');
@@ -143,22 +158,17 @@ function renderChatInterface(containerId = 'chatPanel') {
     console.log("🎨 renderChatInterface called for:", containerId);
     
     let container = document.getElementById(containerId);
-    
     if (!container) {
-        console.warn(`Chat container ${containerId} not found`);
-        // Coba cari container alternatif
         if (containerId === 'chatPanel') {
             container = document.getElementById('chatModalPanel');
             if (container) console.log("Found chatModalPanel as alternative");
         }
     }
-    
     if (!container) {
         console.error("No chat container found!");
         return false;
     }
     
-    // Cek apakah sudah dirender sebelumnya
     if (container.querySelector('.chat-container')) {
         console.log("Chat already rendered, skipping");
         return true;
@@ -194,11 +204,8 @@ function renderChatInterface(containerId = 'chatPanel') {
         </div>
     `;
     
-    // Setup event listeners
     const searchInput = document.getElementById('chatSearchInput');
-    if (searchInput) {
-        searchInput.oninput = () => filterChatList();
-    }
+    if (searchInput) searchInput.oninput = () => filterChatList();
     
     const messageInput = document.getElementById('chatMessageInput');
     if (messageInput) {
@@ -210,20 +217,15 @@ function renderChatInterface(containerId = 'chatPanel') {
         };
     }
     
-    // Load chat list
     loadChatList();
-    
     console.log("✅ Chat interface rendered");
     return true;
 }
 
 async function loadChatList() {
     let container = document.getElementById('chatList');
-    if (!container) {
-        // Coba cari di dalam modal
-        container = document.querySelector('#chatModalPanel #chatList');
-    }
-    if (!container) return;
+    if (!container) container = document.querySelector('#chatModalPanel #chatList');
+    if (!container || !currentUser) return;
     
     try {
         const snapshot = await db.ref(`chats/${currentUser.uid}/inbox`).once('value');
@@ -272,7 +274,6 @@ async function loadChatList() {
         
         const searchValue = document.getElementById('chatSearchInput')?.value.toLowerCase() || '';
         if (searchValue) filterChatList();
-        
     } catch (error) {
         console.error("Load chat list error:", error);
         container.innerHTML = '<p class="text-small" style="color: var(--text-muted); text-align:center; padding:20px;">❌ Gagal memuat chat</p>';
@@ -280,17 +281,10 @@ async function loadChatList() {
 }
 
 function filterChatList() {
-    const searchInput = document.getElementById('chatSearchInput');
-    const searchValue = searchInput?.value.toLowerCase() || '';
-    const chatItems = document.querySelectorAll('.chat-item');
-    
-    chatItems.forEach(item => {
+    const searchValue = document.getElementById('chatSearchInput')?.value.toLowerCase() || '';
+    document.querySelectorAll('.chat-item').forEach(item => {
         const name = item.querySelector('.chat-name')?.textContent.toLowerCase() || '';
-        if (searchValue === '' || name.includes(searchValue)) {
-            item.style.display = 'flex';
-        } else {
-            item.style.display = 'none';
-        }
+        item.style.display = (searchValue === '' || name.includes(searchValue)) ? 'flex' : 'none';
     });
 }
 
@@ -300,15 +294,13 @@ function formatChatTime(timestamp) {
     const now = new Date();
     const diff = now - date;
     const hours = Math.floor(diff / 3600000);
-    
     if (diff < 3600000) {
         const minutes = Math.floor(diff / 60000);
         return minutes === 0 ? 'Baru saja' : `${minutes} m`;
     } else if (diff < 86400000) {
         return `${hours} jam`;
     } else if (diff < 604800000) {
-        const days = Math.floor(diff / 86400000);
-        return `${days} h`;
+        return `${Math.floor(diff / 86400000)} h`;
     } else {
         return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
     }
@@ -319,7 +311,6 @@ function formatChatTime(timestamp) {
 async function selectChat(friendUid) {
     console.log("💬 Selecting chat with:", friendUid);
     currentChatWith = friendUid;
-    
     await markMessagesAsRead(friendUid);
     
     const friendSnapshot = await db.ref(`users_auth/${friendUid}`).once('value');
@@ -343,9 +334,7 @@ async function selectChat(friendUid) {
             </div>
         `;
     }
-    
     if (inputArea) inputArea.style.display = 'flex';
-    
     loadChatMessages(friendUid);
 }
 
@@ -361,26 +350,18 @@ async function loadChatMessages(friendUid) {
     
     const messagesContainer = document.getElementById('chatMessages');
     if (!messagesContainer) return;
-    
     messagesContainer.innerHTML = '<div class="chat-messages-loading" style="text-align:center; color:var(--text-muted); padding:20px;">Memuat pesan...</div>';
     
     chatMessagesListener = db.ref(`chats/${currentUser.uid}/messages/${friendUid}`).on('value', (snapshot) => {
         const data = snapshot.val();
         const messages = [];
-        
         if (data) {
-            Object.entries(data).forEach(([msgId, msg]) => {
-                messages.push({ id: msgId, ...msg });
-            });
+            Object.entries(data).forEach(([msgId, msg]) => messages.push({ id: msgId, ...msg }));
             messages.sort((a, b) => a.timestamp - b.timestamp);
         }
-        
         renderChatMessages(messages, friendUid);
-        
         setTimeout(() => {
-            if (messagesContainer) {
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            }
+            if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }, 100);
     });
 }
@@ -388,7 +369,6 @@ async function loadChatMessages(friendUid) {
 function renderChatMessages(messages, friendUid) {
     const container = document.getElementById('chatMessages');
     if (!container) return;
-    
     if (!messages || messages.length === 0) {
         container.innerHTML = '<div class="chat-messages-empty" style="text-align:center; color:var(--text-muted); padding:40px;">💬 Belum ada pesan. Kirim pesan pertama!</div>';
         return;
@@ -398,14 +378,9 @@ function renderChatMessages(messages, friendUid) {
         const isMe = msg.from === currentUser.uid;
         const time = new Date(msg.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         const date = new Date(msg.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-        
-        let contentHtml = '';
-        if (msg.type === 'image') {
-            contentHtml = `<a href="${msg.mediaUrl}" target="_blank"><img src="${msg.mediaUrl}" style="max-width:200px; max-height:150px; border-radius:8px; cursor:pointer;"></a>`;
-        } else {
-            contentHtml = `<div class="chat-message-text" style="word-wrap: break-word;">${escapeHtml(msg.message)}</div>`;
-        }
-        
+        let contentHtml = msg.type === 'image' 
+            ? `<a href="${msg.mediaUrl}" target="_blank"><img src="${msg.mediaUrl}" style="max-width:200px; max-height:150px; border-radius:8px; cursor:pointer;"></a>`
+            : `<div class="chat-message-text" style="word-wrap: break-word;">${escapeHtml(msg.message)}</div>`;
         return `
             <div class="chat-message ${isMe ? 'me' : 'friend'}" data-msg-id="${msg.id}" style="display: flex; ${isMe ? 'justify-content: flex-end;' : 'justify-content: flex-start;'} margin-bottom: 12px;">
                 <div class="chat-message-bubble" style="max-width: 80%; padding: 10px 14px; border-radius: 22px; position: relative; ${isMe ? 'background: var(--primary); color: white; border-bottom-right-radius: 6px;' : 'background: var(--bg-hover); color: var(--text-primary); border-bottom-left-radius: 6px;'}">
@@ -417,16 +392,14 @@ function renderChatMessages(messages, friendUid) {
         `;
     }).join('');
     
-    // Hover effect untuk delete button
-    const bubbles = container.querySelectorAll('.chat-message-bubble');
-    bubbles.forEach(bubble => {
+    container.querySelectorAll('.chat-message-bubble').forEach(bubble => {
         bubble.addEventListener('mouseenter', () => {
-            const deleteBtn = bubble.querySelector('.chat-message-delete');
-            if (deleteBtn) deleteBtn.style.opacity = '1';
+            const del = bubble.querySelector('.chat-message-delete');
+            if (del) del.style.opacity = '1';
         });
         bubble.addEventListener('mouseleave', () => {
-            const deleteBtn = bubble.querySelector('.chat-message-delete');
-            if (deleteBtn) deleteBtn.style.opacity = '0';
+            const del = bubble.querySelector('.chat-message-delete');
+            if (del) del.style.opacity = '0';
         });
     });
 }
@@ -434,32 +407,16 @@ function renderChatMessages(messages, friendUid) {
 async function sendChatMessage() {
     const input = document.getElementById('chatMessageInput');
     const message = input?.value.trim();
-    
     if (!message) return;
-    if (!currentChatWith) {
-        showToast("Pilih chat terlebih dahulu!", "error");
-        return;
-    }
-    
-    const isFriend = await checkIsFriend(currentChatWith);
-    if (!isFriend) {
-        showToast("Anda tidak bisa chat dengan orang yang bukan teman!", "error");
-        return;
-    }
-    
+    if (!currentChatWith) { showToast("Pilih chat terlebih dahulu!", "error"); return; }
+    if (!await checkIsFriend(currentChatWith)) { showToast("Anda tidak bisa chat dengan orang yang bukan teman!", "error"); return; }
     if (input) input.disabled = true;
     
     const messageId = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const timestamp = firebase.database.ServerValue.TIMESTAMP;
-    
     const messageData = {
-        id: messageId,
-        from: currentUser.uid,
-        to: currentChatWith,
-        message: message,
-        type: 'text',
-        timestamp: timestamp,
-        read: false
+        id: messageId, from: currentUser.uid, to: currentChatWith,
+        message, type: 'text', timestamp, read: false
     };
     
     try {
@@ -467,33 +424,16 @@ async function sendChatMessage() {
             db.ref(`chats/${currentUser.uid}/messages/${currentChatWith}/${messageId}`).set(messageData),
             db.ref(`chats/${currentChatWith}/messages/${currentUser.uid}/${messageId}`).set(messageData),
             db.ref(`chats/${currentChatWith}/inbox/${currentUser.uid}`).update({
-                lastMessage: message,
-                lastMessageType: 'text',
-                lastMessageTime: timestamp,
+                lastMessage: message, lastMessageType: 'text', lastMessageTime: timestamp,
                 unreadCount: firebase.database.ServerValue.increment(1)
             }),
             db.ref(`chats/${currentUser.uid}/inbox/${currentChatWith}`).update({
-                lastMessage: message,
-                lastMessageType: 'text',
-                lastMessageTime: timestamp,
-                unreadCount: 0
+                lastMessage: message, lastMessageType: 'text', lastMessageTime: timestamp, unreadCount: 0
             })
         ]);
-        
-        if (input) {
-            input.value = '';
-            input.disabled = false;
-            input.focus();
-        }
-        
-        // Scroll to bottom
-        const messagesContainer = document.getElementById('chatMessages');
-        if (messagesContainer) {
-            setTimeout(() => {
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            }, 100);
-        }
-        
+        if (input) { input.value = ''; input.disabled = false; input.focus(); }
+        const msgContainer = document.getElementById('chatMessages');
+        if (msgContainer) setTimeout(() => msgContainer.scrollTop = msgContainer.scrollHeight, 100);
     } catch (error) {
         console.error("Send message error:", error);
         showToast("❌ Gagal mengirim pesan", "error");
@@ -504,83 +444,44 @@ async function sendChatMessage() {
 async function sendChatMedia(input) {
     const file = input.files[0];
     if (!file) return;
-    if (!currentChatWith) {
-        showToast("Pilih chat terlebih dahulu!", "error");
-        return;
-    }
-    
-    const isFriend = await checkIsFriend(currentChatWith);
-    if (!isFriend) {
-        showToast("Anda tidak bisa chat dengan orang yang bukan teman!", "error");
-        return;
-    }
-    
-    if (file.size > 5 * 1024 * 1024) {
-        showToast("❌ Ukuran gambar maksimal 5MB!", "error");
-        input.value = '';
-        return;
-    }
-    
+    if (!currentChatWith) { showToast("Pilih chat terlebih dahulu!", "error"); return; }
+    if (!await checkIsFriend(currentChatWith)) { showToast("Anda tidak bisa chat dengan orang yang bukan teman!", "error"); return; }
+    if (file.size > 5 * 1024 * 1024) { showToast("❌ Ukuran gambar maksimal 5MB!", "error"); input.value = ''; return; }
     showToast("📤 Mengunggah gambar...", "info");
-    
     const formData = new FormData();
     formData.append('image', file);
-    
     try {
-        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
-            method: 'POST',
-            body: formData
-        });
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: formData });
         const data = await res.json();
-        
         if (data.success) {
             const mediaUrl = data.data.image.url;
             const messageId = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
             const timestamp = firebase.database.ServerValue.TIMESTAMP;
-            
             const messageData = {
-                id: messageId,
-                from: currentUser.uid,
-                to: currentChatWith,
-                message: '📷 Mengirim gambar',
-                type: 'image',
-                mediaUrl: mediaUrl,
-                timestamp: timestamp,
-                read: false
+                id: messageId, from: currentUser.uid, to: currentChatWith,
+                message: '📷 Mengirim gambar', type: 'image', mediaUrl, timestamp, read: false
             };
-            
             await Promise.all([
                 db.ref(`chats/${currentUser.uid}/messages/${currentChatWith}/${messageId}`).set(messageData),
                 db.ref(`chats/${currentChatWith}/messages/${currentUser.uid}/${messageId}`).set(messageData),
                 db.ref(`chats/${currentChatWith}/inbox/${currentUser.uid}`).update({
-                    lastMessage: '📷 Gambar',
-                    lastMessageType: 'image',
-                    lastMessageTime: timestamp,
+                    lastMessage: '📷 Gambar', lastMessageType: 'image', lastMessageTime: timestamp,
                     unreadCount: firebase.database.ServerValue.increment(1)
                 }),
                 db.ref(`chats/${currentUser.uid}/inbox/${currentChatWith}`).update({
-                    lastMessage: '📷 Gambar',
-                    lastMessageType: 'image',
-                    lastMessageTime: timestamp,
-                    unreadCount: 0
+                    lastMessage: '📷 Gambar', lastMessageType: 'image', lastMessageTime: timestamp, unreadCount: 0
                 })
             ]);
-            
             showToast("✅ Gambar berhasil dikirim!", "success");
-        } else {
-            throw new Error("Upload failed");
-        }
+        } else throw new Error("Upload failed");
     } catch (err) {
         console.error("Upload error:", err);
         showToast("❌ Gagal mengirim gambar", "error");
-    } finally {
-        input.value = '';
-    }
+    } finally { input.value = ''; }
 }
 
 async function deleteChatMessage(friendUid, messageId) {
     if (!confirm("Hapus pesan ini?")) return;
-    
     try {
         await Promise.all([
             db.ref(`chats/${currentUser.uid}/messages/${friendUid}/${messageId}`).remove(),
@@ -595,7 +496,6 @@ async function deleteChatMessage(friendUid, messageId) {
 
 async function clearChat(friendUid) {
     if (!confirm(`Hapus SEMUA pesan dengan teman ini?\n\nTindakan ini tidak dapat dibatalkan!`)) return;
-    
     try {
         await Promise.all([
             db.ref(`chats/${currentUser.uid}/messages/${friendUid}`).remove(),
@@ -603,9 +503,7 @@ async function clearChat(friendUid) {
             db.ref(`chats/${currentUser.uid}/inbox/${friendUid}`).remove(),
             db.ref(`chats/${friendUid}/inbox/${currentUser.uid}`).remove()
         ]);
-        
         showToast("✅ Chat berhasil dibersihkan", "success");
-        
         if (currentChatWith === friendUid) {
             currentChatWith = null;
             const header = document.getElementById('chatHeader');
@@ -615,39 +513,25 @@ async function clearChat(friendUid) {
             if (messagesContainer) messagesContainer.innerHTML = '<div class="chat-messages-empty" style="text-align:center; color:var(--text-muted); padding:40px;">👈 Pilih chat di sebelah kiri</div>';
             if (inputArea) inputArea.style.display = 'none';
         }
-        
         loadChatList();
-        
     } catch (error) {
         console.error("Clear chat error:", error);
         showToast("❌ Gagal membersihkan chat", "error");
     }
 }
 
-// ======================= START CHAT FROM FRIENDS =======================
-
 async function startChatWithFriend(friendUid, friendName, friendEmail) {
-    const isFriend = await checkIsFriend(friendUid);
-    if (!isFriend) {
+    if (!await checkIsFriend(friendUid)) {
         showToast("Anda tidak bisa chat dengan orang yang bukan teman!", "error");
         return;
     }
-    
-    if (typeof switchTab === 'function') {
-        switchTab('chat');
-    }
-    
-    // Tunggu sejenak sampai DOM chat ter-render
+    if (typeof switchTab === 'function') switchTab('chat');
     setTimeout(() => {
-        // Render chat interface jika belum
         const chatPanel = document.getElementById('chatPanel');
         if (chatPanel && (!chatPanel.querySelector('.chat-container') || chatPanel.innerHTML.includes('Memuat fitur chat'))) {
             renderChatInterface('chatPanel');
         }
-        
-        setTimeout(() => {
-            selectChat(friendUid);
-        }, 300);
+        setTimeout(() => selectChat(friendUid), 300);
     }, 500);
 }
 
@@ -655,7 +539,6 @@ function openChatModal() {
     const modal = document.getElementById('modal-chat');
     if (modal) {
         modal.classList.add('open');
-        // Render chat di modal
         renderChatInterface('chatModalPanel');
     }
 }
@@ -672,6 +555,7 @@ function escapeHtml(str) {
 }
 
 async function checkIsFriend(friendUid) {
+    if (!currentUser) return false;
     const snapshot = await db.ref(`friendships/list/${currentUser.uid}/${friendUid}`).once('value');
     return snapshot.exists();
 }
@@ -680,12 +564,12 @@ async function checkIsFriend(friendUid) {
 
 function cleanupChatSystem() {
     if (chatMessagesListener) {
-        if (currentChatWith) {
+        if (currentChatWith && currentUser) {
             db.ref(`chats/${currentUser.uid}/messages/${currentChatWith}`).off('value', chatMessagesListener);
         }
         chatMessagesListener = null;
     }
-    if (chatListeners.incoming) {
+    if (chatListeners.incoming && currentUser) {
         db.ref(`chats/${currentUser.uid}/inbox`).off('value', chatListeners.incoming);
         chatListeners.incoming = null;
     }
@@ -693,16 +577,14 @@ function cleanupChatSystem() {
     console.log("🧹 Chat system cleaned up");
 }
 
-// ======================= AUTO INIT =======================
+// ======================= INISIALISASI EVENT LISTENER ========================
+setupChatUiReadyListener();
 
-// Tunggu currentUser ready
-const checkChatUserReady = setInterval(() => {
-    if (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) {
-        clearInterval(checkChatUserReady);
-        console.log("Chat system: currentUser ready, initializing...");
-        initChatSystem();
-    }
-}, 500);
+// Jika currentUser sudah ada sebelum event listener dipasang, langsung inisialisasi
+if (typeof window !== 'undefined' && window.currentUser && window.currentUser.uid && !chatInitialized) {
+    console.log("💬 chat.js: currentUser already exists, initializing immediately");
+    setTimeout(() => initChatSystem(), 100);
+}
 
 // ======================= EXPORT KE GLOBAL =======================
 window.initChatSystem = initChatSystem;
@@ -717,3 +599,5 @@ window.filterChatList = filterChatList;
 window.cleanupChatSystem = cleanupChatSystem;
 window.renderChatInterface = renderChatInterface;
 window.loadChatList = loadChatList;
+
+console.log("✅ chat.js V4.0 loaded - Event-based initialization");

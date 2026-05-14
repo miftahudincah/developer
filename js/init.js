@@ -1,6 +1,5 @@
-// init.js - VERSION 3.0 (FIXED - NO DUPLICATE LISTENERS)
-// INISIALISASI DATA DENGAN FLAG SYSTEM
-// HANYA SATU KALI INISIALISASI, TIDAK DUPLIKAT DENGAN main.js
+// init.js - VERSION 4.0 (EVENT-BASED)
+// INISIALISASI DATA DENGAN FLAG SYSTEM + EVENT DATA READY
 // ============================================================================
 
 let appInitialized = false;
@@ -25,6 +24,15 @@ function checkAllDataReady() {
     if (allReady && currentUser && !appInitialized) {
         console.log("✅ All data ready, initializing app...");
         appInitialized = true;
+        
+        // Dispatch event dataReady untuk modul lain (rekap, friends, chat, status, sensor)
+        if (!window._dataReadyDispatched) {
+            window._dataReadyDispatched = true;
+            console.log("📡 Dispatching 'dataReady' event to all modules...");
+            window.dispatchEvent(new CustomEvent('dataReady', { 
+                detail: { dbData, currentUser, timestamp: Date.now() }
+            }));
+        }
         
         // Beri sedikit delay untuk memastikan DOM siap
         setTimeout(() => {
@@ -76,35 +84,28 @@ function renderAllData() {
         try { renderCodesTable(); } catch(e) { console.warn("renderCodesTable error:", e); }
     }
     
-    // 3. Inisialisasi sistem pengumuman (hanya sekali)
+    // 3. Inisialisasi sistem pengumuman (satu-satunya yang tetap dipanggil langsung karena ringan)
     if (typeof initAnnouncementSystem === 'function') {
         setTimeout(() => {
             try { initAnnouncementSystem(); } catch(e) { console.warn("initAnnouncementSystem error:", e); }
         }, 300);
     }
     
-    // 4. Inisialisasi sistem rekap absensi
-    if (typeof initRekap === 'function') {
-        setTimeout(() => {
-            try { 
-                initRekap(); 
-                console.log("📊 Rekap system initialized");
-            } catch(e) { console.warn("initRekap error:", e); }
-        }, 500);
-    }
+    // ========== HAPUS PANGGILAN LANGSUNG KE REKAP, FRIENDS, CHAT, STATUS, SENSOR ==========
+    // Modul-modul tersebut akan diinisialisasi oleh event 'dataReady' atau 'uiReady'
     
-    // 5. Update UI tambahan
+    // 4. Update UI tambahan
     if (typeof updateProfileDelayDisplay === 'function') {
         try { updateProfileDelayDisplay(); } catch(e) { console.warn("updateProfileDelayDisplay error:", e); }
     }
     
-    // 6. Setup floating buttons berdasarkan role
+    // 5. Setup floating buttons berdasarkan role
     const floatingBtn = document.getElementById('floatingAnnouncementBtn');
     if (floatingBtn && currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru')) {
         floatingBtn.style.display = 'flex';
     }
     
-    // 7. Setup default dates untuk rekap custom range
+    // 6. Setup default dates untuk rekap custom range
     setupRekapDefaultDates();
     
     console.log("✅ renderAllData completed");
@@ -277,7 +278,7 @@ function initDataListeners() {
             }
         }
         
-        // Update rekap jika aktif
+        // Update rekap jika aktif (rekap sekarang event-based, tapi tetap support)
         if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
             setTimeout(() => loadRekap(), 100);
         }
@@ -426,6 +427,7 @@ function cleanupInitListeners() {
         
         initListenersAttached = false;
         appInitialized = false;
+        window._dataReadyDispatched = false;
         
         // Reset flags
         dataReady = {
@@ -470,4 +472,4 @@ window.setupRekapDefaultDates = setupRekapDefaultDates;
 window.initDataListeners = initDataListeners;
 window.cleanupInitListeners = cleanupInitListeners;
 
-console.log("✅ init.js V3.0 loaded - No duplicate listeners");
+console.log("✅ init.js V4.0 loaded - Event-based data ready dispatch");

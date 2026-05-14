@@ -1,7 +1,9 @@
-// ======================= SETTING.JS - VERSION 2.3 (DENGAN SENSOR STATUS) =======================
+// setting.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
 // PENGATURAN SEKOLAH (SCHOOL CONFIG) & DELAY GLOBAL
 // Dengan dukungan manajemen KELAS dan JURUSAN yang bisa diedit
-// NEW: Sensor Status Listener untuk monitoring 16 fingerprint sensor
+// SENSOR STATUS: Dipisahkan ke modul sendiri (tetapi tetap di sini untuk kemudahan)
+// PERUBAHAN: Menghapus semua listener Firebase duplikat, menggunakan event 'dataReady' dan 'uiReady'
+// ============================================================================
 
 let currentSchoolConfig = {
     type: 'smp',        // 'smp', 'smk', 'both'
@@ -9,119 +11,54 @@ let currentSchoolConfig = {
     classes: []         // array of string (kelas) - untuk semua tipe sekolah
 };
 
-let settingsRealtimeListener = null;
-let delayRealtimeListener = null;
-let schoolConfigListener = null;
+let settingDataReadyListenerAdded = false;
+let settingUiReadyListenerAdded = false;
 
-// ======================= SENSOR STATUS GLOBAL ========================
-let sensorStatusListener = null;
-let sensorStatusRetryTimeout = null;
+// ======================= EVENT LISTENER ========================
 
-// ======================= REAL-TIME INITIALIZATION =======================
+function setupSettingDataReadyListener() {
+    if (settingDataReadyListenerAdded) return;
+    settingDataReadyListenerAdded = true;
+    console.log("📡 Setting up dataReady event listener for settings module");
 
-function initRealtimeSettings() {
-    console.log("🔄 Initializing real-time settings system...");
-    
-    if (!currentUser) {
-        console.log("⏳ Menunggu currentUser sebelum init realtime settings");
-        setTimeout(initRealtimeSettings, 500);
-        return;
-    }
-    
-    // Listener untuk delay global
-    if (delayRealtimeListener) {
-        db.ref('settings/delayOut').off('value', delayRealtimeListener);
-    }
-    
-    delayRealtimeListener = db.ref('settings/delayOut').on('value', (snapshot) => {
-        const delay = snapshot.val();
-        console.log("⏰ Global delay updated:", delay);
-        
-        if (delay && delay > 0) {
-            const displaySpan = document.getElementById('globalDelayDisplay');
-            if (displaySpan) {
-                displaySpan.textContent = formatDelayText(delay);
-                displaySpan.style.transition = 'color 0.3s';
-                displaySpan.style.color = '#4caf50';
-                setTimeout(() => {
-                    if (displaySpan) displaySpan.style.color = '';
-                }, 500);
-            }
-            setGlobalDelayFormValue(delay);
-        } else {
-            const displaySpan = document.getElementById('globalDelayDisplay');
-            if (displaySpan) displaySpan.textContent = formatDelayText(60);
-            setGlobalDelayFormValue(60);
+    window.addEventListener('dataReady', (e) => {
+        console.log("⚙️ setting.js: dataReady received, updating settings UI");
+        // Data schoolConfig dan globalDelay sudah diisi oleh init.js
+        // Kita hanya perlu mengambil dari window.currentSchoolConfig (dari init.js)
+        if (window.currentSchoolConfig) {
+            currentSchoolConfig = window.currentSchoolConfig;
+            updateSchoolTypeUI();
+            renderClassesList();
+            renderMajorsList();
         }
-    });
-    
-    // Listener untuk konfigurasi sekolah
-    if (schoolConfigListener) {
-        db.ref('school_config').off('value', schoolConfigListener);
-    }
-    
-    schoolConfigListener = db.ref('school_config').on('value', (snapshot) => {
-        const data = snapshot.val();
-        const oldType = currentSchoolConfig.type;
-        
-        if (data) {
-            currentSchoolConfig.type = data.type || 'smp';
-            currentSchoolConfig.majors = data.majors || [];
-            currentSchoolConfig.classes = data.classes || getDefaultClasses(currentSchoolConfig.type);
-        } else {
-            currentSchoolConfig.type = 'smp';
-            currentSchoolConfig.majors = [];
-            currentSchoolConfig.classes = getDefaultClasses('smp');
+        // Update tampilan delay global
+        const delaySpan = document.getElementById('globalDelayDisplay');
+        if (delaySpan && window.globalDelayValue !== undefined) {
+            delaySpan.textContent = formatDelayText(window.globalDelayValue);
         }
-        
-        console.log(`🏫 School config updated: ${oldType} -> ${currentSchoolConfig.type}`);
-        console.log(`📚 Classes: ${currentSchoolConfig.classes.length} kelas`);
-        console.log(`🎓 Majors: ${currentSchoolConfig.majors.length} jurusan`);
-        
-        // Update UI
-        updateSchoolTypeUI();
-        renderClassesList();
-        renderMajorsList();
-        
-        // Update dropdown yang bergantung
+        // Populate dropdown yang bergantung
         if (typeof populateKelasOptions === 'function') populateKelasOptions();
         if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
         if (typeof populateStudentFilters === 'function') populateStudentFilters();
     });
-    
-    // Inisialisasi awal
-    loadSchoolConfig();
-    
-    console.log("✅ Real-time settings initialized");
 }
 
-function getDefaultClasses(schoolType) {
-    if (schoolType === 'smp') {
-        return ['VII', 'VIII', 'IX'];
-    } else if (schoolType === 'smk') {
-        return ['X', 'XI', 'XII'];
-    } else {
-        return ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-    }
-}
+function setupSettingUiReadyListener() {
+    if (settingUiReadyListenerAdded) return;
+    settingUiReadyListenerAdded = true;
+    console.log("📡 Setting up uiReady event listener for sensor status");
 
-function updateSchoolTypeUI() {
-    const typeSelect = document.getElementById('schoolTypeSelect');
-    if (typeSelect && typeSelect.value !== currentSchoolConfig.type) {
-        typeSelect.value = currentSchoolConfig.type;
-    }
-    
-    // Tampilkan/sembunyikan bagian manajemen jurusan (hanya untuk SMK/Both)
-    const majorsManager = document.getElementById('majorsManager');
-    if (majorsManager) {
-        majorsManager.style.display = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both') ? 'block' : 'none';
-    }
-    
-    // Manajemen kelas selalu tampil
-    const classesManager = document.getElementById('classesManager');
-    if (classesManager) {
-        classesManager.style.display = 'block';
-    }
+    window.addEventListener('uiReady', (e) => {
+        const user = e.detail.currentUser;
+        if (user && user.role === 'admin') {
+            console.log("🔍 uiReady: initializing sensor status for admin");
+            initSensorStatusListener();
+        } else {
+            // Sembunyikan panel sensor jika bukan admin
+            const panel = document.getElementById('sensorStatusPanel');
+            if (panel) panel.style.display = 'none';
+        }
+    });
 }
 
 // ======================= FUNGSI FORMAT DELAY =======================
@@ -135,7 +72,7 @@ function formatDelayText(delayMinutes) {
     return `${minutes} menit`;
 }
 
-// ======================= DELAY GLOBAL =======================
+// ======================= DELAY GLOBAL (UI only, tanpa listener) =======================
 
 function toggleGlobalDelayInput() {
     const unit = document.getElementById('globalDelayUnit');
@@ -224,13 +161,6 @@ function saveGlobalDelay() {
         });
 }
 
-function loadGlobalDelay() {
-    db.ref('settings/delayOut').once('value').then(snapshot => {
-        const delay = snapshot.val();
-        setGlobalDelayFormValue(delay || 60);
-    });
-}
-
 function initGlobalDelayListeners() {
     const unitSelect = document.getElementById('globalDelayUnit');
     const minutesInput = document.getElementById('globalDelayMinutesValue');
@@ -255,18 +185,16 @@ function initGlobalDelayListeners() {
 
 function renderClassesList() {
     const container = document.getElementById('classesList');
-    if (!container) {
-        console.warn("⚠️ Element #classesList tidak ditemukan!");
-        return;
-    }
+    if (!container) return;
     
-    if (!currentSchoolConfig.classes || currentSchoolConfig.classes.length === 0) {
+    const classes = currentSchoolConfig.classes || [];
+    if (classes.length === 0) {
         container.innerHTML = '<p class="text-small" style="margin: 8px; color: #888;">📭 Belum ada kelas. Tambahkan di bawah.</p>';
         return;
     }
     
     let html = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
-    currentSchoolConfig.classes.forEach((className, index) => {
+    classes.forEach((className, index) => {
         html += `
             <div style="background: #2c2c3a; padding: 8px 14px; border-radius: 25px; display: flex; align-items: center; gap: 10px; border-left: 3px solid #4caf50;">
                 <span>🏫 ${escapeHtmlStr(className)}</span>
@@ -280,10 +208,7 @@ function renderClassesList() {
 
 function addClass() {
     const input = document.getElementById('newClassInput');
-    if (!input) {
-        console.warn("⚠️ Element #newClassInput tidak ditemukan!");
-        return;
-    }
+    if (!input) return;
     
     let newClass = input.value.trim().toUpperCase();
     if (!newClass) {
@@ -291,7 +216,6 @@ function addClass() {
         return;
     }
     
-    // Auto-convert: "7a" -> "VII A", "7A" -> "VII A"
     newClass = formatClassName(newClass);
     
     if (currentSchoolConfig.classes.includes(newClass)) {
@@ -303,15 +227,11 @@ function addClass() {
     input.value = '';
     renderClassesList();
     showToast(`✅ Kelas "${newClass}" ditambahkan. Jangan lupa klik 'Simpan Semua Kelas'.`, "success");
-    
     input.focus();
 }
 
 function formatClassName(input) {
-    // Konversi angka romawi sederhana
     let result = input.toUpperCase();
-    
-    // Konversi angka ke romawi untuk kelas
     const romanMap = {
         '7': 'VII', 'VIII': 'VIII', '7A': 'VII A', '7B': 'VII B', '7C': 'VII C',
         '8': 'VIII', '8A': 'VIII A', '8B': 'VIII B', '8C': 'VIII C',
@@ -320,26 +240,19 @@ function formatClassName(input) {
         '11': 'XI', '11A': 'XI A', '11B': 'XI B', '11C': 'XI C',
         '12': 'XII', '12A': 'XII A', '12B': 'XII B', '12C': 'XII C'
     };
-    
     if (romanMap[result]) return romanMap[result];
     if (romanMap[result.replace(' ', '')]) return romanMap[result.replace(' ', '')];
     
-    // Deteksi pola seperti "VII A", "X RPL"
     const match = result.match(/^([0-9]+|[IVX]+)\s*([A-Z]+)?$/);
     if (match) {
         let num = match[1];
         let suffix = match[2] || '';
-        
-        const numToRoman = {
-            '7': 'VII', '8': 'VIII', '9': 'IX', '10': 'X', '11': 'XI', '12': 'XII'
-        };
-        
+        const numToRoman = { '7': 'VII', '8': 'VIII', '9': 'IX', '10': 'X', '11': 'XI', '12': 'XII' };
         if (numToRoman[num]) {
             result = numToRoman[num];
             if (suffix) result += ' ' + suffix;
         }
     }
-    
     return result;
 }
 
@@ -357,18 +270,15 @@ function saveClasses() {
         showToast("⛔ Hanya admin yang dapat mengubah daftar kelas.", "error");
         return;
     }
-    
     if (currentSchoolConfig.classes.length === 0) {
         showToast("⚠️ Minimal harus ada 1 kelas!", "error");
         return;
     }
-    
     const btn = document.getElementById('btnSaveClasses');
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '💾 Menyimpan...';
     }
-    
     db.ref('school_config/classes').set(currentSchoolConfig.classes)
         .then(() => showToast(`✅ Daftar kelas berhasil disimpan (${currentSchoolConfig.classes.length} kelas).`))
         .catch(err => showToast("❌ Gagal: " + err.message, "error"))
@@ -380,47 +290,31 @@ function saveClasses() {
         });
 }
 
-// ======================= PENGATURAN JURUSAN (untuk SMK) =======================
+// ======================= PENGATURAN JURUSAN =======================
 
-function loadSchoolConfig() {
-    db.ref('school_config').once('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            currentSchoolConfig.type = data.type || 'smp';
-            currentSchoolConfig.majors = data.majors || [];
-            currentSchoolConfig.classes = data.classes || getDefaultClasses(currentSchoolConfig.type);
-        } else {
-            currentSchoolConfig.type = 'smp';
-            currentSchoolConfig.majors = [];
-            currentSchoolConfig.classes = getDefaultClasses('smp');
-        }
-        
-        console.log("📋 Load school config:", currentSchoolConfig);
-        
-        updateSchoolTypeUI();
-        renderClassesList();
-        renderMajorsList();
-        
-        if (typeof populateKelasOptions === 'function') populateKelasOptions();
-        if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-        if (typeof populateStudentFilters === 'function') populateStudentFilters();
-    });
+function updateSchoolTypeUI() {
+    const typeSelect = document.getElementById('schoolTypeSelect');
+    if (typeSelect && typeSelect.value !== currentSchoolConfig.type) {
+        typeSelect.value = currentSchoolConfig.type;
+    }
+    const majorsManager = document.getElementById('majorsManager');
+    if (majorsManager) {
+        majorsManager.style.display = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both') ? 'block' : 'none';
+    }
 }
 
 function renderMajorsList() {
     const container = document.getElementById('majorsList');
-    if (!container) {
-        console.warn("⚠️ Element #majorsList tidak ditemukan!");
-        return;
-    }
+    if (!container) return;
     
-    if (!currentSchoolConfig.majors || currentSchoolConfig.majors.length === 0) {
+    const majors = currentSchoolConfig.majors || [];
+    if (majors.length === 0) {
         container.innerHTML = '<p class="text-small" style="margin: 8px; color: #888;">📭 Belum ada jurusan. Tambahkan di bawah.</p>';
         return;
     }
     
     let html = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
-    currentSchoolConfig.majors.forEach((major, index) => {
+    majors.forEach((major, index) => {
         html += `
             <div style="background: #2c2c3a; padding: 8px 14px; border-radius: 25px; display: flex; align-items: center; gap: 10px; border-left: 3px solid #00bcd4;">
                 <span>📚 ${escapeHtmlStr(major)}</span>
@@ -448,10 +342,7 @@ function saveSchoolType() {
         btn.disabled = true;
         btn.innerHTML = '💾 Menyimpan...';
     }
-    
-    // Reset classes ke default berdasarkan tipe baru
     const newClasses = getDefaultClasses(newType);
-    
     Promise.all([
         db.ref('school_config/type').set(newType),
         db.ref('school_config/classes').set(newClasses)
@@ -459,10 +350,8 @@ function saveSchoolType() {
         showToast("✅ Tipe sekolah berhasil disimpan.");
         currentSchoolConfig.type = newType;
         currentSchoolConfig.classes = newClasses;
-        
         updateSchoolTypeUI();
         renderClassesList();
-        
         if (newType !== 'smk' && newType !== 'both') {
             currentSchoolConfig.majors = [];
             renderMajorsList();
@@ -480,27 +369,20 @@ function saveSchoolType() {
 
 function addMajor() {
     const input = document.getElementById('newMajorInput');
-    if (!input) {
-        console.warn("⚠️ Element #newMajorInput tidak ditemukan!");
-        return;
-    }
-    
+    if (!input) return;
     const newMajor = input.value.trim().toUpperCase();
     if (!newMajor) {
         showToast("⚠️ Masukkan nama jurusan!", "error");
         return;
     }
-    
     if (currentSchoolConfig.majors.includes(newMajor)) {
         showToast("❌ Jurusan sudah ada!", "error");
         return;
     }
-    
     currentSchoolConfig.majors.push(newMajor);
     input.value = '';
     renderMajorsList();
     showToast(`✅ Jurusan "${newMajor}" ditambahkan. Jangan lupa klik 'Simpan Semua Jurusan'.`, "success");
-    
     input.focus();
 }
 
@@ -534,6 +416,12 @@ function saveMajors() {
         });
 }
 
+function getDefaultClasses(schoolType) {
+    if (schoolType === 'smp') return ['VII', 'VIII', 'IX'];
+    if (schoolType === 'smk') return ['X', 'XI', 'XII'];
+    return ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+}
+
 // ======================= RESET, EXPORT, IMPORT =======================
 
 function resetAllSettings() {
@@ -544,7 +432,6 @@ function resetAllSettings() {
     if (!confirm("⚠️ Reset semua pengaturan ke default?\n\n- Delay global: 60 menit\n- Tipe sekolah: SMP\n- Kelas: VII, VIII, IX\n- Jurusan: kosong\n\nLanjutkan?")) return;
     
     const defaultClasses = ['VII', 'VIII', 'IX'];
-    
     const btn = document.getElementById('btnResetSettings');
     if (btn) {
         btn.disabled = true;
@@ -610,22 +497,12 @@ function importSchoolConfig(file) {
     reader.readAsText(file);
 }
 
-// ======================= SENSOR STATUS FINGERPRINT ========================
-// Fitur untuk menampilkan status 16 sensor fingerprint dari ESP32
-// Hanya ditampilkan untuk role admin
+// ======================= SENSOR STATUS (tetap pakai listener, tapi dipanggil via event) =======================
 
-/**
- * Inisialisasi listener untuk status sensor fingerprint
- * Hanya ditampilkan untuk role admin
- */
+let sensorStatusListener = null;
+
 function initSensorStatusListener() {
-    if (!currentUser) {
-        setTimeout(initSensorStatusListener, 1000);
-        return;
-    }
-    
-    // Hanya admin yang bisa melihat status sensor
-    if (currentUser.role !== 'admin') {
+    if (!currentUser || currentUser.role !== 'admin') {
         const panel = document.getElementById('sensorStatusPanel');
         if (panel) panel.style.display = 'none';
         return;
@@ -649,18 +526,13 @@ function initSensorStatusListener() {
     });
 }
 
-/**
- * Render grid 16 sensor fingerprint
- */
 function renderSensorGrid(data) {
     const container = document.getElementById('sensorGrid');
     if (!container) return;
-    
     if (!data.sensors || !Array.isArray(data.sensors)) {
         container.innerHTML = '<div class="sensor-loading">📡 Menunggu data dari ESP32...</div>';
         return;
     }
-    
     let html = '';
     data.sensors.forEach(sensor => {
         const isOnline = sensor.status === 'online';
@@ -668,7 +540,6 @@ function renderSensorGrid(data) {
         const statusText = isOnline ? 'ONLINE' : 'OFFLINE';
         const statusClass = isOnline ? 'online' : 'offline';
         const templates = sensor.templateCount || 0;
-        
         html += `
             <div class="sensor-card ${statusClass}">
                 <div class="sensor-number">#${sensor.id}</div>
@@ -679,30 +550,20 @@ function renderSensorGrid(data) {
             </div>
         `;
     });
-    
     container.innerHTML = html;
 }
 
-/**
- * Update header panel sensor (badge jumlah online & waktu update)
- */
 function updateSensorHeaderInfo(data) {
     const onlineCount = data.onlineCount || 0;
     const totalTemplates = data.totalTemplates || 0;
     const timestamp = data.timestamp;
-    
     const badge = document.getElementById('sensorOnlineBadge');
     if (badge) {
         badge.textContent = `${onlineCount}/16 Online`;
-        if (onlineCount === 16) {
-            badge.className = 'badge-success';
-        } else if (onlineCount >= 12) {
-            badge.className = 'badge-warning';
-        } else {
-            badge.className = 'badge-danger';
-        }
+        if (onlineCount === 16) badge.className = 'badge-success';
+        else if (onlineCount >= 12) badge.className = 'badge-warning';
+        else badge.className = 'badge-danger';
     }
-    
     const lastUpdateSpan = document.getElementById('sensorLastUpdate');
     if (lastUpdateSpan && timestamp) {
         const date = new Date(timestamp);
@@ -711,28 +572,14 @@ function updateSensorHeaderInfo(data) {
     } else if (lastUpdateSpan) {
         lastUpdateSpan.textContent = 'Menunggu data...';
     }
-    
-    // Update tooltip header dengan total template
     const header = document.querySelector('#sensorStatusPanel .sensor-header h4');
-    if (header) {
-        header.setAttribute('title', `Total ${totalTemplates} sidik jari tersimpan di semua sensor`);
-    }
+    if (header) header.setAttribute('title', `Total ${totalTemplates} sidik jari tersimpan di semua sensor`);
 }
 
-/**
- * Tampilkan pesan ketika tidak ada data sensor
- */
 function renderNoSensorData() {
     const container = document.getElementById('sensorGrid');
     if (!container) return;
-    
-    container.innerHTML = `
-        <div class="sensor-loading">
-            📡 Belum ada data dari ESP32<br>
-            <small>Pastikan ESP32 terhubung ke internet dan mengirim data status</small>
-        </div>
-    `;
-    
+    container.innerHTML = `<div class="sensor-loading">📡 Belum ada data dari ESP32<br><small>Pastikan ESP32 terhubung ke internet dan mengirim data status</small></div>`;
     const badge = document.getElementById('sensorOnlineBadge');
     if (badge) {
         badge.textContent = 'Menunggu data';
@@ -740,83 +587,48 @@ function renderNoSensorData() {
     }
 }
 
-/**
- * Refresh manual status sensor (kirim command ke ESP32)
- */
 function refreshSensorStatus() {
-    if (typeof showToast === 'function') {
-        showToast("📡 Meminta refresh data sensor...", "info");
-    }
-    
-    // Kirim command ke ESP32 via Firebase
+    if (typeof showToast === 'function') showToast("📡 Meminta refresh data sensor...", "info");
     if (db) {
         db.ref('commands/esp32/check_sensors').set({
             requestedBy: currentUser?.nama || 'Admin',
             timestamp: firebase.database.ServerValue.TIMESTAMP
         }).then(() => {
-            if (typeof showToast === 'function') {
-                showToast("✅ Perintah refresh dikirim ke ESP32", "success");
-            }
-            // Hapus command setelah 5 detik
-            setTimeout(() => {
-                db.ref('commands/esp32/check_sensors').remove();
-            }, 5000);
+            if (typeof showToast === 'function') showToast("✅ Perintah refresh dikirim ke ESP32", "success");
+            setTimeout(() => db.ref('commands/esp32/check_sensors').remove(), 5000);
         }).catch(err => {
             console.error("Gagal kirim command:", err);
-            if (typeof showToast === 'function') {
-                showToast("❌ Gagal mengirim perintah", "error");
-            }
+            if (typeof showToast === 'function') showToast("❌ Gagal mengirim perintah", "error");
         });
     }
-    
-    // Force refresh data dari Firebase
     if (sensorStatusListener) {
         db.ref('status/esp32/sensors').once('value').then(snapshot => {
             const data = snapshot.val();
-            if (data) {
-                renderSensorGrid(data);
-                updateSensorHeaderInfo(data);
-            }
+            if (data) { renderSensorGrid(data); updateSensorHeaderInfo(data); }
         }).catch(err => console.warn("Refresh error:", err));
     }
 }
 
-/**
- * Cleanup listener saat logout
- */
 function cleanupSensorStatus() {
     if (sensorStatusListener) {
         db.ref('status/esp32/sensors').off('value', sensorStatusListener);
         sensorStatusListener = null;
     }
-    if (sensorStatusRetryTimeout) {
-        clearTimeout(sensorStatusRetryTimeout);
-        sensorStatusRetryTimeout = null;
-    }
-    console.log("🧹 Sensor status listener cleaned up");
 }
 
 // ======================= CLEANUP =======================
 
 function cleanupSettingsSystem() {
-    if (delayRealtimeListener) {
-        db.ref('settings/delayOut').off('value', delayRealtimeListener);
-        delayRealtimeListener = null;
-    }
-    if (schoolConfigListener) {
-        db.ref('school_config').off('value', schoolConfigListener);
-        schoolConfigListener = null;
-    }
     cleanupSensorStatus();
+    settingDataReadyListenerAdded = false;
+    settingUiReadyListenerAdded = false;
     console.log("🧹 Settings system cleaned up");
 }
 
 // ======================= INISIALISASI =======================
 
 function initAllSettings() {
-    console.log("🚀 initAllSettings - Memulai inisialisasi...");
-    loadSchoolConfig();
-    loadGlobalDelay();
+    console.log("🚀 initAllSettings - Memulai inisialisasi UI settings...");
     initGlobalDelayListeners();
     
     // Setup dropdown hours
@@ -826,7 +638,6 @@ function initAllSettings() {
             globalHoursSelect.innerHTML += `<option value="${i}">${i} jam</option>`;
         }
     }
-    
     const studentHoursSelect = document.getElementById('delayHoursValue');
     if (studentHoursSelect && studentHoursSelect.options.length <= 1) {
         for (let i = 1; i <= 24; i++) {
@@ -834,14 +645,26 @@ function initAllSettings() {
         }
     }
     
+    // Ambil nilai awal dari Firebase sekali saja untuk UI (tidak pakai listener)
+    db.ref('settings/delayOut').once('value').then(snapshot => {
+        const delay = snapshot.val();
+        setGlobalDelayFormValue(delay || 60);
+        const displaySpan = document.getElementById('globalDelayDisplay');
+        if (displaySpan) displaySpan.textContent = formatDelayText(delay || 60);
+    });
+    
     console.log("✅ initAllSettings - Selesai");
 }
 
-// Auto-inisialisasi
+// Setup event listeners
+setupSettingDataReadyListener();
+setupSettingUiReadyListener();
+
+// Inisialisasi UI settings (tunggu DOM siap)
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(initAllSettings, 500));
+    document.addEventListener('DOMContentLoaded', () => setTimeout(initAllSettings, 100));
 } else {
-    setTimeout(initAllSettings, 500);
+    setTimeout(initAllSettings, 100);
 }
 
 // ======================= EXPORT KE GLOBAL =======================
@@ -850,9 +673,7 @@ window.toggleGlobalDelayInput = toggleGlobalDelayInput;
 window.updateGlobalDelayFromMinutes = updateGlobalDelayFromMinutes;
 window.updateGlobalDelayFromHours = updateGlobalDelayFromHours;
 window.saveGlobalDelay = saveGlobalDelay;
-window.loadGlobalDelay = loadGlobalDelay;
 window.initGlobalDelayListeners = initGlobalDelayListeners;
-window.loadSchoolConfig = loadSchoolConfig;
 window.renderClassesList = renderClassesList;
 window.addClass = addClass;
 window.removeClass = removeClass;
@@ -866,9 +687,9 @@ window.resetAllSettings = resetAllSettings;
 window.exportSchoolConfig = exportSchoolConfig;
 window.importSchoolConfig = importSchoolConfig;
 window.initAllSettings = initAllSettings;
-window.initRealtimeSettings = initRealtimeSettings;
 window.cleanupSettingsSystem = cleanupSettingsSystem;
-// ========== EXPORT SENSOR STATUS ==========
 window.initSensorStatusListener = initSensorStatusListener;
 window.refreshSensorStatus = refreshSensorStatus;
 window.cleanupSensorStatus = cleanupSensorStatus;
+
+console.log("✅ setting.js V3.0 loaded - Event-based (no duplicate listeners)");

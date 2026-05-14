@@ -1,8 +1,7 @@
-// ui.js - VERSION 3.2 (FIXED - NO DUPLICATE LISTENERS)
+// ui.js - VERSION 4.0 (EVENT-BASED, NO DUPLICATE INIT)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
-// Dengan dukungan real-time data refresh & session persistence
-// FIX: Hapus initRealtimeWatchers (sudah di init.js)
-// FIX: Data check di renderDashboard dan updateDashboardChart
+// PERUBAHAN: Menggunakan event 'dataReady' dan 'uiReady' untuk koordinasi antar modul
+// ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
 let clockInterval = null;
@@ -36,7 +35,7 @@ function initApp() {
     // Apply role permissions
     applyRolePermissions();
     
-    // Load logo sekolah
+    // Load logo sekolah (listener tetap karena hanya sekali)
     loadSchoolLogo();
     updateSchoolLogoUI();
     
@@ -67,45 +66,32 @@ function initApp() {
         console.error("Clock initialization error:", err);
     }
     
-    // ========== INISIALISASI SISTEM PENGUMUMAN ==========
-    if (typeof initAnnouncementSystem === 'function') {
-        setTimeout(() => initAnnouncementSystem(), 500);
-    }
+    // ========== PANGGILAN INISIALISASI VIA EVENT ==========
+    // Kirim event bahwa UI sudah siap, modul lain akan merespon
+    window.dispatchEvent(new CustomEvent('uiReady', { detail: { currentUser } }));
     
-    // ========== HAPUS PANGGILAN initRealtimeWatchers ==========
-    // Data listeners sudah diinisialisasi di init.js, tidak perlu dipanggil lagi
+    // ========== HAPUS PANGGILAN LANGSUNG KE MODUL LAIN ==========
+    // Semua modul (rekap, friends, chat, status, sensor) akan diinisialisasi
+    // oleh event listener mereka masing-masing, BUKAN dari sini.
+    // Ini mencegah double initialization dan race condition.
     
-    // Muat konfigurasi nama sekolah
-    if (typeof initSystemConfig === 'function') {
-        initSystemConfig();
-    } else {
-        initSystemConfigManual();
-    }
-    
-    // Muat konfigurasi tipe sekolah & jurusan
-    if (typeof loadSchoolConfig === 'function') {
-        loadSchoolConfig();
-    }
-    
-    // Inisialisasi event listener untuk delay input
-    if (typeof initDelayEventListeners === 'function') {
-        initDelayEventListeners();
-    } else {
-        initManualDelayListeners();
-    }
-    
-    // Inisialisasi event listener untuk global delay
-    if (typeof initGlobalDelayListeners === 'function') {
-        initGlobalDelayListeners();
-    }
-    
-    // Render semua tabel (data sudah siap dari init.js)
-    setTimeout(() => {
+    // Render semua tabel (data sudah siap dari init.js, tapi pastikan)
+    const renderTables = () => {
         if (typeof renderTable === 'function') renderTable();
         if (typeof renderStudentsTable === 'function') renderStudentsTable();
         if (typeof renderCodesTable === 'function') renderCodesTable();
         if (typeof renderUsersTable === 'function') renderUsersTable();
-    }, 100);
+    };
+    
+    // Cek apakah data sudah siap
+    if (window.dbData && window.dbData.attendance && window.dbData.users) {
+        renderTables();
+    } else {
+        window.addEventListener('dataReady', function onDataReady() {
+            window.removeEventListener('dataReady', onDataReady);
+            renderTables();
+        });
+    }
     
     // Switch ke tab default (Dashboard)
     switchTab('dashboard');
@@ -122,48 +108,91 @@ function initApp() {
         if (floatingChatBtn) floatingChatBtn.style.display = 'flex';
     }, 1000);
     
-    // Inisialisasi rekap system
-    setTimeout(() => {
-        if (typeof initRekap === 'function') {
-            initRekap();
-            console.log("📊 Rekap system initialized from initApp");
-        }
-    }, 800);
+    // Inisialisasi pengumuman (satu-satunya yang tetap dipanggil langsung karena ringan)
+    if (typeof initAnnouncementSystem === 'function') {
+        setTimeout(() => initAnnouncementSystem(), 500);
+    }
     
-    // Inisialisasi Friends System
-    setTimeout(() => {
-        if (typeof initFriendsSystem === 'function') {
-            initFriendsSystem();
-            console.log("👥 Friends system initialized from initApp");
-        }
-    }, 1200);
+    // Inisialisasi konfigurasi nama sekolah (listener ringan)
+    if (typeof initSystemConfig === 'function') {
+        initSystemConfig();
+    } else {
+        initSystemConfigManual();
+    }
     
-    // Inisialisasi Chat System
-    setTimeout(() => {
-        if (typeof initChatSystem === 'function') {
-            initChatSystem();
-            console.log("💬 Chat system initialized from initApp");
-        }
-    }, 1500);
+    // Inisialisasi konfigurasi tipe sekolah & jurusan (listener ringan)
+    if (typeof loadSchoolConfig === 'function') {
+        loadSchoolConfig();
+    }
     
-    // Inisialisasi Status System
-    setTimeout(() => {
-        if (typeof initStatusSystem === 'function') {
-            initStatusSystem();
-            console.log("📸 Status system initialized from initApp");
-        }
-    }, 1800);
+    // Inisialisasi event listener untuk delay input (UI only)
+    if (typeof initDelayEventListeners === 'function') {
+        initDelayEventListeners();
+    } else {
+        initManualDelayListeners();
+    }
     
-    // Inisialisasi Sensor Status Listener
-    setTimeout(() => {
-        if (typeof initSensorStatusListener === 'function') {
-            initSensorStatusListener();
-            console.log("🔍 Sensor status listener initialized from initApp");
-        }
-    }, 2500);
+    // Inisialisasi event listener untuk global delay (UI only)
+    if (typeof initGlobalDelayListeners === 'function') {
+        initGlobalDelayListeners();
+    }
     
-    console.log("✅ initApp completed successfully");
+    console.log("✅ initApp completed - event 'uiReady' dispatched");
 }
+
+// ======================== EVENT LISTENER UNTUK MODUL LAIN ========================
+// Modul-modul berikut akan diinisialisasi ketika event 'dataReady' dan 'uiReady' diterima
+// Ini memastikan data dan UI sudah siap sebelum modul dijalankan
+
+// Rekap System
+if (typeof window !== 'undefined') {
+    window.addEventListener('dataReady', () => {
+        console.log("📊 dataReady received, initializing rekap if needed");
+        if (typeof initRekap === 'function' && !window._rekapInitialized) {
+            window._rekapInitialized = true;
+            initRekap();
+        }
+    });
+}
+
+// Friends System (butuh currentUser)
+window.addEventListener('uiReady', (e) => {
+    if (e.detail.currentUser && typeof initFriendsSystem === 'function' && !window._friendsInitialized) {
+        console.log("👥 uiReady received, initializing friends system");
+        window._friendsInitialized = true;
+        initFriendsSystem();
+    }
+});
+
+// Chat System (butuh currentUser)
+window.addEventListener('uiReady', (e) => {
+    if (e.detail.currentUser && typeof initChatSystem === 'function' && !window._chatInitialized) {
+        console.log("💬 uiReady received, initializing chat system");
+        window._chatInitialized = true;
+        initChatSystem();
+    }
+});
+
+// Status System
+window.addEventListener('uiReady', (e) => {
+    if (e.detail.currentUser && typeof initStatusSystem === 'function' && !window._statusInitialized) {
+        console.log("📸 uiReady received, initializing status system");
+        window._statusInitialized = true;
+        initStatusSystem();
+    }
+});
+
+// Sensor Status Listener (khusus admin)
+window.addEventListener('uiReady', (e) => {
+    const user = e.detail.currentUser;
+    if (user && user.role === 'admin' && typeof initSensorStatusListener === 'function' && !window._sensorInitialized) {
+        console.log("🔍 uiReady received, initializing sensor status listener");
+        window._sensorInitialized = true;
+        initSensorStatusListener();
+    }
+});
+
+// ======================== FUNGSI LAINNYA (SAMA SEPERTI SEBELUMNYA) ========================
 
 /**
  * Setup event listener untuk perubahan tahun pada chart
@@ -515,14 +544,24 @@ function switchTab(tabId) {
     const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
     if (activeBtn) activeBtn.classList.add('active');
     
+    // Gunakan event untuk render tab, biar lebih teratur
     setTimeout(() => {
-        if (tabId === 'dashboard') renderDashboard();
-        else if (tabId === 'attendance' && typeof renderTable === 'function') renderTable();
-        else if (tabId === 'students' && typeof renderStudentsTable === 'function') renderStudentsTable();
-        else if (tabId === 'users' && typeof renderUsersTable === 'function') renderUsersTable();
-        else if (tabId === 'rekap' && typeof loadRekap === 'function') loadRekap();
-        else if (tabId === 'friends' && typeof loadFriendRequests === 'function') { loadFriendRequests(); loadFriendsList(); }
-        else if (tabId === 'chat' && typeof loadChatList === 'function') loadChatList();
+        if (tabId === 'dashboard') {
+            renderDashboard();
+        } else if (tabId === 'attendance' && typeof renderTable === 'function') {
+            renderTable();
+        } else if (tabId === 'students' && typeof renderStudentsTable === 'function') {
+            renderStudentsTable();
+        } else if (tabId === 'users' && typeof renderUsersTable === 'function') {
+            renderUsersTable();
+        } else if (tabId === 'rekap' && typeof loadRekap === 'function') {
+            loadRekap();
+        } else if (tabId === 'friends') {
+            if (typeof loadFriendRequests === 'function') loadFriendRequests();
+            if (typeof loadFriendsList === 'function') loadFriendsList();
+        } else if (tabId === 'chat' && typeof loadChatList === 'function') {
+            loadChatList();
+        }
     }, 50);
 }
 
@@ -637,7 +676,6 @@ function renderDashboard() {
         const totalUsersElem = document.getElementById('statTotalUsers');
         if (totalUsersElem && dbData.users_auth) totalUsersElem.innerText = dbData.users_auth.length;
         
-        // Tetap update chart (akan tampil kosong)
         setTimeout(() => updateDashboardChart(), 100);
         renderRecentActivities();
         renderDashboardTasks();
@@ -707,7 +745,6 @@ function renderDashboard() {
 }
 
 function updateDashboardChart() {
-    // Hentikan retry timeout jika ada
     if (dashboardChartRetryTimeout) {
         clearTimeout(dashboardChartRetryTimeout);
         dashboardChartRetryTimeout = null;
@@ -723,14 +760,12 @@ function updateDashboardChart() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // CEK DATA SIAP
     if (!dbData || !dbData.attendance) {
         console.log("⏳ Data absensi belum siap untuk chart, retry...");
         dashboardChartRetryTimeout = setTimeout(() => updateDashboardChart(), 500);
         return;
     }
 
-    // Auto-detect tahun dari data
     let yearSelect = document.getElementById('chartYearSelect');
     let selectedYear = 2025;
     
@@ -826,7 +861,6 @@ function updateDashboardChart() {
         console.warn("⚠️ Tidak ada data absensi!");
     }
 
-    // Hancurkan chart lama jika ada
     if (dashboardChart) {
         try {
             dashboardChart.destroy();
@@ -836,7 +870,6 @@ function updateDashboardChart() {
         dashboardChart = null;
     }
 
-    // Buat chart baru
     try {
         dashboardChart = new Chart(ctx, {
             type: 'bar',
@@ -1221,12 +1254,12 @@ function renderUsersTable() {
     const search = searchInput ? searchInput.value.toLowerCase() : '';
     tbody.innerHTML = '';
     if (!dbData.users_auth || dbData.users_auth.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.${search ? '<br><small>Coba kata kunci lain</small>' : ''}</td></tr>`;
         return;
     }
     let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
     if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">🔍 Tidak ada pengguna yang cocok dengan pencarian.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">🔍 Tidak ada pengguna yang cocok dengan pencarian.${search ? '<br><small>Coba kata kunci lain</small>' : ''}</td></tr>`;
         return;
     }
     data.forEach(u => {
@@ -1253,7 +1286,7 @@ function renderUsersTable() {
         else detailText = '-';
         tbody.innerHTML += `<tr>
             <td style="text-align:center;"><img src="${avatar}" style="width:32px; height:32px; border-radius:50%; object-fit:cover;"></td>
-            <td><strong>${escapeHtmlString(u.nama)}</strong></td>
+            <td><strong>${escapeHtmlString(u.nama)}</strong>${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}</td>
             <td style="color:#aaa; font-size:0.9rem;">${u.email || '-'}</td>
             <td>${roleHtml}</td>
             <td style="color:#888; font-size:0.85rem;">${escapeHtmlString(detailText)}</td>
@@ -1340,3 +1373,5 @@ window.renderDashboard = renderDashboard;
 window.updateDashboardChart = updateDashboardChart;
 window.setupChartYearListener = setupChartYearListener;
 window.updateYearDropdownOptions = updateYearDropdownOptions;
+
+console.log("✅ ui.js V4.0 loaded - Event-based initialization");

@@ -1,129 +1,54 @@
-// users.js - VERSION 2.1 (FIXED - Manajemen Pengguna)
+// users.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
 // Fungsi untuk mengelola user, kode registrasi, dan role management
-// Dengan real-time updates dan enhanced UI
+// PERUBAHAN: Menghapus listener duplikat, menggunakan event 'dataReady'
+// ============================================================================
 
-let usersRealtimeListener = null;
-let codesRealtimeListener = null;
 let lastCodeCount = 0;
+let usersDataReadyListenerAdded = false;
 
-// ======================= REAL-TIME INITIALIZATION =======================
+// ======================= EVENT LISTENER DATA READY ========================
 
-/**
- * Inisialisasi real-time listener untuk users dan codes
- */
-function initRealtimeUsers() {
-    console.log("🔄 Initializing real-time users system...");
-    
-    // Listener untuk perubahan data users_auth
-    if (usersRealtimeListener) {
-        db.ref('users_auth').off('value', usersRealtimeListener);
+function setupUsersDataReadyListener() {
+    if (usersDataReadyListenerAdded) {
+        console.log("⚠️ users dataReady listener already added, skipping");
+        return;
     }
     
-    usersRealtimeListener = db.ref('users_auth').on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (typeof dbData !== 'undefined') {
-            const oldCount = dbData.users_auth?.length || 0;
-            dbData.users_auth = [];
-            if (data) {
-                Object.keys(data).forEach(uid => {
-                    dbData.users_auth.push({ uid: uid, ...data[uid] });
-                });
-            }
-            const newCount = dbData.users_auth.length;
-            
-            if (oldCount !== newCount) {
-                console.log(`👥 Users data updated: ${oldCount} -> ${newCount} users`);
-                showUserUpdateNotification(newCount - oldCount);
-            }
-            
-            // Render ulang tabel users
-            if (typeof renderUsersTable === 'function') {
-                requestAnimationFrame(() => renderUsersTable());
-            }
+    usersDataReadyListenerAdded = true;
+    console.log("📡 Setting up dataReady event listener for users module");
+    
+    window.addEventListener('dataReady', (e) => {
+        console.log("🔄 users.js: dataReady received, updating users UI");
+        
+        // Render tabel users dan codes
+        if (typeof renderUsersTable === 'function') {
+            renderUsersTable();
+        }
+        if (typeof renderCodesTable === 'function') {
+            renderCodesTable();
+        }
+        
+        // Update statistik kode
+        updateCodesStatistics();
+        
+        // Update dropdown siswa untuk generate kode
+        if (typeof populateStudentSelectForCode === 'function') {
+            populateStudentSelectForCode();
         }
     });
     
-    // Listener untuk kode registrasi
-    if (codesRealtimeListener) {
-        db.ref('codes').off('value', codesRealtimeListener);
-    }
-    
-    codesRealtimeListener = db.ref('codes').on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (typeof dbData !== 'undefined') {
-            // Cleanup expired codes (5 jam)
-            const now = Date.now();
-            const fiveHoursInMs = 5 * 60 * 60 * 1000;
-            let hasExpired = false;
-            
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    const item = data[key];
-                    if (item && item.createdAt && (now - item.createdAt > fiveHoursInMs)) {
-                        db.ref('codes/' + key).remove();
-                        hasExpired = true;
-                    }
-                });
-            }
-            
-            dbData.codes = [];
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    dbData.codes.push({ code: key, ...data[key] });
-                });
-            }
-            
-            const newCount = dbData.codes.length;
-            if (lastCodeCount !== newCount) {
-                if (newCount > lastCodeCount) {
-                    showToast(`🔑 Kode registrasi baru telah dibuat!`, "success");
-                    playNotificationSound();
-                }
-                lastCodeCount = newCount;
-            }
-            
-            if (typeof renderCodesTable === 'function') {
-                requestAnimationFrame(() => renderCodesTable());
-            }
-            
-            // Update statistik kode
-            updateCodesStatistics();
+    // Juga listen untuk perubahan currentUser (role permissions)
+    window.addEventListener('uiReady', (e) => {
+        console.log("👥 users.js: uiReady received, checking permissions");
+        // Role permissions akan dihandle oleh ui.js, tapi kita refresh tabel
+        if (typeof renderUsersTable === 'function') {
+            renderUsersTable();
         }
     });
 }
 
-/**
- * Tampilkan notifikasi untuk update user
- */
-function showUserUpdateNotification(changeCount) {
-    if (changeCount > 0) {
-        showToast(`👥 ${changeCount} pengguna baru terdaftar!`, "success");
-        flashUsersTab();
-    } else if (changeCount < 0) {
-        showToast(`👤 ${Math.abs(changeCount)} pengguna telah dihapus`, "info");
-    }
-}
+// ======================= UPDATE STATISTIK KODE =======================
 
-/**
- * Flash effect pada tab users
- */
-function flashUsersTab() {
-    const usersTab = document.getElementById('tab-users');
-    if (usersTab && usersTab.classList.contains('active')) {
-        const container = document.querySelector('#tab-users .table-container:last-child');
-        if (container) {
-            container.style.transition = 'background-color 0.3s';
-            container.style.backgroundColor = 'rgba(74, 144, 226, 0.1)';
-            setTimeout(() => {
-                container.style.backgroundColor = '';
-            }, 500);
-        }
-    }
-}
-
-/**
- * Update statistik kode registrasi
- */
 function updateCodesStatistics() {
     const statsContainer = document.getElementById('codesStats');
     if (!statsContainer) {
@@ -131,10 +56,11 @@ function updateCodesStatistics() {
         return;
     }
     
-    const activeCodes = dbData.codes.filter(c => !c.used).length;
-    const usedCodes = dbData.codes.filter(c => c.used).length;
-    const studentCodes = dbData.codes.filter(c => c.type === 'siswa' && !c.used).length;
-    const teacherCodes = dbData.codes.filter(c => c.type === 'guru' && !c.used).length;
+    const codes = window.dbData?.codes || [];
+    const activeCodes = codes.filter(c => !c.used).length;
+    const usedCodes = codes.filter(c => c.used).length;
+    const studentCodes = codes.filter(c => c.type === 'siswa' && !c.used).length;
+    const teacherCodes = codes.filter(c => c.type === 'guru' && !c.used).length;
     
     statsContainer.innerHTML = `
         <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px; padding: 10px; background: #1e1e1e; border-radius: 8px;">
@@ -142,7 +68,7 @@ function updateCodesStatistics() {
             <div><span style="color: #888;">🔴 Terpakai:</span> <strong>${usedCodes}</strong></div>
             <div><span style="color: #4a90e2;">👨‍🎓 Siswa:</span> <strong>${studentCodes}</strong></div>
             <div><span style="color: #ff9800;">👨‍🏫 Guru:</span> <strong>${teacherCodes}</strong></div>
-            <div><span style="color: #888;">📊 Total:</span> <strong>${dbData.codes.length}</strong></div>
+            <div><span style="color: #888;">📊 Total:</span> <strong>${codes.length}</strong></div>
         </div>
     `;
 }
@@ -157,19 +83,6 @@ function createCodesStatsContainer() {
     }
 }
 
-/**
- * Play notifikasi suara
- */
-function playNotificationSound() {
-    if (typeof Audio !== 'undefined') {
-        try {
-            const beep = new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA==');
-            beep.volume = 0.3;
-            beep.play().catch(() => {});
-        } catch(e) {}
-    }
-}
-
 // ======================= DROPDOWN SISWA =======================
 
 function populateStudentSelectForCode() {
@@ -178,10 +91,17 @@ function populateStudentSelectForCode() {
     
     const currentVal = select.value;
     const currentSelectedText = select.options[select.selectedIndex]?.text;
+    
+    // Pastikan dbData tersedia
+    if (typeof dbData === 'undefined' || !dbData.users || !dbData.users_auth) {
+        console.log("⏳ users.js: dbData not ready yet for populateStudentSelectForCode");
+        select.innerHTML = '<option value="">-- Memuat data siswa --</option>';
+        return;
+    }
 
     select.innerHTML = '<option value="">-- Pilih Siswa --</option>';
     
-    const registeredUserIds = dbData.users_auth?.map(u => u.fpId) || [];
+    const registeredUserIds = dbData.users_auth?.map(u => u.fpId).filter(id => id) || [];
     const availableStudents = dbData.users.filter(s => !registeredUserIds.includes(s.id));
     
     if (availableStudents.length === 0) {
@@ -339,7 +259,7 @@ function copyToClipboard(text) {
 // ======================= DELETE CODE =======================
 
 function deleteCode(code) {
-    const codeData = dbData.codes.find(c => c.code === code);
+    const codeData = dbData.codes?.find(c => c.code === code);
     const codeInfo = codeData?.type ? `${codeData.type.toUpperCase()} - ${code}` : code;
     
     if(!confirm(`⚠️ Yakin ingin menghapus kode: ${codeInfo}?\n\nKode yang sudah dihapus tidak dapat digunakan lagi.`)) return;
@@ -362,10 +282,11 @@ function renderCodesTable() {
     
     tbody.innerHTML = '';
     
-    if (!dbData.codes || dbData.codes.length === 0) {
+    // Pastikan dbData dan codes tersedia
+    if (typeof dbData === 'undefined' || !dbData.codes || dbData.codes.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">
             🔑 Belum ada kode registrasi. Generate kode di atas.
-        </td></tr>`;
+         </td></tr>`;
         return;
     }
     
@@ -385,23 +306,23 @@ function renderCodesTable() {
                     <strong>${c.code}</strong>
                     <br>
                     <small style="font-weight:normal; color:#888">${typeLabel}${linkedLabel}${createdByName}</small>
-                </td>
-                <td>
+                 </td>
+                 <td>
                     ${c.used ? 
                         '<span style="color:#4caf50;">✅ Terpakai</span>' : 
                         `<span style="color:#ff9800;">🟢 Aktif</span>
                          ${timeRemaining ? `<br><small style="color:#888;">⏰ ${timeRemaining}</small>` : ''}`
                     }
-                </td>
-                <td style="font-size: 12px;">${new Date(c.createdAt).toLocaleString('id-ID')}</td>
+                 </td>
+                <td style="font-size: 12px;">${c.createdAt ? new Date(c.createdAt).toLocaleString('id-ID') : '-'}</td>
                 <td style="font-size: 12px;">${c.userId ? c.userId.substring(0, 20) + '...' : '-'}</td>
-                <td>
+                 <td>
                     ${!c.used ? `
                         <button class="btn-icon" onclick="copyToClipboard('${c.code}')" title="Salin Kode" style="background:transparent; border:none; cursor:pointer; color:#4a90e2;">📋</button>
                         <button class="btn-icon delete" onclick="deleteCode('${c.code}')" title="Hapus Kode">🗑️</button>
                     ` : '-'}
-                </td>
-            </tr>
+                 </td>
+             </tr>
         `;
     });
     
@@ -433,7 +354,7 @@ function updateUserRole(uid, newRole) {
         return;
     }
     
-    const user = dbData.users_auth.find(u => u.uid === uid);
+    const user = dbData.users_auth?.find(u => u.uid === uid);
     if (!user) {
         showToast("❌ User tidak ditemukan!", "error");
         return;
@@ -466,7 +387,7 @@ function updateUserRole(uid, newRole) {
     });
 }
 
-// ======================= RENDER USERS TABLE (DIPERBAIKI) =======================
+// ======================= RENDER USERS TABLE =======================
 
 function renderUsersTable() {
     console.log("🎨 renderUsersTable dipanggil");
@@ -482,25 +403,24 @@ function renderUsersTable() {
     
     tbody.innerHTML = '';
 
-    if (!dbData.users_auth || dbData.users_auth.length === 0) {
+    // Pastikan dbData dan users_auth tersedia
+    if (typeof dbData === 'undefined' || !dbData.users_auth || dbData.users_auth.length === 0) {
         console.log("📭 Tidak ada data users_auth");
-        tbody.innerHTML = `<td><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             👥 Belum ada pengguna terdaftar.
-        </td></tr>`;
+         </td></tr>`;
         return;
     }
 
     console.log(`📊 Memproses ${dbData.users_auth.length} user, filter: "${search}"`);
     
-    // Filter user yang memiliki nama (abaikan yang tidak punya nama)
     let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
     
-    // Sort by role
     const roleOrder = { admin: 0, guru: 1, siswa: 2 };
     data.sort((a, b) => (roleOrder[a.role] || 3) - (roleOrder[b.role] || 3));
 
     if (data.length === 0) {
-        tbody.innerHTML = `</table><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             🔍 Tidak ada pengguna yang cocok dengan pencarian.
         <\/td><\/tr>`;
         return;
@@ -677,14 +597,7 @@ function resetSystemData() {
 // ======================= CLEANUP =======================
 
 function cleanupUsersSystem() {
-    if (usersRealtimeListener) {
-        db.ref('users_auth').off('value', usersRealtimeListener);
-        usersRealtimeListener = null;
-    }
-    if (codesRealtimeListener) {
-        db.ref('codes').off('value', codesRealtimeListener);
-        codesRealtimeListener = null;
-    }
+    usersDataReadyListenerAdded = false;
     console.log("🧹 Users system cleaned up");
 }
 
@@ -700,25 +613,21 @@ function escapeHtmlString(str) {
     });
 }
 
-// ======================= AUTO INIT =======================
+// ======================= INISIALISASI ========================
+// Setup event listener untuk dataReady
+setupUsersDataReadyListener();
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-            if (currentUser) {
-                initRealtimeUsers();
-            }
-        }, 1500);
-    });
-} else {
+// Jika data sudah siap sebelum event listener dipasang, langsung render
+if (typeof window !== 'undefined' && window.dbData && window.dbData.users_auth) {
+    console.log("👥 users.js: Data already available, rendering immediately");
     setTimeout(() => {
-        if (currentUser) {
-            initRealtimeUsers();
-        }
-    }, 1500);
+        if (typeof renderUsersTable === 'function') renderUsersTable();
+        if (typeof renderCodesTable === 'function') renderCodesTable();
+        if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
+    }, 100);
 }
 
-// Export ke global scope
+// ======================= EXPORT KE GLOBAL =======================
 window.populateStudentSelectForCode = populateStudentSelectForCode;
 window.generateRegistrationCode = generateRegistrationCode;
 window.deleteCode = deleteCode;
@@ -729,5 +638,6 @@ window.deleteUser = deleteUser;
 window.resetSystemData = resetSystemData;
 window.copyToClipboard = copyToClipboard;
 window.resetUserPassword = resetUserPassword;
-window.initRealtimeUsers = initRealtimeUsers;
 window.cleanupUsersSystem = cleanupUsersSystem;
+
+console.log("✅ users.js V3.0 loaded - Event-based (no duplicate listeners)");
