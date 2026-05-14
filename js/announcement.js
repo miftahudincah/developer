@@ -1,10 +1,49 @@
-// ======================= ANNOUNCEMENT.JS - VERSION 2.1 (FIXED) =======================
+// announcement.js - VERSION 3.0 (EVENT-BASED, NO AUTO-INIT)
 // Fitur Pengumuman dengan Timer Otomatis, Real-time Updates, dan Notifikasi
+// PERUBAHAN: Inisialisasi via event 'dataReady' dan 'uiReady', bukan auto-init
+// ============================================================================
 
 let announcementCheckInterval = null;
 let announcementListenerAttached = false;
 let announcementCountdownInterval = null;
 let lastAnnouncementCount = 0;
+let announcementDataReadyListenerAdded = false;
+let announcementUiReadyListenerAdded = false;
+
+// ======================= EVENT LISTENER ========================
+
+function setupAnnouncementDataReadyListener() {
+    if (announcementDataReadyListenerAdded) return;
+    announcementDataReadyListenerAdded = true;
+    console.log("📡 Setting up dataReady event listener for announcement module");
+
+    window.addEventListener('dataReady', (e) => {
+        console.log("📢 announcement.js: dataReady received, initializing announcement system");
+        // Jika belum ada listener Firebase, pasang
+        if (!announcementListenerAttached) {
+            initAnnouncementListener();
+        }
+        if (!announcementCheckInterval) {
+            startAnnouncementChecker();
+        }
+        renderAnnouncement();
+    });
+}
+
+function setupAnnouncementUiReadyListener() {
+    if (announcementUiReadyListenerAdded) return;
+    announcementUiReadyListenerAdded = true;
+    console.log("📡 Setting up uiReady event listener for announcement module");
+
+    window.addEventListener('uiReady', (e) => {
+        const user = e.detail.currentUser;
+        if (user && (user.role === 'admin' || user.role === 'guru')) {
+            console.log("📢 announcement.js: uiReady received, checking permissions for floating button");
+            const floatingBtn = document.getElementById('floatingAnnouncementBtn');
+            if (floatingBtn) floatingBtn.style.display = 'flex';
+        }
+    });
+}
 
 // ======================= RENDER PENGUMUMAN =======================
 
@@ -382,7 +421,6 @@ function saveAnnouncement() {
 
 function showAnnouncementNotification(title, message) {
     showToast(`📢 Pengumuman baru: ${title}`, "success");
-    // Cek apakah Notification API tersedia (HTTPS atau localhost)
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification('📢 Pengumuman Baru', {
             body: title,
@@ -560,41 +598,37 @@ function debugCheckAnnouncements() {
 
 function cleanupAnnouncementSystem() {
     if (announcementCheckInterval) clearInterval(announcementCheckInterval);
+    announcementCheckInterval = null;
     if (announcementCountdownInterval) clearInterval(announcementCountdownInterval);
+    announcementCountdownInterval = null;
     if (announcementListenerAttached) {
         db.ref('announcements/active').off();
         announcementListenerAttached = false;
     }
+    announcementDataReadyListenerAdded = false;
+    announcementUiReadyListenerAdded = false;
     console.log("🧹 Announcement system cleaned up");
 }
 
-// ======================= INISIALISASI =======================
+// ======================= INISIALISASI (TANPA AUTO-INIT) =======================
 
-function initAnnouncementSystem() {
-    console.log("=== 🚀 initAnnouncementSystem DIPANGGIL ===");
-    if (!currentUser) {
-        console.log("CurrentUser belum ada, tunggu 500ms...");
-        setTimeout(initAnnouncementSystem, 500);
-        return;
-    }
-    console.log("Current user:", currentUser.nama, "Role:", currentUser.role);
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-        Notification.requestPermission();
-    }
-    initAnnouncementListener();
-    startAnnouncementChecker();
-    renderAnnouncement();
-    setTimeout(() => debugCheckAnnouncements(), 2000);
+// Hanya pasang event listener - tidak ada auto-init
+setupAnnouncementDataReadyListener();
+setupAnnouncementUiReadyListener();
+
+// Jika data sudah siap sebelum event listener dipasang, coba inisialisasi
+if (typeof window !== 'undefined' && window.dbData && !announcementListenerAttached) {
+    console.log("📢 announcement.js: Data already available, initializing immediately");
+    setTimeout(() => {
+        if (!announcementListenerAttached) {
+            initAnnouncementListener();
+            startAnnouncementChecker();
+            renderAnnouncement();
+        }
+    }, 100);
 }
 
-// Auto init ketika DOM siap
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(initAnnouncementSystem, 1000));
-} else {
-    setTimeout(initAnnouncementSystem, 1000);
-}
-
-// Export ke global scope
+// ======================= EKSPOR KE GLOBAL =======================
 window.renderAnnouncement = renderAnnouncement;
 window.openAnnouncementModal = openAnnouncementModal;
 window.editAnnouncement = editAnnouncement;
@@ -603,4 +637,6 @@ window.deleteAnnouncement = deleteAnnouncement;
 window.createTestAnnouncement = createTestAnnouncement;
 window.debugCheckAnnouncements = debugCheckAnnouncements;
 window.cleanupAnnouncementSystem = cleanupAnnouncementSystem;
-window.initAnnouncementSystem = initAnnouncementSystem;
+window.initAnnouncementSystem = initAnnouncementSystem; // masih diekspor untuk kompatibilitas, tapi tidak dipanggil otomatis
+
+console.log("✅ announcement.js V3.0 loaded - Event-based initialization");

@@ -1,29 +1,64 @@
-// attendance.js - VERSION 2.4 (FIXED - NO DUPLICATE LISTENERS)
-// Mengelola data absensi, filter, validasi delay pulang, real-time updates,
+// attendance.js - VERSION 3.0 (EVENT-BASED, UI ONLY)
+// Mengelola data absensi, filter, validasi delay pulang,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
-// NEW: Fitur simulasi scan pulang otomatis dan manual pilih siswa.
-//
-// PERUBAHAN: Semua Firebase listener dihapus karena sudah ditangani oleh init.js.
-// attendance.js hanya berisi fungsi-fungsi UI dan interaksi.
+// PERUBAHAN: Menambahkan event listener 'dataReady' untuk render ulang,
+//            Menghapus panggilan otomatis, hanya merespon event.
+// ============================================================================
 
 // ======================== GLOBAL VARIABLES ========================
-let attendanceDonutChart = null; // Chart instance
+let attendanceDonutChart = null;
+let attendanceDataReadyListenerAdded = false;
+
+// ======================== EVENT LISTENER ========================
+
+function setupAttendanceDataReadyListener() {
+    if (attendanceDataReadyListenerAdded) return;
+    attendanceDataReadyListenerAdded = true;
+    console.log("📡 Setting up dataReady event listener for attendance module");
+
+    window.addEventListener('dataReady', (e) => {
+        console.log("📋 attendance.js: dataReady received, updating attendance UI");
+        // Update donut chart
+        if (typeof updateAttendanceDonutChart === 'function') {
+            updateAttendanceDonutChart();
+        }
+        // Render tabel jika tab attendance aktif
+        if (document.getElementById('tab-attendance')?.classList.contains('active')) {
+            if (typeof renderTable === 'function') {
+                renderTable();
+            }
+        }
+    });
+
+    // Juga listen untuk perubahan tab ke attendance
+    const originalSwitchTab = window.switchTab;
+    if (originalSwitchTab) {
+        window.switchTab = function(tabId) {
+            originalSwitchTab(tabId);
+            if (tabId === 'attendance') {
+                setTimeout(() => {
+                    if (typeof renderTable === 'function') renderTable();
+                    if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
+                }, 100);
+            }
+        };
+    }
+}
 
 // ======================== INITIALIZATION (UI ONLY) ========================
 
 /**
  * Inisialisasi komponen UI absensi (chart, dll) - TIDAK ADA LISTENER FIREBASE
- * Fungsi ini dipanggil dari initApp atau saat tab absensi diaktifkan.
+ * Dipanggil dari initApp atau via event.
  */
 function initAttendanceUI() {
     console.log("📊 Initializing attendance UI (chart, etc)...");
     
     if (typeof Audio !== 'undefined') {
-        // Preload untuk notifikasi suara (opsional)
-        new Audio();
+        new Audio(); // preload
     }
     
-    // Inisialisasi donut chart setelah DOM siap
+    // Pastikan donut chart ter-update
     setTimeout(() => updateAttendanceDonutChart(), 100);
 }
 
@@ -37,7 +72,6 @@ function updateAttendanceDonutChart() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Pastikan dbData tersedia
     if (!dbData || !dbData.attendance) {
         console.warn("Data absensi belum siap untuk chart");
         return;
@@ -48,13 +82,11 @@ function updateAttendanceDonutChart() {
     const hadir = todayData.filter(r => r.status === 'Hadir').length;
     const pulang = todayData.filter(r => r.status === 'Pulang').length;
     
-    // Hancurkan chart lama jika ada
     if (attendanceDonutChart) {
         attendanceDonutChart.destroy();
         attendanceDonutChart = null;
     }
     
-    // Buat chart baru
     attendanceDonutChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -71,15 +103,8 @@ function updateAttendanceDonutChart() {
             maintainAspectRatio: true,
             cutout: '65%',
             plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { color: '#fff', font: { size: 11 } }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `${ctx.label}: ${ctx.raw} siswa`
-                    }
-                }
+                legend: { position: 'bottom', labels: { color: '#fff', font: { size: 11 } } },
+                tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} siswa` } }
             }
         }
     });
@@ -107,7 +132,6 @@ async function renderTable() {
 
     let data = dbData.attendance ? [...dbData.attendance] : [];
     
-    // Filter berdasarkan role user
     if (currentUser && currentUser.role === 'siswa') {
         if (currentUser.kelas && currentUser.jurusan) {
             data = data.filter(r => r.kelas === currentUser.kelas && r.jurusan === currentUser.jurusan);
@@ -119,7 +143,6 @@ async function renderTable() {
             data = data.filter(r => r.date === todayStr);
         }
     } else {
-        // Admin atau Guru
         if (fDate === 'today') {
             const todayStr = new Date().toISOString().split('T')[0];
             data = data.filter(r => r.date === todayStr);
@@ -137,13 +160,12 @@ async function renderTable() {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">
             📭 Data absensi tidak ditemukan.
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
-        </td></tr>`;
+         </td></tr>`;
         updateAttendanceStatistics(data);
         updateAttendanceDonutChart();
         return;
     }
     
-    // Ambil data status manual untuk filter yang dipilih
     let manualStatusMap = {};
     const targetDate = (fDate === 'today' || fDate === 'all') ? new Date().toISOString().split('T')[0] : fDate;
     if (targetDate !== 'all') {
@@ -156,7 +178,6 @@ async function renderTable() {
         const outDisplay = row.timeOut ? `<br><span class="text-small" style="color:var(--danger)">🏠 Pulang: ${row.timeOut}</span>` : '';
         const isNew = index < 3 && (Date.now() - new Date(row.timestamp).getTime() < 60000);
         
-        // Cek status manual
         let statusHtml = '';
         const manual = manualStatusMap[row.studentId];
         if (manual && manual.status && manual.status !== 'hadir') {
@@ -182,7 +203,7 @@ async function renderTable() {
                 <td class="role-guru role-admin">
                     <button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button>
                 </td>
-            </tr>
+            </td>
         `;
     });
     
@@ -190,9 +211,6 @@ async function renderTable() {
     updateAttendanceDonutChart();
 }
 
-/**
- * Update statistik absensi di UI
- */
 function updateAttendanceStatistics(data) {
     let statsContainer = document.getElementById('attendanceStats');
     if (!statsContainer) {
@@ -236,8 +254,6 @@ function deleteAttendance(id) {
     const lastDashIndex = id.lastIndexOf('-');
     const date = id.substring(0, lastDashIndex);
     const fpId = id.substring(lastDashIndex + 1);
-    
-    console.log("🗑️ Menghapus absensi - Date:", date, "FP ID:", fpId);
     
     const btns = document.querySelectorAll(`button[onclick="deleteAttendance('${id}')"]`);
     btns.forEach(btn => { btn.disabled = true; btn.textContent = '⏳'; });
@@ -320,10 +336,7 @@ function simulateAttendanceOut() {
     }
     
     const todayStr = new Date().toISOString().split('T')[0];
-    
-    const todayAttendance = dbData.attendance.filter(a => 
-        a.date === todayStr && a.status === 'Hadir'
-    );
+    const todayAttendance = dbData.attendance.filter(a => a.date === todayStr && a.status === 'Hadir');
     
     if (todayAttendance.length === 0) {
         showToast("⚠️ Tidak ada siswa yang absen masuk hari ini!", "warning");
@@ -332,7 +345,6 @@ function simulateAttendanceOut() {
     
     const selected = todayAttendance[Math.floor(Math.random() * todayAttendance.length)];
     const student = dbData.users.find(s => s.id == selected.studentId);
-    
     if (!student) {
         showToast("❌ Data siswa tidak ditemukan!", "error");
         return;
@@ -340,11 +352,9 @@ function simulateAttendanceOut() {
     
     const now = new Date();
     const timeOutStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
-    
     const delayMinutes = parseInt(student.delayOut) || 60;
     const timeInDate = new Date(`${selected.date}T${selected.timeIn}`);
-    const timeOutDate = new Date();
-    const diffMinutes = (timeOutDate - timeInDate) / (1000 * 60);
+    const diffMinutes = (now - timeInDate) / (1000 * 60);
     
     let warningMsg = '';
     if (diffMinutes < delayMinutes) {
@@ -357,26 +367,16 @@ function simulateAttendanceOut() {
     
     const btn = document.querySelector('button[onclick="simulateAttendanceOut()"]');
     const originalText = btn?.innerHTML;
-    if (btn) { 
-        btn.disabled = true; 
-        btn.innerHTML = '⏳ Memproses...'; 
-    }
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Memproses...'; }
     
-    db.ref(`absensi/${todayStr}/${student.id}`).update({
-        out: timeOutStr
-    })
+    db.ref(`absensi/${todayStr}/${student.id}`).update({ out: timeOutStr })
         .then(() => {
             showToast(`✅ Simulasi Absen Pulang Berhasil: ${student.nama} (${timeOutStr})${warningMsg}`, "success");
             if (typeof renderTable === 'function') setTimeout(() => renderTable(), 500);
         })
-        .catch((err) => {
-            showToast("❌ Gagal simulasi pulang: " + err.message, "error");
-        })
+        .catch((err) => showToast("❌ Gagal simulasi pulang: " + err.message, "error"))
         .finally(() => {
-            if (btn) { 
-                btn.disabled = false; 
-                btn.innerHTML = originalText || '🏠 Simulasi Scan Pulang'; 
-            }
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText || '🏠 Simulasi Scan Pulang'; }
         });
 }
 
@@ -387,10 +387,7 @@ function openSimulateOutModal() {
     }
     
     const todayStr = new Date().toISOString().split('T')[0];
-    const todayAttendance = dbData.attendance.filter(a => 
-        a.date === todayStr && a.status === 'Hadir'
-    );
-    
+    const todayAttendance = dbData.attendance.filter(a => a.date === todayStr && a.status === 'Hadir');
     if (todayAttendance.length === 0) {
         showToast("⚠️ Tidak ada siswa yang absen masuk hari ini!", "warning");
         return;
@@ -411,13 +408,11 @@ function openSimulateOutModal() {
                         <label>Pilih Siswa yang Sudah Absen Masuk</label>
                         <select id="simulateOutStudentSelect" class="form-control" style="width:100%; padding:10px;">
     `;
-    
     todayAttendance.forEach(a => {
         const student = dbData.users.find(s => s.id == a.studentId);
         const name = student?.nama || a.nama;
         modalHtml += `<option value="${a.studentId}" data-timein="${a.timeIn}">${name} (ID: ${a.studentId}) - Masuk: ${a.timeIn}</option>`;
     });
-    
     modalHtml += `
                         </select>
                     </div>
@@ -430,7 +425,6 @@ function openSimulateOutModal() {
             </div>
         </div>
     `;
-    
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
     const select = document.getElementById('simulateOutStudentSelect');
@@ -465,24 +459,16 @@ function openSimulateOutModal() {
 async function simulateOutForSelected() {
     const select = document.getElementById('simulateOutStudentSelect');
     if (!select) return;
-    
     const studentId = select.value;
     const selectedOption = select.options[select.selectedIndex];
     const timeIn = selectedOption.getAttribute('data-timein');
-    
     const todayStr = new Date().toISOString().split('T')[0];
-    const selectedAttendance = dbData.attendance.find(a => 
-        a.date === todayStr && 
-        a.studentId == studentId && 
-        a.status === 'Hadir'
-    );
-    
+    const selectedAttendance = dbData.attendance.find(a => a.date === todayStr && a.studentId == studentId && a.status === 'Hadir');
     if (!selectedAttendance) {
         showToast("❌ Data absensi tidak ditemukan!", "error");
         closeModal('modal-simulate-out');
         return;
     }
-    
     const student = dbData.users.find(u => u.id == studentId);
     if (!student) {
         showToast("❌ Data siswa tidak ditemukan!", "error");
@@ -492,7 +478,6 @@ async function simulateOutForSelected() {
     
     const now = new Date();
     const timeOutStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
-    
     const delayMinutes = parseInt(student.delayOut) || 60;
     let warningMsg = '';
     if (timeIn) {
@@ -511,25 +496,16 @@ async function simulateOutForSelected() {
     
     const btn = document.querySelector('#modal-simulate-out .btn-save');
     const originalText = btn?.innerHTML;
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Memproses...';
-    }
-    
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Memproses...'; }
     try {
-        await db.ref(`absensi/${todayStr}/${studentId}`).update({
-            out: timeOutStr
-        });
+        await db.ref(`absensi/${todayStr}/${studentId}`).update({ out: timeOutStr });
         showToast(`✅ ${student.nama} berhasil absen pulang pukul ${timeOutStr}${warningMsg}`, "success");
         closeModal('modal-simulate-out');
         if (typeof renderTable === 'function') setTimeout(() => renderTable(), 500);
     } catch (err) {
         showToast("❌ Gagal: " + err.message, "error");
     } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = originalText;
-        }
+        if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
     }
 }
 
@@ -540,13 +516,10 @@ function exportToExcel() {
         showToast("❌ Tidak ada data absensi untuk diekspor!", "error");
         return;
     }
-    
-    showToast("📊 Memproses ekspor data...", "info");
     let csv = "\uFEFFTanggal,Waktu Masuk,Waktu Pulang,ID,Nama,Kelas,Jurusan,Status\n";
     dbData.attendance.forEach(r => {
         csv += `"${r.date || '-'}","${r.timeIn || '-'}","${r.timeOut || '-'}","${r.studentId}","${escapeCsv(r.nama)}","${r.kelas || '-'}","${r.jurusan || '-'}","${r.status}"\n`;
     });
-    
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -564,8 +537,6 @@ function escapeCsv(str) {
     if (str.includes(',') || str.includes('"') || str.includes('\n')) return '"' + str.replace(/"/g, '""') + '"';
     return str;
 }
-
-// ======================== FILTER FUNCTIONS ========================
 
 function resetAttendanceFilters() {
     const filterDate = document.getElementById('filterDate');
@@ -614,7 +585,7 @@ function renderFilteredTable(filteredData) {
     });
 }
 
-// ======================== MANUAL ATTENDANCE STATUS (IZIN, SAKIT, ALPHA) ========================
+// ======================== MANUAL ATTENDANCE STATUS ========================
 
 function openAbsenceModal() {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'guru')) {
@@ -623,7 +594,6 @@ function openAbsenceModal() {
     }
     const modal = document.getElementById('modal-absence');
     if (!modal) {
-        console.warn("Modal absence tidak ditemukan, pastikan index.html sudah memiliki modal-absence");
         showToast("Fitur sedang dimuat, coba lagi nanti", "error");
         return;
     }
@@ -656,13 +626,9 @@ function populateAbsenceFilters() {
 
 async function loadAbsenceList() {
     const date = document.getElementById('absenceDate').value;
-    if (!date) {
-        showToast("Pilih tanggal terlebih dahulu!", "error");
-        return;
-    }
+    if (!date) { showToast("Pilih tanggal terlebih dahulu!", "error"); return; }
     const kelas = document.getElementById('absenceKelas').value;
     const jurusan = document.getElementById('absenceJurusan').value;
-    
     showToast("⏳ Memuat data siswa...", "info");
     
     let students = [...dbData.users];
@@ -672,7 +638,6 @@ async function loadAbsenceList() {
     
     const attendanceSnapshot = await db.ref(`absensi/${date}`).once('value');
     const attendanceData = attendanceSnapshot.val() || {};
-    
     const statusSnapshot = await db.ref(`attendance_status/${date}`).once('value');
     const manualStatus = statusSnapshot.val() || {};
     
@@ -685,13 +650,10 @@ async function loadAbsenceList() {
     let html = `<div style="margin-bottom: 10px;"><small>⚠️ Siswa yang sudah absen (scan fingerprint) tidak dapat diubah statusnya.</small></div>`;
     for (const student of students) {
         const attendance = attendanceData[student.id];
-        const hasIn = attendance && attendance.in;
-        const isPresent = hasIn;
-        
+        const isPresent = attendance && attendance.in;
         let statusValue = 'alpha';
         let disabled = false;
         let note = '';
-        
         if (isPresent) {
             statusValue = 'hadir';
             disabled = true;
@@ -702,14 +664,12 @@ async function loadAbsenceList() {
             else statusValue = 'alpha';
             disabled = false;
         }
-        
         const statusOptions = `
             <option value="hadir" ${statusValue === 'hadir' ? 'selected' : ''}>✅ Hadir</option>
             <option value="sakit" ${statusValue === 'sakit' ? 'selected' : ''}>🤒 Sakit</option>
             <option value="izin" ${statusValue === 'izin' ? 'selected' : ''}>📝 Izin</option>
             <option value="alpha" ${statusValue === 'alpha' ? 'selected' : ''}>❌ Alpha (Bolos)</option>
         `;
-        
         html += `
             <div class="absence-student-row" data-id="${student.id}">
                 <div class="absence-student-info">
@@ -726,7 +686,6 @@ async function loadAbsenceList() {
         `;
     }
     container.innerHTML = html;
-    
     document.querySelectorAll('.status-select:not([disabled])').forEach(select => {
         select.addEventListener('change', function() {
             this.className = `status-select ${this.value}`;
@@ -736,55 +695,36 @@ async function loadAbsenceList() {
 
 async function saveAllAbsenceStatus() {
     const date = document.getElementById('absenceDate').value;
-    if (!date) {
-        showToast("Tanggal tidak valid!", "error");
-        return;
-    }
-    
+    if (!date) { showToast("Tanggal tidak valid!", "error"); return; }
     const selects = document.querySelectorAll('#absenceListContainer .status-select:not([disabled])');
     if (selects.length === 0) {
         showToast("Tidak ada perubahan yang dapat disimpan (semua siswa sudah absen atau tidak ada data).", "info");
         return;
     }
-    
     const updates = {};
     for (const select of selects) {
         const studentId = select.dataset.id;
         const status = select.value;
         if (status && status !== 'hadir') {
-            updates[studentId] = {
-                status: status,
-                updatedBy: currentUser.nama || currentUser.email,
-                updatedAt: firebase.database.ServerValue.TIMESTAMP
-            };
-        } else if (status === 'hadir') {
-            updates[studentId] = null;
-        }
+            updates[studentId] = { status, updatedBy: currentUser.nama || currentUser.email, updatedAt: firebase.database.ServerValue.TIMESTAMP };
+        } else if (status === 'hadir') updates[studentId] = null;
     }
-    
     const btn = document.querySelector('#modal-absence .btn-save');
     const originalText = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = '💾 Menyimpan...'; }
-    
     try {
         const refPath = `attendance_status/${date}`;
         const currentData = (await db.ref(refPath).once('value')).val() || {};
         const finalUpdates = {};
         for (const [id, value] of Object.entries(updates)) {
-            if (value === null) {
-                if (currentData[id]) finalUpdates[id] = null;
-            } else {
-                finalUpdates[id] = value;
-            }
+            if (value === null) { if (currentData[id]) finalUpdates[id] = null; }
+            else { finalUpdates[id] = value; }
         }
-        if (Object.keys(finalUpdates).length > 0) {
-            await db.ref(refPath).update(finalUpdates);
-        }
+        if (Object.keys(finalUpdates).length > 0) await db.ref(refPath).update(finalUpdates);
         showToast(`✅ Berhasil menyimpan data ketidakhadiran.`, "success");
         if (typeof renderTable === 'function') renderTable();
         closeModal('modal-absence');
     } catch (err) {
-        console.error(err);
         showToast("❌ Gagal menyimpan: " + err.message, "error");
     } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
@@ -810,11 +750,20 @@ function getTodayAttendanceStats() {
 }
 
 function cleanupAttendanceUI() {
-    if (attendanceDonutChart) {
-        attendanceDonutChart.destroy();
-        attendanceDonutChart = null;
-    }
+    if (attendanceDonutChart) { attendanceDonutChart.destroy(); attendanceDonutChart = null; }
+    attendanceDataReadyListenerAdded = false;
     console.log("🧹 Attendance UI cleaned up");
+}
+
+// ======================== INISIALISASI ========================
+setupAttendanceDataReadyListener();
+
+// Jika data sudah siap sebelum event listener, render sekali
+if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance) {
+    setTimeout(() => {
+        if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
+        if (document.getElementById('tab-attendance')?.classList.contains('active') && typeof renderTable === 'function') renderTable();
+    }, 100);
 }
 
 // ======================== EKSPOR KE GLOBAL ========================
@@ -835,4 +784,4 @@ window.loadAbsenceList = loadAbsenceList;
 window.saveAllAbsenceStatus = saveAllAbsenceStatus;
 window.updateAttendanceDonutChart = updateAttendanceDonutChart;
 
-console.log("✅ attendance.js V2.4 loaded - No Firebase listeners (UI only)");
+console.log("✅ attendance.js V3.0 loaded - Event-based (UI only)");
