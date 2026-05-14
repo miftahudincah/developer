@@ -1,499 +1,455 @@
-// students.js - VERSION 2.3 (FINAL)
-// ======================= MANAJEMEN DATA SISWA =======================
-// Fitur: CRUD siswa, sinkronisasi dengan ESP32, delay per siswa,
-//        dukungan kelas & jurusan dinamis dari pengaturan sekolah.
-// ====================================================================
+// status.js - VERSION 1.0 (FULLY FEATURED)
+// Fitur Status Update (seperti Story)
+// Mendukung: upload teks/gambar, status akan hilang setelah 24 jam,
+//            tampilan status bar horizontal, viewer dengan next/prev,
+//            notifikasi status baru, real-time listener.
 
-let studentsRealtimeListener = null;
-let studentFormResetTimer = null;
+let statusesListener = null;
+let currentStatusList = [];
+let currentStatusIndex = 0;
+let statusViewerInterval = null;
 
-// ======================= REAL-TIME INITIALIZATION =======================
+// ======================= INISIALISASI =======================
 
-function initRealtimeStudents() {
-    if (typeof db === 'undefined' || !db) {
-        console.warn("Firebase not ready, retrying in 1s");
-        setTimeout(initRealtimeStudents, 1000);
+/**
+ * Inisialisasi sistem status
+ * Dipanggil dari initApp setelah login
+ */
+function initStatusSystem() {
+    if (!currentUser) {
+        console.log("⏳ Menunggu currentUser untuk initStatusSystem");
+        setTimeout(initStatusSystem, 1000);
         return;
     }
-    console.log("🔄 Initializing real-time students system...");
-
-    if (studentsRealtimeListener) {
-        db.ref('users').off('value', studentsRealtimeListener);
+    console.log("📸 Initializing status system...");
+    
+    // Setup listener real-time untuk status
+    setupStatusListener();
+    
+    // Setup listener untuk command hapus expired
+    startStatusExpiryChecker();
+    
+    // Request notifikasi
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission();
     }
+}
 
-    studentsRealtimeListener = db.ref('users').on('value', (snapshot) => {
+/**
+ * Setup real-time listener untuk status
+ * Hanya ambil status dari 24 jam terakhir, urut dari yang terbaru
+ */
+function setupStatusListener() {
+    if (statusesListener) {
+        db.ref('statuses').off('value', statusesListener);
+    }
+    
+    statusesListener = db.ref('statuses').on('value', (snapshot) => {
         const data = snapshot.val();
-        if (typeof dbData !== 'undefined') {
-            const oldCount = dbData.users?.length || 0;
-            dbData.users = [];
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    dbData.users.push({ id: key, ...data[key] });
-                });
-            }
-            const newCount = dbData.users.length;
-            if (oldCount !== newCount) {
-                console.log(`📊 Students: ${oldCount} → ${newCount}`);
-                showStudentUpdateNotification(newCount - oldCount);
-            }
-            if (typeof renderStudentsTable === 'function') requestAnimationFrame(() => renderStudentsTable());
-            if (typeof populateStudentFilters === 'function') requestAnimationFrame(() => populateStudentFilters());
-            if (typeof populateStudentSelectForCode === 'function') requestAnimationFrame(() => populateStudentSelectForCode());
-            updateStudentStatistics();
-        }
-    });
-
-    db.ref('users').on('child_changed', (snapshot) => {
-        const data = snapshot.val();
-        if (data?.nama) {
-            showToast(`✏️ Data siswa ${data.nama} diperbarui`, "info");
-            highlightStudentRow(snapshot.key);
-        }
-    });
-
-    db.ref('users').on('child_removed', (snapshot) => {
-        const data = snapshot.val();
-        showToast(`🗑️ Siswa ${data?.nama || snapshot.key} dihapus`, "warning");
-    });
-}
-
-function showStudentUpdateNotification(changeCount) {
-    if (changeCount > 0) {
-        showToast(`📢 ${changeCount} siswa baru ditambahkan!`, "success");
-        flashStudentsTab();
-    } else if (changeCount < 0) {
-        showToast(`📢 ${Math.abs(changeCount)} siswa dihapus`, "info");
-    }
-}
-
-function flashStudentsTab() {
-    const container = document.querySelector('#tab-students .table-container');
-    if (container && document.getElementById('tab-students').classList.contains('active')) {
-        container.style.transition = 'background-color 0.3s';
-        container.style.backgroundColor = 'rgba(76,175,80,0.1)';
-        setTimeout(() => container.style.backgroundColor = '', 500);
-    }
-    const tabBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.includes('Data Siswa'));
-    if (tabBtn && !tabBtn.querySelector('.badge-update')) {
-        const badge = document.createElement('span');
-        badge.className = 'badge-update';
-        badge.textContent = '●';
-        badge.style.cssText = 'color:#4caf50;margin-left:5px;font-size:10px;';
-        tabBtn.appendChild(badge);
-        setTimeout(() => badge.remove(), 2000);
-    }
-}
-
-function highlightStudentRow(studentId) {
-    const rows = document.querySelectorAll('#tbody-students tr');
-    rows.forEach(row => {
-        if (row.cells[0]?.textContent == studentId) {
-            row.style.backgroundColor = 'rgba(76,175,80,0.2)';
-            setTimeout(() => row.style.backgroundColor = '', 1000);
-        }
-    });
-}
-
-function updateStudentStatistics() {
-    let statsContainer = document.getElementById('studentsStats');
-    if (!statsContainer) {
-        const controlsBar = document.querySelector('#tab-students .controls-bar:first-child');
-        if (controlsBar) {
-            statsContainer = document.createElement('div');
-            statsContainer.id = 'studentsStats';
-            statsContainer.style.marginBottom = '10px';
-            controlsBar.insertAdjacentElement('afterend', statsContainer);
-        } else return;
-    }
-
-    const total = dbData.users.length;
-    const kelasCount = {}, jurusanCount = {};
-    dbData.users.forEach(s => {
-        if (s.kelas) kelasCount[s.kelas] = (kelasCount[s.kelas] || 0) + 1;
-        if (s.jurusan) jurusanCount[s.jurusan] = (jurusanCount[s.jurusan] || 0) + 1;
-    });
-    const topKelas = Object.entries(kelasCount).sort((a,b) => b[1]-a[1])[0];
-    const topJurusan = Object.entries(jurusanCount).sort((a,b) => b[1]-a[1])[0];
-
-    statsContainer.innerHTML = `
-        <div style="display:flex;gap:20px;flex-wrap:wrap;padding:10px;background:#1e1e1e;border-radius:8px;margin-bottom:15px;">
-            <div><span style="color:#4a90e2;">👥 Total Siswa:</span> <strong>${total}</strong></div>
-            <div><span style="color:#4a90e2;">📚 Kelas Terbanyak:</span> <strong>${topKelas ? `${topKelas[0]} (${topKelas[1]})` : '-'}</strong></div>
-            <div><span style="color:#4a90e2;">🎓 Jurusan Terbanyak:</span> <strong>${topJurusan ? `${topJurusan[0]} (${topJurusan[1]})` : '-'}</strong></div>
-        </div>
-    `;
-}
-
-// ======================= DROPDOWN DINAMIS =======================
-
-function populateKelasOptions() {
-    const kelasSelect = document.getElementById('newKelas');
-    if (!kelasSelect) return;
-    let options = [];
-    if (currentSchoolConfig?.classes?.length) {
-        options = currentSchoolConfig.classes;
-    } else {
-        const type = currentSchoolConfig?.type || 'smp';
-        if (type === 'smp') options = ['VII','VIII','IX'];
-        else if (type === 'smk') options = ['X','XI','XII'];
-        else options = ['VII','VIII','IX','X','XI','XII'];
-    }
-    const currentVal = kelasSelect.value;
-    kelasSelect.innerHTML = '<option value="">-- Pilih Kelas --</option>' + options.map(k => `<option value="${k}">${k}</option>`).join('');
-    if (currentVal && options.includes(currentVal)) kelasSelect.value = currentVal;
-}
-
-function populateJurusanOptions() {
-    const jurusanSelect = document.getElementById('newJurusan');
-    if (!jurusanSelect) return;
-    const currentVal = jurusanSelect.value;
-    jurusanSelect.innerHTML = '<option value="">-- Pilih Jurusan --</option>';
-    if (currentSchoolConfig?.majors?.length) {
-        currentSchoolConfig.majors.forEach(j => jurusanSelect.innerHTML += `<option value="${j}">${j}</option>`);
-    } else {
-        jurusanSelect.innerHTML += '<option value="UMUM">UMUM</option>';
-    }
-    if (currentVal && currentSchoolConfig?.majors?.includes(currentVal)) jurusanSelect.value = currentVal;
-}
-
-function populateStudentFilters() {
-    const kSelect = document.getElementById('filterStudentKelas');
-    const jSelect = document.getElementById('filterStudentJurusan');
-    if (!kSelect || !jSelect) return;
-
-    let kelasOptions = [];
-    if (currentSchoolConfig?.classes?.length) kelasOptions = currentSchoolConfig.classes;
-    else {
-        const type = currentSchoolConfig?.type || 'smp';
-        if (type === 'smp') kelasOptions = ['VII','VIII','IX'];
-        else if (type === 'smk') kelasOptions = ['X','XI','XII'];
-        else kelasOptions = ['VII','VIII','IX','X','XI','XII'];
-    }
-    const currentKelas = kSelect.value;
-    kSelect.innerHTML = '<option value="all">📚 Semua Kelas</option>' + kelasOptions.map(k => `<option value="${k}">${k}</option>`).join('');
-    if (currentKelas !== 'all' && kelasOptions.includes(currentKelas)) kSelect.value = currentKelas;
-
-    const currentJurusan = jSelect.value;
-    jSelect.innerHTML = '<option value="all">🎓 Semua Jurusan</option>';
-    if (currentSchoolConfig?.majors?.length) {
-        currentSchoolConfig.majors.forEach(j => jSelect.innerHTML += `<option value="${j}">${j}</option>`);
-    } else {
-        jSelect.innerHTML += '<option value="UMUM">UMUM</option>';
-    }
-    if (currentJurusan !== 'all' && currentSchoolConfig?.majors?.includes(currentJurusan)) jSelect.value = currentJurusan;
-}
-
-// ======================= DELAY INPUT HANDLERS =======================
-
-function toggleDelayInput() {
-    const unit = document.getElementById('delayUnit');
-    if (!unit) return;
-    const minutesGroup = document.getElementById('delayMinutesGroup');
-    const hoursGroup = document.getElementById('delayHoursGroup');
-    const hidden = document.getElementById('newDelay');
-    if (unit.value === 'minutes') {
-        if (minutesGroup) minutesGroup.style.display = 'flex';
-        if (hoursGroup) hoursGroup.style.display = 'none';
-        if (hidden) hidden.value = parseInt(document.getElementById('delayMinutesValue')?.value) || 60;
-    } else {
-        if (minutesGroup) minutesGroup.style.display = 'none';
-        if (hoursGroup) hoursGroup.style.display = 'flex';
-        if (hidden) hidden.value = (parseInt(document.getElementById('delayHoursValue')?.value) || 1) * 60;
-    }
-}
-
-function updateDelayFromMinutes() {
-    const val = parseInt(document.getElementById('delayMinutesValue')?.value) || 0;
-    const hidden = document.getElementById('newDelay');
-    if (hidden) hidden.value = val;
-}
-
-function updateDelayFromHours() {
-    const val = parseInt(document.getElementById('delayHoursValue')?.value) || 0;
-    const hidden = document.getElementById('newDelay');
-    if (hidden) hidden.value = val * 60;
-}
-
-function getDelayInMinutes() {
-    const unit = document.getElementById('delayUnit')?.value;
-    if (unit === 'minutes') return parseInt(document.getElementById('delayMinutesValue')?.value) || 60;
-    return (parseInt(document.getElementById('delayHoursValue')?.value) || 1) * 60;
-}
-
-function setDelayFormValue(delayMinutes) {
-    if (!delayMinutes && delayMinutes !== 0) delayMinutes = 60;
-    const hours = Math.floor(delayMinutes / 60);
-    const minutes = delayMinutes % 60;
-    const unit = document.getElementById('delayUnit');
-    const hoursSelect = document.getElementById('delayHoursValue');
-    const minutesInput = document.getElementById('delayMinutesValue');
-    if (hours > 0 && minutes === 0) {
-        if (unit) unit.value = 'hours';
-        if (hoursSelect) hoursSelect.value = hours;
-    } else {
-        if (unit) unit.value = 'minutes';
-        if (minutesInput) minutesInput.value = delayMinutes;
-    }
-    toggleDelayInput();
-}
-
-function formatDelayDisplay(delayMinutes) {
-    if (!delayMinutes && delayMinutes !== 0) return '-';
-    const jam = Math.floor(delayMinutes / 60);
-    const menit = delayMinutes % 60;
-    if (jam > 0 && menit > 0) return `${jam} jam ${menit} menit`;
-    if (jam > 0) return `${jam} jam`;
-    return `${menit} menit`;
-}
-
-// ======================= RENDER TABEL SISWA =======================
-
-function renderStudentsTable() {
-    const tbody = document.getElementById('tbody-students');
-    if (!tbody) return;
-    const search = document.getElementById('searchStudentName')?.value.toLowerCase() || '';
-    const kelas = document.getElementById('filterStudentKelas')?.value || 'all';
-    const jurusan = document.getElementById('filterStudentJurusan')?.value || 'all';
-
-    let data = dbData.users.filter(u => u.nama && u.nama.toLowerCase().includes(search));
-    if (kelas !== 'all') data = data.filter(u => u.kelas === kelas);
-    if (jurusan !== 'all') data = data.filter(u => u.jurusan === jurusan);
-    data.sort((a,b) => parseInt(a.id) - parseInt(b.id));
-
-    tbody.innerHTML = '';
-    if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;">📭 Data siswa tidak ditemukan.</td></tr>`;
-        return;
-    }
-
-    data.forEach(s => {
-        const isNew = s.createdAt && (Date.now() - s.createdAt < 300000);
-        tbody.innerHTML += `
-            <tr data-id="${s.id}">
-                <td><strong>${s.id}</strong>${isNew ? '<br><span class="badge-new-student">NEW</span>' : ''}</td>
-                <td>${escapeHtml(s.nama)}</td>
-                <td>${s.kelas || '-'}</td>
-                <td>${s.jurusan || '-'}</td>
-                <td><span class="delay-badge">⏱️ ${formatDelayDisplay(s.delayOut)}</span></td>
-                <td>
-                    <button class="btn-icon edit" onclick="editStudent('${s.id}')" title="Edit">✏️</button>
-                    <button class="btn-icon delete" onclick="deleteStudentWithFP('${s.id}')" title="Hapus">🗑️</button>
-                </td>
-            </tr>
-        `;
-    });
-    updateStudentStatistics();
-}
-
-// ======================= HAPUS SISWA + FP =======================
-
-async function deleteStudentWithFP(studentId) {
-    if (!currentUser || currentUser.role === 'siswa') {
-        showToast("⛔ Akses ditolak!", "error");
-        return;
-    }
-    const student = dbData.users.find(u => u.id == studentId);
-    const name = student?.nama || studentId;
-    if (!confirm(`⚠️ Hapus siswa "${name}"? Data akan dihapus dari DB dan sidik jari dari semua sensor ESP32.\n\nTINDAKAN INI TIDAK DAPAT DIBATALKAN!`)) return;
-
-    const registeredUser = dbData.users_auth?.find(u => u.fpId == studentId);
-    if (registeredUser && !confirm(`⚠️ Siswa ini punya akun (${registeredUser.email}). Hapus juga akunnya?`)) return;
-
-    const btns = document.querySelectorAll(`button[onclick*="deleteStudent"][onclick*="${studentId}"]`);
-    btns.forEach(btn => { btn.disabled = true; btn.innerHTML = '⏳'; });
-
-    showToast(`🗑️ Menghapus ${name}...`, "info");
-
-    // Kirim perintah hapus ke ESP32
-    try {
-        await db.ref('commands/esp32/delete_fingerprint').set({
-            studentId: parseInt(studentId),
-            studentName: name,
-            requestedBy: currentUser.nama || currentUser.email,
-            timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
-        const response = await new Promise(resolve => {
-            const timeout = setTimeout(() => resolve(false), 15000);
-            const ref = db.ref('commands/esp32/delete_fingerprint_response');
-            const listener = ref.on('value', snap => {
-                const val = snap.val();
-                if (val && val.studentId == studentId && val.status === 'completed') {
-                    clearTimeout(timeout);
-                    ref.off('value', listener);
-                    resolve(true);
-                    showToast(`✅ Sidik jari ${name} dihapus dari sensor`, "success");
-                } else if (val && val.studentId == studentId && val.status === 'failed') {
-                    clearTimeout(timeout);
-                    ref.off('value', listener);
-                    resolve(false);
-                    showToast(`⚠️ Gagal hapus sidik jari: ${val.error}`, "warning");
+        const now = Date.now();
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        
+        let allStatuses = [];
+        if (data) {
+            Object.keys(data).forEach(userId => {
+                const userStatuses = data[userId];
+                if (userStatuses) {
+                    Object.keys(userStatuses).forEach(statusId => {
+                        const status = userStatuses[statusId];
+                        // Hanya tampilkan status yang belum expired (kurang dari 24 jam)
+                        if (status.createdAt && (now - status.createdAt) < twentyFourHours) {
+                            allStatuses.push({
+                                id: statusId,
+                                userId: userId,
+                                ...status
+                            });
+                        } else if (status.createdAt && (now - status.createdAt) >= twentyFourHours) {
+                            // Hapus status yang expired
+                            db.ref(`statuses/${userId}/${statusId}`).remove();
+                        }
+                    });
                 }
             });
+        }
+        
+        // Urutkan berdasarkan createdAt descending (terbaru di awal)
+        allStatuses.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        
+        // Kelompokkan per user untuk ditampilkan di status bar
+        const groupedByUser = {};
+        allStatuses.forEach(status => {
+            if (!groupedByUser[status.userId]) {
+                groupedByUser[status.userId] = [];
+            }
+            groupedByUser[status.userId].push(status);
         });
-        if (!response) showToast("⚠️ ESP32 tidak merespon", "warning");
-        setTimeout(() => db.ref('commands/esp32/delete_fingerprint').remove().catch(()=>{}), 2000);
-    } catch(e) { console.warn(e); }
-
-    if (registeredUser) await db.ref(`users_auth/${registeredUser.uid}`).remove().catch(()=>{});
-    await db.ref(`users/${studentId}`).remove();
-    showToast(`✅ Siswa "${name}" dihapus`, "success");
-    if (typeof renderStudentsTable === 'function') renderStudentsTable();
-    btns.forEach(btn => { btn.disabled = false; btn.innerHTML = '🗑️'; });
+        
+        // Render status bar
+        renderStatusBar(groupedByUser);
+        
+        // Simpan untuk viewer
+        currentStatusList = allStatuses;
+        
+        // Notifikasi status baru (hanya jika ada status baru dalam 5 detik terakhir)
+        checkAndNotifyNewStatus(allStatuses);
+    });
 }
 
-function deleteStudent(id) {
-    if (confirm("Hapus siswa ini beserta sidik jari dari semua sensor?")) deleteStudentWithFP(id);
-}
-
-// ======================= CRUD =======================
-
-function saveStudent() {
-    if (!currentUser || currentUser.role === 'siswa') {
-        showToast("⛔ Anda tidak memiliki akses!", "error");
-        return;
-    }
-    let idStr = document.getElementById('newId')?.value.trim();
-    const nama = document.getElementById('newNama')?.value.trim();
-    const kelas = document.getElementById('newKelas')?.value;
-    const jurusan = document.getElementById('newJurusan')?.value;
-    const delay = getDelayInMinutes();
-    const mode = document.getElementById('editMode')?.value;
-
-    if (!nama || !idStr) { showToast("⚠️ ID dan Nama wajib diisi!", "error"); return; }
-    if (!kelas) { showToast("⚠️ Pilih Kelas!", "error"); return; }
-    if (!jurusan) { showToast("⚠️ Pilih Jurusan!", "error"); return; }
-    if (delay <= 0) { showToast("⚠️ Delay harus > 0!", "error"); return; }
-    if (isNaN(parseInt(idStr))) { showToast("⚠️ ID harus angka!", "error"); return; }
-
-    const studentData = {
-        id: parseInt(idStr),
-        nama: nama,
-        kelas: kelas,
-        jurusan: jurusan,
-        delayOut: delay,
-        updatedAt: firebase.database.ServerValue.TIMESTAMP
-    };
-    if (mode === 'add') studentData.createdAt = firebase.database.ServerValue.TIMESTAMP;
-
-    if (mode === 'add' && dbData.users.some(u => u.id == idStr)) {
-        showToast("❌ ID sudah ada!", "error");
-        return;
-    }
-
-    const btn = document.getElementById('btnSaveStudent');
-    const originalText = btn?.innerHTML;
-    if (btn) { btn.disabled = true; btn.innerHTML = '💾 Menyimpan...'; }
-
-    db.ref(`users/${idStr}`).set(studentData)
-        .then(() => {
-            showToast(mode === 'add' ? "✅ Siswa ditambahkan" : "✅ Siswa diupdate");
-            resetStudentForm();
-            const authUser = dbData.users_auth?.find(u => u.fpId == idStr);
-            if (authUser) {
-                db.ref(`users_auth/${authUser.uid}`).update({ nama, kelas, jurusan });
-                if (currentUser.uid === authUser.uid) {
-                    currentUser.nama = nama;
-                    currentUser.kelas = kelas;
-                    currentUser.jurusan = jurusan;
-                    if (typeof saveUserToLocalStorage === 'function') saveUserToLocalStorage(currentUser);
-                    if (typeof updateUserInterface === 'function') updateUserInterface();
+/**
+ * Cek status baru dan tampilkan notifikasi
+ */
+let lastStatusCount = 0;
+function checkAndNotifyNewStatus(statuses) {
+    const currentCount = statuses.length;
+    if (currentCount > lastStatusCount && lastStatusCount > 0) {
+        const newStatuses = statuses.slice(0, currentCount - lastStatusCount);
+        newStatuses.forEach(status => {
+            if (status.userId !== currentUser.uid) {
+                showToast(`📸 ${status.userName || 'Seseorang'} membagikan status baru`, "info");
+                if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                    new Notification('Status Baru', {
+                        body: status.userName ? `${status.userName} membagikan status` : 'Status baru dari teman',
+                        icon: status.userPhoto || 'https://ui-avatars.com/api/?name=📸&background=00bcd4&color=fff'
+                    });
                 }
             }
-        })
-        .catch(err => showToast("❌ Gagal: " + err.message, "error"))
-        .finally(() => {
-            if (btn) { btn.disabled = false; btn.innerHTML = originalText || (mode === 'add' ? '➕ Simpan Siswa' : '💾 Update'); }
         });
-}
-
-function editStudent(id) {
-    const s = dbData.users.find(u => u.id == id);
-    if (!s) { showToast("❌ Data tidak ditemukan", "error"); return; }
-    document.querySelector('#tab-students .controls-bar:first-child')?.scrollIntoView({ behavior: 'smooth' });
-    document.getElementById('newId').value = s.id;
-    document.getElementById('newId').disabled = true;
-    document.getElementById('newNama').value = s.nama;
-    document.getElementById('newKelas').value = s.kelas;
-    document.getElementById('newJurusan').value = s.jurusan;
-    setDelayFormValue(s.delayOut || 60);
-    document.getElementById('editMode').value = 'edit';
-    const btnSave = document.getElementById('btnSaveStudent');
-    const btnCancel = document.getElementById('btnCancelStudent');
-    if (btnSave) { btnSave.innerHTML = '💾 Update Siswa'; btnSave.style.background = 'var(--warning)'; }
-    if (btnCancel) btnCancel.classList.remove('hidden');
-    showToast(`✏️ Edit mode: ${s.nama}`, "info");
-}
-
-function resetStudentForm() {
-    if (studentFormResetTimer) clearTimeout(studentFormResetTimer);
-    document.getElementById('newId').value = '';
-    document.getElementById('newId').disabled = false;
-    document.getElementById('newNama').value = '';
-    document.getElementById('newKelas').value = '';
-    document.getElementById('newJurusan').value = '';
-    setDelayFormValue(60);
-    document.getElementById('editMode').value = 'add';
-    const btnSave = document.getElementById('btnSaveStudent');
-    const btnCancel = document.getElementById('btnCancelStudent');
-    if (btnSave) { btnSave.innerHTML = '➕ Simpan Siswa'; btnSave.style.background = ''; }
-    if (btnCancel) btnCancel.classList.add('hidden');
-    studentFormResetTimer = setTimeout(() => document.getElementById('newId')?.focus(), 100);
-}
-
-// ======================= BULK OPERATIONS =======================
-
-function importStudentsFromCSV(csvText) {
-    const lines = csvText.trim().split('\n');
-    let success = 0, fail = 0;
-    for (const line of lines) {
-        const parts = line.split(',');
-        if (parts.length >= 4) {
-            const id = parts[0].trim();
-            const nama = parts[1].trim();
-            const kelas = parts[2].trim();
-            const jurusan = parts[3].trim();
-            const delay = parts[4] ? parseInt(parts[4].trim()) : 60;
-            if (id && nama && kelas && jurusan) {
-                db.ref(`users/${id}`).set({
-                    id: parseInt(id), nama, kelas, jurusan, delayOut: delay,
-                    createdAt: firebase.database.ServerValue.TIMESTAMP
-                }).then(() => success++).catch(() => fail++);
-            } else fail++;
-        } else fail++;
     }
-    setTimeout(() => showToast(`✅ Import: ${success} berhasil, ${fail} gagal`, fail ? "warning" : "success"), 1000);
+    lastStatusCount = currentCount;
 }
 
-function exportStudentsToCSV() {
-    if (!dbData.users?.length) { showToast("❌ Tidak ada data", "error"); return; }
-    let csv = "\uFEFFID,Nama,Kelas,Jurusan,Delay (menit)\n";
-    dbData.users.forEach(s => {
-        csv += `"${s.id}","${escapeCsv(s.nama)}","${s.kelas || '-'}","${s.jurusan || '-'}","${s.delayOut || 60}"\n`;
-    });
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `data_siswa_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-    showToast("📥 Data siswa diekspor", "success");
+/**
+ * Pengecekan otomatis status expired setiap jam
+ */
+let expiryInterval = null;
+function startStatusExpiryChecker() {
+    if (expiryInterval) clearInterval(expiryInterval);
+    expiryInterval = setInterval(() => {
+        // Trigger refresh listener (akan otomatis hapus expired)
+        db.ref('statuses').once('value').catch(() => {});
+    }, 60 * 60 * 1000); // setiap 1 jam
 }
 
-function escapeCsv(str) {
-    if (!str) return '';
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) return '"' + str.replace(/"/g, '""') + '"';
-    return str;
-}
+// ======================= RENDER STATUS BAR =======================
 
-// ======================= CLEANUP =======================
-
-function cleanupStudentsSystem() {
-    if (studentsRealtimeListener) {
-        db.ref('users').off('value', studentsRealtimeListener);
-        studentsRealtimeListener = null;
+/**
+ * Render status bar horizontal di dashboard
+ */
+function renderStatusBar(groupedByUser) {
+    const container = document.getElementById('statusBar');
+    if (!container) return;
+    
+    if (!groupedByUser || Object.keys(groupedByUser).length === 0) {
+        container.innerHTML = '<div class="status-empty text-small" style="text-align:center; padding:10px;">📭 Belum ada status. Buat status pertama!</div>';
+        return;
     }
-    if (studentFormResetTimer) clearTimeout(studentFormResetTimer);
-    console.log("🧹 Students system cleaned up");
+    
+    let html = '';
+    // Tampilkan status user sendiri di paling depan (jika ada)
+    if (groupedByUser[currentUser.uid]) {
+        const myStatuses = groupedByUser[currentUser.uid];
+        const latest = myStatuses[0];
+        const isViewed = latest.viewedBy && latest.viewedBy[currentUser.uid];
+        html += `
+            <div class="status-item ${!isViewed ? 'unviewed' : ''}" onclick="openStatusViewer('${currentUser.uid}')">
+                <div class="status-avatar">
+                    <img src="${latest.userPhoto || getAvatarUrl(latest.userName)}" alt="${escapeHtml(latest.userName)}">
+                    <div class="status-add-icon" onclick="event.stopPropagation(); openCreateStatusModal()">+</div>
+                </div>
+                <div class="status-name">Status Saya</div>
+                <div class="status-time">${formatTimeAgo(latest.createdAt)}</div>
+            </div>
+        `;
+    } else {
+        // Tombol buat status untuk user sendiri jika belum punya status
+        html += `
+            <div class="status-item" onclick="openCreateStatusModal()">
+                <div class="status-avatar">
+                    <img src="${currentUser.photoUrl || getAvatarUrl(currentUser.nama)}" alt="${escapeHtml(currentUser.nama)}">
+                    <div class="status-add-icon">+</div>
+                </div>
+                <div class="status-name">Status Saya</div>
+                <div class="status-time">Tambah</div>
+            </div>
+        `;
+    }
+    
+    // Tampilkan status dari user lain
+    for (const [userId, statuses] of Object.entries(groupedByUser)) {
+        if (userId === currentUser.uid) continue;
+        const latest = statuses[0];
+        const isViewed = latest.viewedBy && latest.viewedBy[currentUser.uid];
+        html += `
+            <div class="status-item ${!isViewed ? 'unviewed' : ''}" onclick="openStatusViewer('${userId}')">
+                <div class="status-avatar">
+                    <img src="${latest.userPhoto || getAvatarUrl(latest.userName)}" alt="${escapeHtml(latest.userName)}">
+                    ${!isViewed ? '<div class="status-ring"></div>' : ''}
+                </div>
+                <div class="status-name">${escapeHtml(latest.userName)}</div>
+                <div class="status-time">${formatTimeAgo(latest.createdAt)}</div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+// ======================= CREATE STATUS =======================
+
+/**
+ * Buka modal buat status
+ */
+function openCreateStatusModal() {
+    const modal = document.getElementById('modal-create-status');
+    if (!modal) {
+        console.warn("Modal create status tidak ditemukan");
+        return;
+    }
+    document.getElementById('statusText').value = '';
+    document.getElementById('statusImageInput').value = '';
+    document.getElementById('statusImagePreviewContainer').style.display = 'none';
+    modal.classList.add('open');
+}
+
+/**
+ * Preview gambar sebelum upload
+ */
+function previewStatusImage(input) {
+    const previewContainer = document.getElementById('statusImagePreviewContainer');
+    const previewImg = document.getElementById('statusImagePreview');
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            previewContainer.style.display = 'block';
+        };
+        reader.readAsDataURL(input.files[0]);
+    } else {
+        previewContainer.style.display = 'none';
+    }
+}
+
+/**
+ * Upload status (teks dan/atau gambar)
+ */
+async function createStatus() {
+    if (!currentUser) {
+        showToast("Anda harus login!", "error");
+        return;
+    }
+    
+    const text = document.getElementById('statusText').value.trim();
+    const imageFile = document.getElementById('statusImageInput').files[0];
+    
+    if (!text && !imageFile) {
+        showToast("Masukkan teks atau pilih gambar!", "error");
+        return;
+    }
+    
+    const btn = document.querySelector('#modal-create-status .btn-save');
+    const originalText = btn?.innerHTML;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Mengupload...';
+    }
+    
+    let mediaUrl = null;
+    let type = 'text';
+    
+    try {
+        // Upload gambar jika ada
+        if (imageFile) {
+            if (imageFile.size > 5 * 1024 * 1024) {
+                showToast("Ukuran gambar maksimal 5MB!", "error");
+                if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+                return;
+            }
+            const formData = new FormData();
+            formData.append('image', imageFile);
+            const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                mediaUrl = data.data.image.url;
+                type = 'image';
+            } else {
+                throw new Error("Gagal upload gambar");
+            }
+        }
+        
+        // Data status
+        const statusId = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const statusData = {
+            text: text || (type === 'image' ? '📸 ' : ''),
+            mediaUrl: mediaUrl,
+            type: type,
+            userName: currentUser.nama,
+            userPhoto: currentUser.photoUrl || null,
+            userId: currentUser.uid,
+            createdAt: firebase.database.ServerValue.TIMESTAMP,
+            viewedBy: {}
+        };
+        
+        await db.ref(`statuses/${currentUser.uid}/${statusId}`).set(statusData);
+        showToast("✅ Status berhasil diposting!", "success");
+        closeModal('modal-create-status');
+        
+    } catch (err) {
+        console.error("Create status error:", err);
+        showToast("❌ Gagal posting status: " + err.message, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+}
+
+// ======================= STATUS VIEWER =======================
+
+/**
+ * Buka viewer status untuk user tertentu
+ */
+async function openStatusViewer(userId) {
+    // Ambil semua status dari user tersebut (belum expired)
+    const snapshot = await db.ref(`statuses/${userId}`).once('value');
+    const statuses = snapshot.val();
+    if (!statuses) {
+        showToast("Tidak ada status dari user ini", "info");
+        return;
+    }
+    
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    const userStatuses = Object.keys(statuses)
+        .filter(key => (now - (statuses[key].createdAt || 0)) < twentyFourHours)
+        .map(key => ({ id: key, ...statuses[key] }))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    
+    if (userStatuses.length === 0) {
+        showToast("Status sudah kadaluarsa", "info");
+        return;
+    }
+    
+    // Tandai sebagai sudah dilihat oleh current user
+    for (const status of userStatuses) {
+        if (!status.viewedBy || !status.viewedBy[currentUser.uid]) {
+            await db.ref(`statuses/${userId}/${status.id}/viewedBy/${currentUser.uid}`).set(true);
+        }
+    }
+    
+    currentStatusList = userStatuses;
+    currentStatusIndex = 0;
+    showStatusViewerModal(currentStatusList[currentStatusIndex]);
+}
+
+/**
+ * Tampilkan modal viewer dengan status tertentu
+ */
+function showStatusViewerModal(status) {
+    const modal = document.getElementById('modal-status-viewer');
+    if (!modal) return;
+    
+    const content = document.getElementById('statusViewerContent');
+    if (!content) return;
+    
+    // Hentikan interval sebelumnya
+    if (statusViewerInterval) clearInterval(statusViewerInterval);
+    
+    const updateContent = () => {
+        const s = currentStatusList[currentStatusIndex];
+        if (!s) {
+            closeModal('modal-status-viewer');
+            return;
+        }
+        
+        let mediaHtml = '';
+        if (s.type === 'image' && s.mediaUrl) {
+            mediaHtml = `
+                <div class="status-image-wrapper" onclick="nextStatus()">
+                    <img src="${s.mediaUrl}" class="status-full-image" alt="Status">
+                </div>
+            `;
+        } else {
+            mediaHtml = `
+                <div class="status-text-wrapper" onclick="nextStatus()">
+                    <div class="status-full-text">${escapeHtml(s.text)}</div>
+                </div>
+            `;
+        }
+        
+        content.innerHTML = `
+            <div class="status-viewer-content">
+                <div class="status-viewer-header">
+                    <div class="status-viewer-user">
+                        <img src="${s.userPhoto || getAvatarUrl(s.userName)}" alt="${escapeHtml(s.userName)}">
+                        <div class="status-user-info">
+                            <strong>${escapeHtml(s.userName)}</strong>
+                            <span>${formatTimeAgo(s.createdAt)}</span>
+                        </div>
+                    </div>
+                </div>
+                ${mediaHtml}
+                ${s.text && s.type !== 'image' ? `<div class="status-image-caption">${escapeHtml(s.text)}</div>` : ''}
+                <div class="status-nav-buttons">
+                    <button class="status-nav-prev" ${currentStatusIndex === 0 ? 'disabled' : ''} onclick="prevStatus()">◀</button>
+                    <span class="status-counter">${currentStatusIndex+1} / ${currentStatusList.length}</span>
+                    <button class="status-nav-next" ${currentStatusIndex === currentStatusList.length-1 ? 'disabled' : ''} onclick="nextStatus()">▶</button>
+                </div>
+            </div>
+        `;
+    };
+    
+    updateContent();
+    modal.classList.add('open');
+    
+    // Auto next setiap 5 detik
+    statusViewerInterval = setInterval(() => {
+        if (currentStatusIndex < currentStatusList.length - 1) {
+            nextStatus();
+        } else {
+            // Tutup modal jika sudah di akhir
+            clearInterval(statusViewerInterval);
+            closeModal('modal-status-viewer');
+        }
+    }, 5000);
+}
+
+function nextStatus() {
+    if (currentStatusIndex < currentStatusList.length - 1) {
+        currentStatusIndex++;
+        showStatusViewerModal(currentStatusList[currentStatusIndex]);
+    } else {
+        closeModal('modal-status-viewer');
+    }
+}
+
+function prevStatus() {
+    if (currentStatusIndex > 0) {
+        currentStatusIndex--;
+        showStatusViewerModal(currentStatusList[currentStatusIndex]);
+    }
+}
+
+// ======================= UTILITY =======================
+
+function getAvatarUrl(name) {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=00bcd4&color=fff&size=100`;
+}
+
+function formatTimeAgo(timestamp) {
+    if (!timestamp) return '';
+    const diff = Date.now() - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (days > 0) return `${days} h`;
+    if (hours > 0) return `${hours} jam`;
+    if (minutes > 0) return `${minutes} m`;
+    return 'Baru saja';
 }
 
 function escapeHtml(str) {
@@ -501,35 +457,49 @@ function escapeHtml(str) {
     return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
 
-function initDelayEventListeners() {
-    const minutes = document.getElementById('delayMinutesValue');
-    const hours = document.getElementById('delayHoursValue');
-    const unit = document.getElementById('delayUnit');
-    if (minutes) minutes.addEventListener('input', updateDelayFromMinutes);
-    if (hours) hours.addEventListener('change', updateDelayFromHours);
-    if (unit) unit.addEventListener('change', toggleDelayInput);
-    setTimeout(() => toggleDelayInput(), 100);
+// ======================= CLEANUP =======================
+
+function cleanupStatusSystem() {
+    if (statusesListener) {
+        db.ref('statuses').off('value', statusesListener);
+        statusesListener = null;
+    }
+    if (expiryInterval) {
+        clearInterval(expiryInterval);
+        expiryInterval = null;
+    }
+    if (statusViewerInterval) {
+        clearInterval(statusViewerInterval);
+        statusViewerInterval = null;
+    }
+    console.log("🧹 Status system cleaned up");
 }
 
-// Auto init
+// ======================= EKSPOR KE GLOBAL =======================
+window.initStatusSystem = initStatusSystem;
+window.openCreateStatusModal = openCreateStatusModal;
+window.previewStatusImage = previewStatusImage;
+window.createStatus = createStatus;
+window.openStatusViewer = openStatusViewer;
+window.nextStatus = nextStatus;
+window.prevStatus = prevStatus;
+window.cleanupStatusSystem = cleanupStatusSystem;
+
+// Auto init setelah currentUser siap
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(() => { if (currentUser) initRealtimeStudents(); }, 1500));
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            if (typeof currentUser !== 'undefined' && currentUser) {
+                initStatusSystem();
+            }
+        }, 2000);
+    });
 } else {
-    setTimeout(() => { if (currentUser) initRealtimeStudents(); }, 1500);
+    setTimeout(() => {
+        if (typeof currentUser !== 'undefined' && currentUser) {
+            initStatusSystem();
+        }
+    }, 2000);
 }
 
-// Ekspor ke global
-window.populateKelasOptions = populateKelasOptions;
-window.populateJurusanOptions = populateJurusanOptions;
-window.populateStudentFilters = populateStudentFilters;
-window.renderStudentsTable = renderStudentsTable;
-window.saveStudent = saveStudent;
-window.editStudent = editStudent;
-window.resetStudentForm = resetStudentForm;
-window.deleteStudent = deleteStudent;
-window.deleteStudentWithFP = deleteStudentWithFP;
-window.importStudentsFromCSV = importStudentsFromCSV;
-window.exportStudentsToCSV = exportStudentsToCSV;
-window.initRealtimeStudents = initRealtimeStudents;
-window.cleanupStudentsSystem = cleanupStudentsSystem;
-window.initDelayEventListeners = initDelayEventListeners;
+console.log("✅ status.js loaded - Story feature ready");
