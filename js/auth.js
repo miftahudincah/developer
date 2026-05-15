@@ -1,39 +1,25 @@
-// ==================== auth.js - VERSION 3.0 (SECURE) ====================
-// Fitur: Login, Registrasi via Cloud Function, Logout, Reset Password
-// Perubahan utama:
-// 1. Registrasi dipindahkan ke Cloud Function (server-side)
-// 2. Menambahkan rate limiting sederhana untuk registrasi
-// 3. Sanitasi input email sebelum dikirim
-// 4. Re-authentication untuk aksi sensitif (opsional)
-// =========================================================================
+// auth.js - VERSI REGISTRASI LANGSUNG (TANPA CLOUD FUNCTION)
 
-// --- RATE LIMITING untuk Registrasi (client-side) ---
 let lastRegisterAttempt = 0;
-const REGISTER_COOLDOWN = 30000; // 30 detik
+const REGISTER_COOLDOWN = 30000;
 
-// --- Fungsi Login (tetap sama, namun dengan validasi tambahan) ---
 function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('loginEmail').value.trim();
     const pass = document.getElementById('loginPassword').value;
-
     if (!email || !pass) {
         showToast("Email dan password wajib diisi!", "error");
         return;
     }
-
     const btn = document.getElementById('btnLoginSubmit');
     btn.innerText = "Memproses...";
     btn.disabled = true;
-
     auth.signInWithEmailAndPassword(email, pass)
         .then((userCredential) => {
             const user = userCredential.user;
-            // Ambil data role dan detail user dari database
             return db.ref('users_auth/' + user.uid).once('value').then((snapshot) => {
                 const userData = snapshot.val();
                 if (userData) {
-                    // Normalisasi Kelas
                     if (userData.kelas) userData.kelas = userData.kelas.toUpperCase();
                     currentUser = { uid: user.uid, email: user.email, ...userData };
                     initApp();
@@ -57,32 +43,26 @@ function handleLogin(e) {
         });
 }
 
-// --- Fungsi Registrasi (Menggunakan Cloud Function) ---
 async function handleRegister(e) {
     e.preventDefault();
-
-    // Rate limiting
     const now = Date.now();
-    if (now - lastRegisterAttempt < REGISTER_COOLDOWN) {
-        const wait = Math.ceil((REGISTER_COOLDOWN - (now - lastRegisterAttempt)) / 1000);
+    if (now - lastRegisterAttempt < 30000) {
+        const wait = Math.ceil((30000 - (now - lastRegisterAttempt)) / 1000);
         showToast(`Tunggu ${wait} detik sebelum mencoba lagi`, "error");
         return;
     }
     lastRegisterAttempt = now;
 
-    // Ambil data form
     const regType = document.querySelector('input[name="regRoleType"]:checked')?.value;
     const codeInput = document.getElementById('regCode').value.trim().toUpperCase();
     const email = document.getElementById('regEmail').value.trim();
     const pass = document.getElementById('regPassword').value;
-    const confirmPass = document.getElementById('regConfirmPassword')?.value; // (optional, tambahkan field confirm password di HTML)
 
-    // Validasi dasar
     if (!regType || !codeInput || !email || !pass) {
         showToast("Semua bidang wajib diisi!", "error");
         return;
     }
-    if (!isValidEmail(email)) {
+    if (!/^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email)) {
         showToast("Format email tidak valid!", "error");
         return;
     }
@@ -90,60 +70,71 @@ async function handleRegister(e) {
         showToast("Password minimal 6 karakter!", "error");
         return;
     }
-    if (confirmPass !== undefined && pass !== confirmPass) {
-        showToast("Password dan konfirmasi tidak cocok!", "error");
-        return;
-    }
 
-    // Data tambahan tergantung tipe
     let extraData = {};
     if (regType === 'siswa') {
         const inputId = document.getElementById('regGeneratedId').value.trim();
-        if (!inputId) {
-            showToast("Masukkan ID Siswa!", "error");
-            return;
-        }
+        if (!inputId) { showToast("Masukkan ID Siswa!", "error"); return; }
         extraData = { fpId: inputId };
     } else {
         const namaGuru = document.getElementById('regNama').value.trim();
-        const subjectGuru = document.getElementById('regSubject').value.trim();
-        if (!namaGuru) {
-            showToast("Nama Guru wajib diisi!", "error");
-            return;
-        }
-        extraData = { nama: namaGuru, subject: subjectGuru };
+        if (!namaGuru) { showToast("Nama Guru wajib diisi!", "error"); return; }
+        extraData = { nama: namaGuru, subject: document.getElementById('regSubject').value.trim() };
     }
 
-    // Tampilkan loading
     const btn = document.getElementById('btnRegSubmit');
     const originalText = btn.innerText;
     btn.innerText = "⏳ Mendaftar...";
     btn.disabled = true;
 
     try {
-        // Panggil Cloud Function (harus sudah dideploy)
-        const registerFunction = firebase.functions().httpsCallable('registerUser');
-        const result = await registerFunction({
-            type: regType,
-            code: codeInput,
-            email: email,
-            password: pass,
-            extraData: extraData
-        });
+        // Verifikasi kode di database
+        const codeSnapshot = await db.ref(`codes/${codeInput}`).once('value');
+        const codeData = codeSnapshot.val();
+        if (!codeData || codeData.used === true) throw new Error('Kode tidak valid atau sudah digunakan');
+        if (codeData.type !== regType) throw new Error(`Kode ini untuk ${codeData.type}, bukan ${regType}`);
 
-        if (result.data.success) {
-            showToast("Pendaftaran Berhasil! Silakan Login.", "success");
-            toggleAuth('login');
-            document.getElementById('registerForm').reset();
-            if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
+        // Cek email sudah terdaftar
+        const methods = await auth.fetchSignInMethodsForEmail(email);
+        if (methods.length > 0) throw new Error('Email sudah terdaftar');
+
+        // Buat akun
+        const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
+        const user = userCredential.user;
+
+        // Siapkan data user
+        let userData = { uid: user.uid, email, role: regType, registeredAt: firebase.database.ServerValue.TIMESTAMP };
+        if (regType === 'siswa') {
+            const fpId = extraData.fpId;
+            const studentSnap = await db.ref(`users/${fpId}`).once('value');
+            if (!studentSnap.exists()) {
+                await user.delete();
+                throw new Error(`ID Fingerprint ${fpId} tidak ditemukan di data siswa`);
+            }
+            const student = studentSnap.val();
+            userData.nama = student.nama;
+            userData.kelas = student.kelas;
+            userData.jurusan = student.jurusan;
+            userData.fpId = fpId;
         } else {
-            showToast(result.data.message || "Pendaftaran gagal", "error");
+            userData.nama = extraData.nama;
+            userData.subject = extraData.subject || '';
         }
+
+        await db.ref(`users_auth/${user.uid}`).set(userData);
+        await db.ref(`codes/${codeInput}`).update({ used: true, userId: user.uid, usedAt: firebase.database.ServerValue.TIMESTAMP });
+
+        showToast("Pendaftaran Berhasil! Silakan Login.", "success");
+        toggleAuth('login');
+        document.getElementById('registerForm').reset();
+        if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
     } catch (error) {
-        console.error("Register error:", error);
+        console.error(error);
         let msg = error.message;
-        if (error.code === 'functions/internal') msg = "Server error, coba lagi nanti.";
-        else if (msg.includes('Kode tidak valid')) msg = "Kode pendaftaran tidak valid atau sudah kadaluarsa.";
+        if (msg.includes('Kode tidak valid')) msg = "Kode pendaftaran tidak valid atau sudah kadaluarsa.";
+        else if (msg.includes('Email sudah terdaftar')) msg = "Email sudah digunakan.";
+        else if (msg.includes('ID Fingerprint')) msg = error.message;
+        else msg = "Registrasi gagal: " + msg;
         showToast(msg, "error");
     } finally {
         btn.innerText = originalText;
@@ -151,92 +142,40 @@ async function handleRegister(e) {
     }
 }
 
-// --- Helper validasi email ---
-function isValidEmail(email) {
-    return /^[^\s@]+@([^\s@.,]+\.)+[^\s@.,]{2,}$/.test(email);
-}
-
-// --- Fungsi Logout (dengan cleanup global) ---
 function handleLogout() {
-    // Panggil semua fungsi cleanup dari berbagai modul (pastikan sudah didefinisikan)
-    if (typeof cleanupAttendanceListeners === 'function') cleanupAttendanceListeners();
-    if (typeof cleanupStudentsSystem === 'function') cleanupStudentsSystem();
-    if (typeof cleanupUsersSystem === 'function') cleanupUsersSystem();
-    if (typeof cleanupChatSystem === 'function') cleanupChatSystem();
-    if (typeof cleanupFriendsSystem === 'function') cleanupFriendsSystem();
-    if (typeof cleanupStatusSystem === 'function') cleanupStatusSystem();
-    if (typeof cleanupSettingsSystem === 'function') cleanupSettingsSystem();
-    if (typeof cleanupRekap === 'function') cleanupRekap();
-    if (typeof cleanupUI === 'function') cleanupUI();
-    if (typeof cleanupAnnouncementSystem === 'function') cleanupAnnouncementSystem();
-
+    const cleanups = [
+        'cleanupAttendanceListeners', 'cleanupStudentsSystem', 'cleanupUsersSystem',
+        'cleanupChatSystem', 'cleanupFriendsSystem', 'cleanupStatusSystem',
+        'cleanupSettingsSystem', 'cleanupRekap', 'cleanupUI', 'cleanupAnnouncementSystem'
+    ];
+    cleanups.forEach(fn => { if (typeof window[fn] === 'function') window[fn](); });
     auth.signOut().then(() => {
-        // Hapus session local
         if (typeof clearUserSession === 'function') clearUserSession();
         location.reload();
-    }).catch(err => {
-        console.error("Logout error:", err);
-        location.reload();
-    });
+    }).catch(() => location.reload());
 }
 
-// --- Fungsi Reset Password (tetap sama) ---
 function processForgot() {
     const email = document.getElementById('forgotEmail').value.trim();
-    if (!email) {
-        showToast('Masukkan email terlebih dahulu!', 'error');
-        return;
-    }
+    if (!email) { showToast('Masukkan email terlebih dahulu!', 'error'); return; }
     const btn = document.querySelector('#modal-forgot .btn-save');
-    if (btn) {
-        btn.innerText = '📧 Mengirim...';
-        btn.disabled = true;
-    }
+    if (btn) { btn.innerText = '📧 Mengirim...'; btn.disabled = true; }
     auth.sendPasswordResetEmail(email)
-        .then(() => {
-            showToast(`✅ Link reset password telah dikirim ke ${email}`, 'success');
-            closeModal('modal-forgot');
-        })
-        .catch(error => {
-            let msg = error.message;
-            if (error.code === 'auth/user-not-found') msg = '❌ Email tersebut belum terdaftar!';
-            else if (error.code === 'auth/invalid-email') msg = '❌ Format email tidak valid!';
-            showToast(msg, 'error');
-        })
-        .finally(() => {
-            if (btn) {
-                btn.innerText = 'Kirim Link';
-                btn.disabled = false;
-            }
-        });
+        .then(() => { showToast(`✅ Link reset password telah dikirim ke ${email}`, 'success'); closeModal('modal-forgot'); })
+        .catch(error => { let msg = error.code === 'auth/user-not-found' ? '❌ Email belum terdaftar!' : error.message; showToast(msg, 'error'); })
+        .finally(() => { if (btn) { btn.innerText = 'Kirim Link'; btn.disabled = false; } });
 }
 
-// --- Fungsi Ganti Password (memerlukan re-authentication untuk keamanan) ---
 async function handleChangePassword(e) {
     e.preventDefault();
     const oldPass = document.getElementById('cpOld').value;
     const newPass = document.getElementById('cpNew').value;
     const confirmPass = document.getElementById('cpConfirm').value;
-
-    if (!oldPass || !newPass || !confirmPass) {
-        showToast("Semua field harus diisi!", "error");
-        return;
-    }
-    if (newPass !== confirmPass) {
-        showToast("Password baru tidak cocok!", "error");
-        return;
-    }
-    if (newPass.length < 6) {
-        showToast("Password minimal 6 karakter!", "error");
-        return;
-    }
-
+    if (!oldPass || !newPass || !confirmPass) { showToast("Semua field harus diisi!", "error"); return; }
+    if (newPass !== confirmPass) { showToast("Password baru tidak cocok!", "error"); return; }
+    if (newPass.length < 6) { showToast("Password minimal 6 karakter!", "error"); return; }
     const btn = document.querySelector('#modal-change-pass button[type="submit"]');
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = "Memproses...";
-    }
-
+    if (btn) { btn.disabled = true; btn.textContent = "Memproses..."; }
     const user = auth.currentUser;
     const credential = firebase.auth.EmailAuthProvider.credential(user.email, oldPass);
     try {
@@ -247,19 +186,12 @@ async function handleChangePassword(e) {
         document.getElementById('cpNew').value = '';
         document.getElementById('cpConfirm').value = '';
     } catch (err) {
-        console.error(err);
         if (err.code === 'auth/wrong-password') showToast("Password lama salah!", "error");
-        else if (err.code === 'auth/requires-recent-login') showToast("Silakan logout dan login kembali untuk ubah password.", "error");
+        else if (err.code === 'auth/requires-recent-login') showToast("Silakan logout dan login kembali.", "error");
         else showToast("Gagal: " + err.message, "error");
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = "Simpan";
-        }
-    }
+    } finally { if (btn) { btn.disabled = false; btn.textContent = "Simpan"; } }
 }
 
-// --- Fungsi toggle tampilan form login/register ---
 function toggleAuth(mode) {
     const loginCard = document.getElementById('login-card');
     const registerCard = document.getElementById('register-card');
@@ -272,7 +204,6 @@ function toggleAuth(mode) {
     }
 }
 
-// --- Toggle password visibility ---
 function togglePassword(id, icon) {
     const input = document.getElementById(id);
     if (!input) return;
@@ -280,7 +211,6 @@ function togglePassword(id, icon) {
     if (icon) icon.style.color = input.type === "text" ? "var(--primary)" : "#aaa";
 }
 
-// --- Ekspor ke global ---
 window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.handleLogout = handleLogout;
@@ -289,4 +219,4 @@ window.togglePassword = togglePassword;
 window.processForgot = processForgot;
 window.handleChangePassword = handleChangePassword;
 
-console.log("✅ auth.js (secure) loaded");
+console.log("✅ auth.js (direct registration) loaded");

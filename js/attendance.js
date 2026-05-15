@@ -1,8 +1,7 @@
-// attendance.js - VERSION 3.0 (EVENT-BASED, UI ONLY)
+// attendance.js - VERSION 3.1 (PERBAIKAN: RENDER TANPA TAB AKTIF)
 // Mengelola data absensi, filter, validasi delay pulang,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
-// PERUBAHAN: Menambahkan event listener 'dataReady' untuk render ulang,
-//            Menghapus panggilan otomatis, hanya merespon event.
+// PERUBAHAN: Render tabel selalu dijalankan saat dataReady, tanpa menunggu tab aktif.
 // ============================================================================
 
 // ======================== GLOBAL VARIABLES ========================
@@ -18,19 +17,17 @@ function setupAttendanceDataReadyListener() {
 
     window.addEventListener('dataReady', (e) => {
         console.log("📋 attendance.js: dataReady received, updating attendance UI");
-        // Update donut chart
+        // Update donut chart (selalu)
         if (typeof updateAttendanceDonutChart === 'function') {
             updateAttendanceDonutChart();
         }
-        // Render tabel jika tab attendance aktif
-        if (document.getElementById('tab-attendance')?.classList.contains('active')) {
-            if (typeof renderTable === 'function') {
-                renderTable();
-            }
+        // Render tabel (selalu, tidak peduli tab aktif atau tidak)
+        if (typeof renderTable === 'function') {
+            renderTable();
         }
     });
 
-    // Juga listen untuk perubahan tab ke attendance
+    // Juga listen untuk perubahan tab ke attendance (tetap dipertahankan untuk update tambahan)
     const originalSwitchTab = window.switchTab;
     if (originalSwitchTab) {
         window.switchTab = function(tabId) {
@@ -160,7 +157,7 @@ async function renderTable() {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">
             📭 Data absensi tidak ditemukan.
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
-         </td></tr>`;
+          </td></tr>`;
         updateAttendanceStatistics(data);
         updateAttendanceDonutChart();
         return;
@@ -173,6 +170,8 @@ async function renderTable() {
         manualStatusMap = statusSnapshot.val() || {};
     }
     
+    // Gunakan array untuk menghindari innerHTML berulang (optimalisasi)
+    let rows = [];
     data.forEach((row, index) => {
         const timeDisplay = row.timeIn || '-';
         const outDisplay = row.timeOut ? `<br><span class="text-small" style="color:var(--danger)">🏠 Pulang: ${row.timeOut}</span>` : '';
@@ -192,7 +191,7 @@ async function renderTable() {
             statusHtml = `<span style="color:${statusColor}; font-weight:500;">${statusIcon} ${row.status}</span>`;
         }
         
-        tbody.innerHTML += `
+        rows.push(`
             <tr class="${isNew ? 'attendance-new-row' : ''}">
                 <td>⏰ ${timeDisplay}<br><span class="text-small">📅 ${row.date}</span>${outDisplay}</td>
                 <td><strong>#${row.studentId}</strong></td>
@@ -203,9 +202,10 @@ async function renderTable() {
                 <td class="role-guru role-admin">
                     <button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button>
                 </td>
-            </td>
-        `;
+            </tr>
+        `);
     });
+    tbody.innerHTML = rows.join('');
     
     updateAttendanceStatistics(data);
     updateAttendanceDonutChart();
@@ -569,9 +569,10 @@ function renderFilteredTable(filteredData) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada data dalam rentang tanggal tersebut.</td></tr>`;
         return;
     }
+    let rows = [];
     filteredData.forEach(row => {
         const outDisplay = row.timeOut ? `<br><span class="text-small" style="color:var(--danger)">🏠 Pulang: ${row.timeOut}</span>` : '';
-        tbody.innerHTML += `
+        rows.push(`
             <tr>
                 <td>⏰ ${row.timeIn || '-'}<br><span class="text-small">📅 ${row.date}</span>${outDisplay}</td>
                 <td><strong>#${row.studentId}</strong></td>
@@ -581,8 +582,9 @@ function renderFilteredTable(filteredData) {
                 <td><span style="color:${row.status === 'Pulang' ? 'var(--danger)' : 'var(--success)'}">${row.status === 'Pulang' ? '🏠' : '✅'} ${row.status}</span></td>
                 <td class="role-guru role-admin"><button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button></td>
             </tr>
-        `;
+        `);
     });
+    tbody.innerHTML = rows.join('');
 }
 
 // ======================== MANUAL ATTENDANCE STATUS ========================
@@ -758,11 +760,11 @@ function cleanupAttendanceUI() {
 // ======================== INISIALISASI ========================
 setupAttendanceDataReadyListener();
 
-// Jika data sudah siap sebelum event listener, render sekali
+// Jika data sudah siap sebelum event listener, render langsung (tanpa conditional tab aktif)
 if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance) {
     setTimeout(() => {
         if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
-        if (document.getElementById('tab-attendance')?.classList.contains('active') && typeof renderTable === 'function') renderTable();
+        if (typeof renderTable === 'function') renderTable();
     }, 100);
 }
 
@@ -784,4 +786,4 @@ window.loadAbsenceList = loadAbsenceList;
 window.saveAllAbsenceStatus = saveAllAbsenceStatus;
 window.updateAttendanceDonutChart = updateAttendanceDonutChart;
 
-console.log("✅ attendance.js V3.0 loaded - Event-based (UI only)");
+console.log("✅ attendance.js V3.1 loaded - Render tanpa conditional tab aktif");

@@ -1,4 +1,4 @@
-// init.js - VERSION 4.0 (EVENT-BASED)
+// init.js - VERSION 4.1 (PERBAIKAN: RENDER TANPA CONDITIONAL TAB AKTIF)
 // INISIALISASI DATA DENGAN FLAG SYSTEM + EVENT DATA READY
 // ============================================================================
 
@@ -70,7 +70,7 @@ function renderAllData() {
         try { populateStudentSelectForCode(); } catch(e) { console.warn("populateStudentSelectForCode error:", e); }
     }
     
-    // 2. Render semua tabel
+    // 2. Render semua tabel (selalu, tanpa conditional)
     if (typeof renderStudentsTable === 'function') {
         try { renderStudentsTable(); } catch(e) { console.warn("renderStudentsTable error:", e); }
     }
@@ -90,9 +90,6 @@ function renderAllData() {
             try { initAnnouncementSystem(); } catch(e) { console.warn("initAnnouncementSystem error:", e); }
         }, 300);
     }
-    
-    // ========== HAPUS PANGGILAN LANGSUNG KE REKAP, FRIENDS, CHAT, STATUS, SENSOR ==========
-    // Modul-modul tersebut akan diinisialisasi oleh event 'dataReady' atau 'uiReady'
     
     // 4. Update UI tambahan
     if (typeof updateProfileDelayDisplay === 'function') {
@@ -161,8 +158,8 @@ function initDataListeners() {
         dataReady.users = true;
         checkAllDataReady();
         
-        // Trigger UI updates yang bergantung pada data siswa
-        if (typeof renderStudentsTable === 'function' && document.getElementById('tab-students')?.classList.contains('active')) {
+        // PERBAIKAN: Hapus conditional tab aktif, selalu render
+        if (typeof renderStudentsTable === 'function') {
             renderStudentsTable();
         }
         if (typeof populateStudentFilters === 'function') {
@@ -214,13 +211,13 @@ function initDataListeners() {
             }
         }
         
-        // Render tabel users jika aktif
-        if (typeof renderUsersTable === 'function' && document.getElementById('tab-users')?.classList.contains('active')) {
+        // PERBAIKAN: Hapus conditional tab aktif, selalu render
+        if (typeof renderUsersTable === 'function') {
             renderUsersTable();
         }
     });
     
-    // ========== 3. LISTENER DATA ABSENSI ==========
+    // ========== 3. LISTENER DATA ABSENSI (DIPERBAIKI) ==========
     db.ref('absensi').on('value', (snapshot) => {
         const data = snapshot.val();
         const oldCount = dbData.attendance?.length || 0;
@@ -260,25 +257,26 @@ function initDataListeners() {
         dataReady.attendance = true;
         checkAllDataReady();
         
-        // Trigger UI updates
-        if (typeof renderTable === 'function' && document.getElementById('tab-attendance')?.classList.contains('active')) {
+        // PERBAIKAN: Hapus SEMUA conditional tab aktif
+        
+        // Render tabel attendance (selalu)
+        if (typeof renderTable === 'function') {
             renderTable();
         }
         
-        // Update dashboard jika aktif
-        if (document.getElementById('tab-dashboard')?.classList.contains('active')) {
-            if (typeof renderDashboard === 'function') {
-                renderDashboard();
-            }
-            if (typeof updateDashboardChart === 'function') {
-                setTimeout(() => updateDashboardChart(), 100);
-            }
-            if (typeof updateAttendanceDonutChart === 'function') {
-                updateAttendanceDonutChart();
-            }
+        // Update dashboard dan chart (selalu, karena data absensi mempengaruhi dashboard)
+        if (typeof renderDashboard === 'function') {
+            renderDashboard();
+        }
+        if (typeof updateDashboardChart === 'function') {
+            setTimeout(() => updateDashboardChart(), 100);
+        }
+        if (typeof updateAttendanceDonutChart === 'function') {
+            updateAttendanceDonutChart();
         }
         
-        // Update rekap jika aktif (rekap sekarang event-based, tapi tetap support)
+        // Update rekap hanya jika tab rekap aktif (karena berat, tidak perlu real-time jika tidak dilihat)
+        // Tapi untuk data siap saat pertama buka, sudah ditangani oleh renderAllData
         if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
             setTimeout(() => loadRekap(), 100);
         }
@@ -307,7 +305,7 @@ function initDataListeners() {
         dataReady.schoolConfig = true;
         checkAllDataReady();
         
-        // Update UI
+        // Update UI (tanpa conditional)
         const typeSelect = document.getElementById('schoolTypeSelect');
         if (typeSelect && currentSchoolConfig) {
             typeSelect.value = currentSchoolConfig.type;
@@ -334,7 +332,7 @@ function initDataListeners() {
             populateStudentFilters();
         }
         
-        // Refresh rekap jika perlu
+        // Refresh rekap hanya jika tab aktif (opsional)
         if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
             setTimeout(() => loadRekap(), 100);
         }
@@ -472,4 +470,4 @@ window.setupRekapDefaultDates = setupRekapDefaultDates;
 window.initDataListeners = initDataListeners;
 window.cleanupInitListeners = cleanupInitListeners;
 
-console.log("✅ init.js V4.0 loaded - Event-based data ready dispatch");
+console.log("✅ init.js V4.1 loaded - Render tanpa conditional tab aktif");
