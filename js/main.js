@@ -1,12 +1,11 @@
-// main.js - VERSION 5.0 (EVENT-BASED DASHBOARD)
+// main.js - VERSION 5.1 (PERBAIKAN: HAPUS CHART DI SINI, SERAHKAN KE UI.JS)
 // Fokus: Session persistence, Auth state handler, Periodic refresh,
-//        Dashboard modern real-time update (statistik, chart mingguan, progress bar kelas, absensi terbaru)
-// PERUBAHAN: Menggunakan event 'dataReady' untuk update dashboard, bukan panggilan langsung
+//        Dashboard modern real-time update (statistik, progress bar kelas, absensi terbaru)
+// PERUBAHAN: Menghapus pembuatan chart weeklyBarChart untuk mencegah konflik canvas
 
 // ======================== GLOBAL VARIABLES ========================
 let refreshInterval = null;
 let isInitialized = false;
-let weeklyChart = null; // Chart instance untuk weekly bar chart
 let mainDataReadyListenerAdded = false;
 
 // ======================== SESSION PERSISTENCE ========================
@@ -60,7 +59,6 @@ async function updateDashboardModern() {
         return;
     }
     
-    // Pastikan data attendance ada
     if (!dbData.attendance || dbData.attendance.length === 0) {
         console.log("⏳ Dashboard update skipped: attendance data not ready yet");
         return;
@@ -69,18 +67,13 @@ async function updateDashboardModern() {
     console.log("📊 Updating modern dashboard with real data from dbData...");
     
     try {
-        // Data siswa dari dbData.users
         const students = dbData.users || [];
         const totalSiswa = students.length;
-        
-        // Trend sederhana (dummy, bisa dikembangkan)
         const trendSiswa = totalSiswa > 0 ? "+" + Math.floor(Math.random() * 10) : "0";
         
-        // Data absensi hari ini dari dbData.attendance
         const today = new Date().toISOString().split('T')[0];
         const todayAttendance = dbData.attendance.filter(a => a.date === today);
         
-        // Hitung statistik hari ini
         let hadir = 0;
         let tidakHadir = 0;
         let terlambat = 0;
@@ -93,7 +86,6 @@ async function updateDashboardModern() {
                     hadirSet.add(record.studentId);
                     hadir++;
                 }
-                // Deteksi terlambat jika jam masuk > 07:30
                 if (record.timeIn && record.timeIn > '07:30') {
                     terlambatSet.add(record.studentId);
                 }
@@ -106,7 +98,6 @@ async function updateDashboardModern() {
         const persenTidakHadir = totalSiswa > 0 ? ((tidakHadir / totalSiswa) * 100).toFixed(1) : 0;
         const persenTerlambat = totalSiswa > 0 ? ((terlambat / totalSiswa) * 100).toFixed(1) : 0;
         
-        // Update elemen DOM
         const elTotalSiswa = document.getElementById('statTotalSiswaNew');
         if (elTotalSiswa) elTotalSiswa.innerText = totalSiswa;
         const elTrendSiswa = document.getElementById('statTrendSiswa');
@@ -191,52 +182,11 @@ async function updateDashboardModern() {
             }
         }
         
-        // ========== Grafik Kehadiran Mingguan ==========
-        const weekDays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-        const todayDate = new Date();
-        const dayOfWeek = todayDate.getDay();
-        let startOffset = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
-        const weekData = [];
-        
-        for (let i = 0; i < 7; i++) {
-            const d = new Date(todayDate);
-            d.setDate(todayDate.getDate() - (startOffset - i));
-            const dateStr = d.toISOString().split('T')[0];
-            const attendanceThatDay = dbData.attendance.filter(a => a.date === dateStr && (a.status === 'Hadir' || a.status === 'Pulang'));
-            const uniqueStudents = new Set(attendanceThatDay.map(a => a.studentId));
-            const hadirCount = uniqueStudents.size;
-            const persen = totalSiswa > 0 ? (hadirCount / totalSiswa) * 100 : 0;
-            weekData.push(persen);
-        }
-        
-        const ctx = document.getElementById('weeklyBarChart')?.getContext('2d');
-        if (ctx) {
-            if (weeklyChart) {
-                weeklyChart.data.datasets[0].data = weekData;
-                weeklyChart.update();
-            } else {
-                weeklyChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: weekDays,
-                        datasets: [{
-                            label: 'Kehadiran (%)',
-                            data: weekData,
-                            backgroundColor: '#00bcd4',
-                            borderRadius: 8
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        scales: {
-                            y: { beginAtZero: true, max: 100, grid: { color: '#2a2a35' } },
-                            x: { grid: { display: false } }
-                        },
-                        plugins: { legend: { position: 'top', labels: { color: '#a0a0b0' } } }
-                    }
-                });
-            }
+        // ========== GRAFIK MINGGUAN: SERAHKAN KE UI.JS ==========
+        // Chart dikelola sepenuhnya oleh ui.js, cukup panggil fungsi update jika perlu
+        if (typeof window.updateDashboardChart === 'function') {
+            // updateDashboardChart akan menangani pembaruan chart tanpa konflik
+            window.updateDashboardChart();
         }
         
         console.log("✅ Dashboard modern updated with real data from dbData");
@@ -303,9 +253,6 @@ function initAuthStateHandler() {
                     await loadDashboardComponents();
                     if (typeof initApp === 'function') initApp();
                     
-                    // ========== HAPUS PANGGILAN LANGSUNG updateDashboardModern ==========
-                    // Dashboard akan diupdate via event 'dataReady' dari init.js
-                    // Tapi jika data sudah siap sebelum event listener, cek manual
                     if (window.dbData && window.dbData.attendance && window.dbData.attendance.length > 0) {
                         console.log("📊 Data already ready, updating dashboard immediately");
                         setTimeout(() => updateDashboardModern(), 100);
@@ -336,20 +283,17 @@ function initAuthStateHandler() {
 }
 
 // ======================== EVENT LISTENER DATA READY ========================
-// Setup listener untuk event 'dataReady' dari init.js
+
 function setupDataReadyListener() {
     if (mainDataReadyListenerAdded) {
         console.log("⚠️ dataReady listener already added, skipping");
         return;
     }
-    
     mainDataReadyListenerAdded = true;
     console.log("📡 Setting up dataReady event listener for dashboard updates");
-    
     window.addEventListener('dataReady', (e) => {
         console.log("🔄 main.js: dataReady received, updating dashboard");
         if (typeof updateDashboardModern === 'function') {
-            // Delay sedikit untuk memastikan DOM siap
             setTimeout(() => updateDashboardModern(), 100);
         }
     });
@@ -382,9 +326,8 @@ function resetAppState() {
     console.log("🔄 Resetting app state...");
     stopPeriodicRefresh();
     isInitialized = false;
-    if (weeklyChart) {
-        weeklyChart.destroy();
-        weeklyChart = null;
+    if (typeof window.weeklyChart !== 'undefined' && window.weeklyChart) {
+        // Tidak ada lagi chart di main.js, hanya untuk keamanan
     }
     if (typeof dbData !== 'undefined') {
         dbData = { users: [], users_auth: [], attendance: [], codes: [] };
@@ -410,10 +353,7 @@ function waitForFirebaseAndInit() {
         setTimeout(waitForFirebaseAndInit, 500);
         return;
     }
-    
-    // Setup dataReady listener sebelum auth state handler
     setupDataReadyListener();
-    
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => setTimeout(() => initAuthStateHandler(), 100));
     } else {
@@ -422,4 +362,4 @@ function waitForFirebaseAndInit() {
 }
 
 waitForFirebaseAndInit();
-console.log("✅ main.js V5.0 loaded - Event-based dashboard updates");
+console.log("✅ main.js V5.1 loaded - Chart handling removed, delegated to ui.js");

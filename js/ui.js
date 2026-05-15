@@ -1,6 +1,8 @@
-// ui.js - VERSION 4.0 (EVENT-BASED, NO DUPLICATE INIT)
+// ui.js - VERSION 4.1 (PERBAIKAN: uploadProfilePhoto & updateDashboardChart)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
-// PERUBAHAN: Menggunakan event 'dataReady' dan 'uiReady' untuk koordinasi antar modul
+// PERUBAHAN: 
+//   - uploadProfilePhoto aman jika modal belum terbuka
+//   - updateDashboardChart menggunakan canvas weeklyBarChart (sesuai dashboard modern)
 // ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
@@ -67,13 +69,7 @@ function initApp() {
     }
     
     // ========== PANGGILAN INISIALISASI VIA EVENT ==========
-    // Kirim event bahwa UI sudah siap, modul lain akan merespon
     window.dispatchEvent(new CustomEvent('uiReady', { detail: { currentUser } }));
-    
-    // ========== HAPUS PANGGILAN LANGSUNG KE MODUL LAIN ==========
-    // Semua modul (rekap, friends, chat, status, sensor) akan diinisialisasi
-    // oleh event listener mereka masing-masing, BUKAN dari sini.
-    // Ini mencegah double initialization dan race condition.
     
     // Render semua tabel (data sudah siap dari init.js, tapi pastikan)
     const renderTables = () => {
@@ -108,31 +104,31 @@ function initApp() {
         if (floatingChatBtn) floatingChatBtn.style.display = 'flex';
     }, 1000);
     
-    // Inisialisasi pengumuman (satu-satunya yang tetap dipanggil langsung karena ringan)
+    // Inisialisasi pengumuman
     if (typeof initAnnouncementSystem === 'function') {
         setTimeout(() => initAnnouncementSystem(), 500);
     }
     
-    // Inisialisasi konfigurasi nama sekolah (listener ringan)
+    // Inisialisasi konfigurasi nama sekolah
     if (typeof initSystemConfig === 'function') {
         initSystemConfig();
     } else {
         initSystemConfigManual();
     }
     
-    // Inisialisasi konfigurasi tipe sekolah & jurusan (listener ringan)
+    // Inisialisasi konfigurasi tipe sekolah & jurusan
     if (typeof loadSchoolConfig === 'function') {
         loadSchoolConfig();
     }
     
-    // Inisialisasi event listener untuk delay input (UI only)
+    // Inisialisasi event listener untuk delay input
     if (typeof initDelayEventListeners === 'function') {
         initDelayEventListeners();
     } else {
         initManualDelayListeners();
     }
     
-    // Inisialisasi event listener untuk global delay (UI only)
+    // Inisialisasi event listener untuk global delay
     if (typeof initGlobalDelayListeners === 'function') {
         initGlobalDelayListeners();
     }
@@ -141,10 +137,6 @@ function initApp() {
 }
 
 // ======================== EVENT LISTENER UNTUK MODUL LAIN ========================
-// Modul-modul berikut akan diinisialisasi ketika event 'dataReady' dan 'uiReady' diterima
-// Ini memastikan data dan UI sudah siap sebelum modul dijalankan
-
-// Rekap System
 if (typeof window !== 'undefined') {
     window.addEventListener('dataReady', () => {
         console.log("📊 dataReady received, initializing rekap if needed");
@@ -155,7 +147,6 @@ if (typeof window !== 'undefined') {
     });
 }
 
-// Friends System (butuh currentUser)
 window.addEventListener('uiReady', (e) => {
     if (e.detail.currentUser && typeof initFriendsSystem === 'function' && !window._friendsInitialized) {
         console.log("👥 uiReady received, initializing friends system");
@@ -164,7 +155,6 @@ window.addEventListener('uiReady', (e) => {
     }
 });
 
-// Chat System (butuh currentUser)
 window.addEventListener('uiReady', (e) => {
     if (e.detail.currentUser && typeof initChatSystem === 'function' && !window._chatInitialized) {
         console.log("💬 uiReady received, initializing chat system");
@@ -173,7 +163,6 @@ window.addEventListener('uiReady', (e) => {
     }
 });
 
-// Status System
 window.addEventListener('uiReady', (e) => {
     if (e.detail.currentUser && typeof initStatusSystem === 'function' && !window._statusInitialized) {
         console.log("📸 uiReady received, initializing status system");
@@ -182,7 +171,6 @@ window.addEventListener('uiReady', (e) => {
     }
 });
 
-// Sensor Status Listener (khusus admin)
 window.addEventListener('uiReady', (e) => {
     const user = e.detail.currentUser;
     if (user && user.role === 'admin' && typeof initSensorStatusListener === 'function' && !window._sensorInitialized) {
@@ -192,11 +180,8 @@ window.addEventListener('uiReady', (e) => {
     }
 });
 
-// ======================== FUNGSI LAINNYA (SAMA SEPERTI SEBELUMNYA) ========================
+// ======================== FUNGSI LAINNYA ========================
 
-/**
- * Setup event listener untuk perubahan tahun pada chart
- */
 function setupChartYearListener() {
     const yearSelect = document.getElementById('chartYearSelect');
     if (yearSelect) {
@@ -209,9 +194,6 @@ function setupChartYearListener() {
     }
 }
 
-/**
- * Update semua elemen UI yang menampilkan data user
- */
 function updateUserInterface() {
     if (!currentUser) return;
     
@@ -235,7 +217,6 @@ function updateUserInterface() {
     if (profileImg) profileImg.src = photo;
 }
 
-// Fallback inisialisasi manual untuk delay listeners
 function initManualDelayListeners() {
     console.log("🔧 initManualDelayListeners dipanggil");
     const delayMinutesInput = document.getElementById('delayMinutesValue');
@@ -259,7 +240,6 @@ function initManualDelayListeners() {
     }, 100);
 }
 
-// Fallback inisialisasi system config manual
 function initSystemConfigManual() {
     console.log("🔧 initSystemConfigManual dipanggil");
     if (typeof db !== 'undefined' && db) {
@@ -278,7 +258,6 @@ function initSystemConfigManual() {
     }
 }
 
-// ======================== FUNGSI FORMAT DELAY ========================
 function formatDelayText(delayMinutes) {
     if (!delayMinutes && delayMinutes !== 0) return '-';
     const hours = Math.floor(delayMinutes / 60);
@@ -544,7 +523,6 @@ function switchTab(tabId) {
     const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
     if (activeBtn) activeBtn.classList.add('active');
     
-    // Gunakan event untuk render tab, biar lebih teratur
     setTimeout(() => {
         if (tabId === 'dashboard') {
             renderDashboard();
@@ -577,18 +555,13 @@ function showToast(msg, type = 'success') {
 
 // ======================== DASHBOARD MODERN FUNCTIONS ========================
 
-/**
- * Debug function untuk melihat data absensi
- */
 function debugAttendanceData() {
     console.log("========== DEBUG DATA ABSENSI ==========");
     console.log("dbData:", dbData);
     console.log("dbData.attendance:", dbData.attendance);
-    
     if (dbData.attendance && dbData.attendance.length > 0) {
         console.log("Jumlah data absensi:", dbData.attendance.length);
         console.log("Sample data pertama:", dbData.attendance[0]);
-        
         const byMonth = {};
         const availableYears = [];
         dbData.attendance.forEach(rec => {
@@ -612,9 +585,6 @@ function debugAttendanceData() {
     console.log("========================================");
 }
 
-/**
- * Update dropdown tahun dengan opsi dari data absensi
- */
 function updateYearDropdownOptions() {
     const yearSelect = document.getElementById('chartYearSelect');
     if (!yearSelect) return;
@@ -628,16 +598,13 @@ function updateYearDropdownOptions() {
             }
         });
     }
-    
     if (availableYears.size === 0) {
         availableYears.add(2024);
         availableYears.add(2025);
         availableYears.add(2026);
     }
-    
     const years = Array.from(availableYears).sort((a,b) => b - a);
     const currentValue = yearSelect.value;
-    
     const existingOptions = Array.from(yearSelect.options).map(opt => opt.value);
     for (const year of years) {
         if (!existingOptions.includes(year.toString())) {
@@ -647,7 +614,6 @@ function updateYearDropdownOptions() {
             yearSelect.appendChild(option);
         }
     }
-    
     if (!years.includes(parseInt(currentValue)) && years.length > 0) {
         yearSelect.value = years[0];
         console.log(`📅 Tahun berubah otomatis dari ${currentValue} ke ${years[0]}`);
@@ -656,17 +622,13 @@ function updateYearDropdownOptions() {
 
 function renderDashboard() {
     console.log("📊 Rendering modern dashboard...");
-    
-    // CEK DATA SIAP
     if (!dbData || !dbData.attendance) {
         console.log("⏳ Data absensi belum siap, schedule ulang renderDashboard...");
         setTimeout(() => renderDashboard(), 500);
         return;
     }
-    
     if (dbData.attendance.length === 0) {
         console.warn("⚠️ Belum ada data absensi");
-        // Tampilkan placeholder
         const kehadiranElem = document.getElementById('statKehadiranBulan');
         if (kehadiranElem) kehadiranElem.innerText = '0';
         const transaksiElem = document.getElementById('statTotalTransaksi');
@@ -675,34 +637,27 @@ function renderDashboard() {
         if (totalSiswaElem && dbData.users) totalSiswaElem.innerText = dbData.users.length;
         const totalUsersElem = document.getElementById('statTotalUsers');
         if (totalUsersElem && dbData.users_auth) totalUsersElem.innerText = dbData.users_auth.length;
-        
         setTimeout(() => updateDashboardChart(), 100);
         renderRecentActivities();
         renderDashboardTasks();
         return;
     }
-    
     debugAttendanceData();
     updateYearDropdownOptions();
     
-    // 1. Kehadiran bulan ini
     const now = new Date();
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    
     const monthAttendance = dbData.attendance.filter(a => {
         if (!a.date) return false;
         const d = new Date(a.date);
         return d >= startMonth && d <= endMonth;
     });
-    
     const totalHadirBulan = monthAttendance.filter(a => a.status === 'Hadir' || a.status === 'Pulang').length;
     console.log(`📊 Bulan ini: ${totalHadirBulan} kehadiran dari ${monthAttendance.length} transaksi`);
-    
     const kehadiranElem = document.getElementById('statKehadiranBulan');
     if (kehadiranElem) kehadiranElem.innerText = totalHadirBulan;
     
-    // Trend sederhana (bandingkan dengan bulan lalu)
     const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
     const lastMonthAttendance = dbData.attendance.filter(a => {
@@ -720,27 +675,16 @@ function renderDashboard() {
         trendElem.className = `stat-change ${trendClass}`;
     }
     
-    // 2. Total transaksi bulan ini
     const transaksiElem = document.getElementById('statTotalTransaksi');
     if (transaksiElem) transaksiElem.innerText = monthAttendance.length;
-    
-    // 3. Total siswa
     const totalSiswaElem = document.getElementById('statTotalSiswa');
     if (totalSiswaElem && dbData.users) totalSiswaElem.innerText = dbData.users.length;
-    
-    // 4. Total pengguna terdaftar
     const totalUsersElem = document.getElementById('statTotalUsers');
     if (totalUsersElem && dbData.users_auth) totalUsersElem.innerText = dbData.users_auth.length;
     
-    // 5. Update grafik
     setTimeout(() => updateDashboardChart(), 100);
-    
-    // 6. Update aktivitas terbaru
     renderRecentActivities();
-    
-    // 7. Update daftar pengumuman
     renderDashboardTasks();
-    
     console.log("✅ Dashboard rendered successfully");
 }
 
@@ -750,9 +694,11 @@ function updateDashboardChart() {
         dashboardChartRetryTimeout = null;
     }
 
-    const canvas = document.getElementById('dashboardBarChart');
+    // Cari canvas: prioritas weeklyBarChart (dashboard modern), fallback dashboardBarChart
+    let canvas = document.getElementById('weeklyBarChart');
+    if (!canvas) canvas = document.getElementById('dashboardBarChart');
     if (!canvas) {
-        console.warn("⚠️ Canvas dashboardBarChart tidak ditemukan, coba lagi nanti...");
+        console.warn("⚠️ Canvas chart tidak ditemukan (weeklyBarChart/dashboardBarChart), coba lagi nanti...");
         dashboardChartRetryTimeout = setTimeout(() => updateDashboardChart(), 500);
         return;
     }
@@ -768,7 +714,6 @@ function updateDashboardChart() {
 
     let yearSelect = document.getElementById('chartYearSelect');
     let selectedYear = 2025;
-    
     let availableYears = [];
     if (dbData.attendance.length > 0) {
         dbData.attendance.forEach(rec => {
@@ -784,7 +729,6 @@ function updateDashboardChart() {
     if (availableYears.length > 0) {
         selectedYear = Math.max(...availableYears);
         console.log(`📅 Tahun data tersedia: ${availableYears.join(', ')}, menggunakan: ${selectedYear}`);
-        
         if (yearSelect) {
             for (const year of availableYears) {
                 let optionExists = false;
@@ -801,7 +745,6 @@ function updateDashboardChart() {
                     yearSelect.appendChild(option);
                 }
             }
-            
             const currentYear = parseInt(yearSelect.value);
             if (isNaN(currentYear) || !availableYears.includes(currentYear)) {
                 yearSelect.value = selectedYear;
@@ -845,7 +788,6 @@ function updateDashboardChart() {
                 }
             }
         });
-        
         const totalDataYear = monthlyHadir.reduce((a,b) => a+b, 0) + 
                               monthlyIzin.reduce((a,b) => a+b, 0) + 
                               monthlyAlpha.reduce((a,b) => a+b, 0);
@@ -935,7 +877,6 @@ function updateDashboardChart() {
                 }
             }
         });
-        
         const totalData = monthlyHadir.reduce((a,b) => a+b, 0) + 
                          monthlyIzin.reduce((a,b) => a+b, 0) + 
                          monthlyAlpha.reduce((a,b) => a+b, 0);
@@ -948,7 +889,6 @@ function updateDashboardChart() {
 function renderRecentActivities() {
     const container = document.getElementById('recentActivitiesList');
     if (!container) return;
-    
     const recent = dbData.attendance ? [...dbData.attendance].slice(0, 5) : [];
     if (recent.length === 0) {
         container.innerHTML = '<div class="activity-item"><div class="activity-detail">Belum ada aktivitas</div></div>';
@@ -977,7 +917,6 @@ function renderRecentActivities() {
 function renderDashboardTasks() {
     const container = document.getElementById('dashboardTasksList');
     if (!container) return;
-    
     db.ref('announcements/active').once('value', (snapshot) => {
         const data = snapshot.val();
         let tasksHtml = '';
@@ -1008,12 +947,20 @@ function openProfileModal() {
     if (!modal) return;
     modal.classList.add('open');
     if (!currentUser) return;
-    document.getElementById('profileImg').src = currentUser.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.nama || 'User')}&background=random`;
-    document.getElementById('profileNameInput').value = currentUser.nama || '';
-    document.getElementById('profileEmail').textContent = currentUser.email || '';
-    document.getElementById('profileKelas').value = currentUser.kelas || '';
-    document.getElementById('profileJurusan').value = currentUser.jurusan || '';
-    document.getElementById('profileSubject').value = currentUser.subject || '';
+    const profileImg = document.getElementById('profileImg');
+    if (profileImg) {
+        profileImg.src = currentUser.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.nama || 'User')}&background=random`;
+    }
+    const profileNameInput = document.getElementById('profileNameInput');
+    if (profileNameInput) profileNameInput.value = currentUser.nama || '';
+    const profileEmail = document.getElementById('profileEmail');
+    if (profileEmail) profileEmail.textContent = currentUser.email || '';
+    const profileKelas = document.getElementById('profileKelas');
+    if (profileKelas) profileKelas.value = currentUser.kelas || '';
+    const profileJurusan = document.getElementById('profileJurusan');
+    if (profileJurusan) profileJurusan.value = currentUser.jurusan || '';
+    const profileSubject = document.getElementById('profileSubject');
+    if (profileSubject) profileSubject.value = currentUser.subject || '';
 
     const nameInput = document.getElementById('profileNameInput');
     const kelasInput = document.getElementById('profileKelas');
@@ -1033,17 +980,17 @@ function openProfileModal() {
         }
     }
     if (currentUser.role === 'siswa') {
-        nameInput.readOnly = true; nameInput.style.cssText = 'border:none;background:transparent;color:#888';
-        kelasInput.readOnly = true; kelasInput.style.cssText = 'border:none;background:transparent';
-        jurusanInput.readOnly = true; jurusanInput.style.cssText = 'border:none;background:transparent';
+        if (nameInput) { nameInput.readOnly = true; nameInput.style.cssText = 'border:none;background:transparent;color:#888'; }
+        if (kelasInput) { kelasInput.readOnly = true; kelasInput.style.cssText = 'border:none;background:transparent'; }
+        if (jurusanInput) { jurusanInput.readOnly = true; jurusanInput.style.cssText = 'border:none;background:transparent'; }
         if (subjectGroup) subjectGroup.style.display = 'none';
         if (saveBtn) saveBtn.style.display = 'none';
         if (delayGroup) delayGroup.style.display = 'block';
         updateProfileDelayDisplay();
     } else {
-        nameInput.readOnly = false; nameInput.style.cssText = 'border:1px solid var(--border);background:#2c2c2c;color:#fff';
-        kelasInput.readOnly = false; kelasInput.style.cssText = 'border:1px solid var(--border);background:#2c2c2c';
-        jurusanInput.readOnly = false; jurusanInput.style.cssText = 'border:1px solid var(--border);background:#2c2c2c';
+        if (nameInput) { nameInput.readOnly = false; nameInput.style.cssText = 'border:1px solid var(--border);background:#2c2c2c;color:#fff'; }
+        if (kelasInput) { kelasInput.readOnly = false; kelasInput.style.cssText = 'border:1px solid var(--border);background:#2c2c2c'; }
+        if (jurusanInput) { jurusanInput.readOnly = false; jurusanInput.style.cssText = 'border:1px solid var(--border);background:#2c2c2c'; }
         if (subjectGroup) subjectGroup.style.display = 'block';
         if (saveBtn) saveBtn.style.display = 'block';
         if (delayGroup) delayGroup.style.display = 'none';
@@ -1135,12 +1082,17 @@ function handleChangePassword(e) {
 
 async function uploadProfilePhoto(input) {
     if (!input.files || !input.files[0]) return;
+    const imgEl = document.getElementById('profileImg');
+    if (!imgEl) {
+        showToast('Buka modal profil terlebih dahulu (klik "Profil Saya")', 'error');
+        input.value = '';
+        return;
+    }
     const file = input.files[0];
     if (!file.type.match('image.*')) { showToast('Hanya file gambar yang diperbolehkan!', 'error'); return; }
     if (file.size > 2 * 1024 * 1024) { showToast('Ukuran gambar maksimal 2MB!', 'error'); return; }
     const formData = new FormData();
     formData.append('image', file);
-    const imgEl = document.getElementById('profileImg');
     const originalSrc = imgEl.src;
     imgEl.style.opacity = '0.5';
     showToast('📤 Mengunggah ke ImgBB...', 'neutral');
@@ -1321,27 +1273,23 @@ function updateProfileDelayDisplay() {
 function cleanupUI() {
     if (clockInterval) clearInterval(clockInterval);
     uiInitialized = false;
-    
     if (dashboardChart) { 
         try {
             dashboardChart.destroy(); 
         } catch(e) {}
         dashboardChart = null; 
     }
-    
     if (dashboardChartRetryTimeout) {
         clearTimeout(dashboardChartRetryTimeout);
         dashboardChartRetryTimeout = null;
     }
-    
     if (typeof cleanupSensorStatus === 'function') {
         cleanupSensorStatus();
     }
-    
     console.log("🧹 UI cleanup completed");
 }
 
-// Export fungsi debug ke window agar bisa dipanggil dari console
+// Export fungsi debug ke window
 window.debugAttendanceData = debugAttendanceData;
 
 // ======================== EXPORT KE GLOBAL ========================
@@ -1368,10 +1316,9 @@ window.removeSchoolLogo = removeSchoolLogo;
 window.updateSchoolLogoUI = updateSchoolLogoUI;
 window.toggleFriendsModal = toggleFriendsModal;
 window.openChatModal = openChatModal;
-// Dashboard functions
 window.renderDashboard = renderDashboard;
 window.updateDashboardChart = updateDashboardChart;
 window.setupChartYearListener = setupChartYearListener;
 window.updateYearDropdownOptions = updateYearDropdownOptions;
 
-console.log("✅ ui.js V4.0 loaded - Event-based initialization");
+console.log("✅ ui.js V4.1 loaded - Perbaikan upload profile & chart canvas");
