@@ -1,8 +1,9 @@
-// ui.js - VERSION 4.1 (PERBAIKAN: uploadProfilePhoto & updateDashboardChart)
+// ui.js - VERSION 4.2 (PERBAIKAN: uploadProfilePhoto lebih robust, notifikasi error hanya jika gagal)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // PERUBAHAN: 
 //   - uploadProfilePhoto aman jika modal belum terbuka
 //   - updateDashboardChart menggunakan canvas weeklyBarChart (sesuai dashboard modern)
+//   - Perbaikan notifikasi error palsu saat ganti foto profil
 // ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
@@ -1080,36 +1081,79 @@ function handleChangePassword(e) {
         .finally(() => { if (btn) { btn.disabled = false; btn.textContent = 'Simpan'; } });
 }
 
+// ======================== PERBAIKAN UPLOAD PROFILE PHOTO ========================
 async function uploadProfilePhoto(input) {
+    // Validasi awal
     if (!input.files || !input.files[0]) return;
+    
     const imgEl = document.getElementById('profileImg');
     if (!imgEl) {
         showToast('Buka modal profil terlebih dahulu (klik "Profil Saya")', 'error');
         input.value = '';
         return;
     }
+    
     const file = input.files[0];
-    if (!file.type.match('image.*')) { showToast('Hanya file gambar yang diperbolehkan!', 'error'); return; }
-    if (file.size > 2 * 1024 * 1024) { showToast('Ukuran gambar maksimal 2MB!', 'error'); return; }
+    if (!file.type.match('image.*')) {
+        showToast('Hanya file gambar yang diperbolehkan!', 'error');
+        input.value = '';
+        return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+        showToast('Ukuran gambar maksimal 2MB!', 'error');
+        input.value = '';
+        return;
+    }
+    
     const formData = new FormData();
     formData.append('image', file);
     const originalSrc = imgEl.src;
     imgEl.style.opacity = '0.5';
     showToast('📤 Mengunggah ke ImgBB...', 'neutral');
+    
     try {
         const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: formData });
         const data = await res.json();
+        
         if (data.success) {
             const urlProxy = `https://wsrv.nl/?url=${encodeURIComponent(data.data.image.url)}`;
+            
+            // Update Firebase
             await db.ref(`users_auth/${currentUser.uid}`).update({ photoUrl: urlProxy });
+            
+            // Update currentUser object
             currentUser.photoUrl = urlProxy;
-            if (typeof saveUserToLocalStorage === 'function') saveUserToLocalStorage(currentUser);
-            document.getElementById('headerAvatar').src = urlProxy;
+            
+            // Simpan ke localStorage dengan aman
+            try {
+                if (typeof saveUserToLocalStorage === 'function') {
+                    saveUserToLocalStorage(currentUser);
+                }
+            } catch (storageErr) {
+                console.warn('Gagal menyimpan ke localStorage:', storageErr);
+                // Abaikan, tidak perlu tampilkan error ke user karena operasi utama sukses
+            }
+            
+            // Update elemen DOM (headerAvatar dan profileImg)
+            const headerAvatar = document.getElementById('headerAvatar');
+            if (headerAvatar) headerAvatar.src = urlProxy;
             imgEl.src = urlProxy;
-            showToast('✅ Foto profil berhasil diperbarui!');
-        } else { console.error('ImgBB upload failed:', data); showToast('❌ Gagal upload ke ImgBB', 'error'); imgEl.src = originalSrc; }
-    } catch (e) { console.error('Upload error:', e); showToast('❌ Koneksi Error: ' + e.message, 'error'); imgEl.src = originalSrc; }
-    finally { imgEl.style.opacity = '1'; input.value = ''; }
+            
+            // Notifikasi sukses
+            showToast('✅ Foto profil berhasil diperbarui!', 'success');
+        } else {
+            console.error('ImgBB upload failed:', data);
+            showToast('❌ Gagal upload ke ImgBB', 'error');
+            imgEl.src = originalSrc;
+        }
+    } catch (e) {
+        console.error('Upload error:', e);
+        showToast('❌ Koneksi Error: ' + e.message, 'error');
+        imgEl.src = originalSrc;
+    } finally {
+        imgEl.style.opacity = '1';
+        input.value = '';
+    }
 }
 
 function processForgot() {
@@ -1321,4 +1365,4 @@ window.updateDashboardChart = updateDashboardChart;
 window.setupChartYearListener = setupChartYearListener;
 window.updateYearDropdownOptions = updateYearDropdownOptions;
 
-console.log("✅ ui.js V4.1 loaded - Perbaikan upload profile & chart canvas");
+console.log("✅ ui.js V4.2 loaded - Perbaikan upload profile (error handling) & chart canvas");
