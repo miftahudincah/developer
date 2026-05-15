@@ -17,17 +17,14 @@ function setupAttendanceDataReadyListener() {
 
     window.addEventListener('dataReady', (e) => {
         console.log("📋 attendance.js: dataReady received, updating attendance UI");
-        // Update donut chart (selalu)
         if (typeof updateAttendanceDonutChart === 'function') {
             updateAttendanceDonutChart();
         }
-        // Render tabel (selalu, tidak peduli tab aktif atau tidak)
         if (typeof renderTable === 'function') {
             renderTable();
         }
     });
 
-    // Juga listen untuk perubahan tab ke attendance (tetap dipertahankan untuk update tambahan)
     const originalSwitchTab = window.switchTab;
     if (originalSwitchTab) {
         window.switchTab = function(tabId) {
@@ -44,24 +41,14 @@ function setupAttendanceDataReadyListener() {
 
 // ======================== INITIALIZATION (UI ONLY) ========================
 
-/**
- * Inisialisasi komponen UI absensi (chart, dll) - TIDAK ADA LISTENER FIREBASE
- * Dipanggil dari initApp atau via event.
- */
 function initAttendanceUI() {
     console.log("📊 Initializing attendance UI (chart, etc)...");
-    
     if (typeof Audio !== 'undefined') {
-        new Audio(); // preload
+        new Audio();
     }
-    
-    // Pastikan donut chart ter-update
     setTimeout(() => updateAttendanceDonutChart(), 100);
 }
 
-/**
- * Update donut chart untuk ringkasan absensi hari ini
- */
 function updateAttendanceDonutChart() {
     const canvas = document.getElementById('attendanceDonutChart');
     if (!canvas) return;
@@ -157,7 +144,7 @@ async function renderTable() {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">
             📭 Data absensi tidak ditemukan.
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
-          </td></tr>`;
+           </td></tr>`;
         updateAttendanceStatistics(data);
         updateAttendanceDonutChart();
         return;
@@ -170,7 +157,6 @@ async function renderTable() {
         manualStatusMap = statusSnapshot.val() || {};
     }
     
-    // Gunakan array untuk menghindari innerHTML berulang (optimalisasi)
     let rows = [];
     data.forEach((row, index) => {
         const timeDisplay = row.timeIn || '-';
@@ -760,7 +746,6 @@ function cleanupAttendanceUI() {
 // ======================== INISIALISASI ========================
 setupAttendanceDataReadyListener();
 
-// Jika data sudah siap sebelum event listener, render langsung (tanpa conditional tab aktif)
 if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance) {
     setTimeout(() => {
         if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();

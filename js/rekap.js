@@ -24,7 +24,6 @@ function setupRekapDataReadyListener() {
         if (!rekapInitDone) {
             initRekap();
         } else {
-            // Jika sudah diinisialisasi, tetap refresh data
             loadRekap();
         }
     });
@@ -36,9 +35,7 @@ function setupRekapUiReadyListener() {
     console.log("📡 Setting up uiReady event listener for rekap module");
 
     window.addEventListener('uiReady', () => {
-        // Pastikan event listener DOM sudah terpasang
         if (rekapInitDone) {
-            // Refresh jika tab rekap aktif
             if (document.getElementById('tab-rekap')?.classList.contains('active')) {
                 loadRekap();
             }
@@ -59,7 +56,6 @@ function initRekap() {
         return;
     }
     
-    // Hapus listener lama jika ada (mencegah duplikasi)
     const newPeriodSelect = periodSelect.cloneNode(true);
     periodSelect.parentNode.replaceChild(newPeriodSelect, periodSelect);
     
@@ -99,12 +95,7 @@ function initRekap() {
     const customRangeGroup = document.getElementById('customRangeGroup');
     if (customRangeGroup) customRangeGroup.style.display = defaultPeriod === 'custom' ? 'flex' : 'none';
     
-    // Hapus listener Firebase attendance_status karena akan dipicu oleh dataReady/refresh manual
-    // (Tidak perlu listener terpisah, karena data sudah diupdate oleh init.js)
-    
     rekapInitDone = true;
-    
-    // Load data pertama kali
     setTimeout(() => loadRekap(), 100);
 }
 
@@ -206,8 +197,6 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
         return recordDate >= startDate && recordDate <= endDate;
     });
     const totalSchoolDays = countSchoolDays(startDate, endDate);
-    
-    // Ambil data manual status (sakit, izin, alpha) dalam periode
     const manualStatusMap = await fetchManualStatusForRange(startDate, endDate);
     
     console.log(`📊 Periode: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`);
@@ -215,7 +204,6 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
     console.log(`📊 Total data absensi fisik: ${filteredAttendance.length}`);
     console.log(`📊 Total data manual status: ${Object.keys(manualStatusMap).length} tanggal`);
     
-    // Inisialisasi data setiap siswa
     studentsData.forEach(student => {
         if (student && student.id) {
             studentMap.set(student.id.toString(), {
@@ -232,7 +220,6 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
         }
     });
     
-    // Proses absensi fisik (scan fingerprint)
     filteredAttendance.forEach(record => {
         const studentId = record.studentId.toString();
         const studentData = studentMap.get(studentId);
@@ -247,7 +234,6 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
         }
     });
     
-    // Proses manual status (attendance_status) untuk siswa yang TIDAK memiliki absensi fisik di tanggal tersebut
     for (const [dateStr, statuses] of Object.entries(manualStatusMap)) {
         const recordDate = new Date(dateStr);
         if (recordDate < startDate || recordDate > endDate) continue;
@@ -256,24 +242,16 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
             const studentData = studentMap.get(studentId);
             if (!studentData) continue;
             
-            // Cek apakah di tanggal yang sama sudah ada absensi fisik (hadir/pulang)
             const hasPhysical = filteredAttendance.some(a => a.date === dateStr && a.studentId == studentId && (a.status === 'Hadir' || a.status === 'Pulang'));
-            if (hasPhysical) {
-                continue;
-            }
+            if (hasPhysical) continue;
             
             const manualStatus = statusInfo.status;
-            if (manualStatus === 'sakit') {
-                studentData.sakit++;
-            } else if (manualStatus === 'izin') {
-                studentData.izin++;
-            } else if (manualStatus === 'alpha') {
-                studentData.alpha++;
-            }
+            if (manualStatus === 'sakit') studentData.sakit++;
+            else if (manualStatus === 'izin') studentData.izin++;
+            else if (manualStatus === 'alpha') studentData.alpha++;
         }
     }
     
-    // Hitung persentase dan status
     const results = [];
     for (const [id, data] of studentMap) {
         const totalKehadiran = data.hadir;
@@ -581,7 +559,11 @@ function exportRekapToPDF() {
         else if (item.status === 'Kurang') badgeClass = 'badge-kurang';
         else badgeClass = 'badge-buruk';
         printWindow.document.write(`
-            <tr><td>${no}</td><td>${item.id}</td><td class="text-left">${escapeHtml(item.nama)}</td><td>${item.kelas}</td><td>${item.jurusan}</td><td>${item.totalDays}</td><td>${item.hadir}</td><td>${item.sakit}</td><td>${item.izin}</td><td>${item.alpha}</td><td>${item.percentage}%</td><td><span class="${badgeClass}">${item.status}</span></td></tr>
+            <tr><td>${no}</td><td>${item.id}</td><td class="text-left">${escapeHtml(item.nama)}</td>
+            <td>${item.kelas}</td><td>${item.jurusan}</td><td>${item.totalDays}</td>
+            <td>${item.hadir}</td><td>${item.sakit}</td><td>${item.izin}</td><td>${item.alpha}</td>
+            <td>${item.percentage}%</td><td><span class="${badgeClass}">${item.status}</span></td>
+            </tr>
         `);
         no++;
     });
@@ -610,7 +592,6 @@ function cleanupRekap() {
     currentRekapData = [];
     if (rekapPieChart) { rekapPieChart.destroy(); rekapPieChart = null; }
     if (rekapBarChart) { rekapBarChart.destroy(); rekapBarChart = null; }
-    // Hapus event listener jika perlu (tidak ada listener Firebase lagi)
     rekapDataReadyListenerAdded = false;
     rekapUiReadyListenerAdded = false;
     console.log("🧹 Rekap system cleaned up");
@@ -620,7 +601,6 @@ function cleanupRekap() {
 setupRekapDataReadyListener();
 setupRekapUiReadyListener();
 
-// Jika data sudah siap sebelum event listener dipasang, langsung inisialisasi
 if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance && window.dbData.users) {
     console.log("📊 rekap.js: Data already available, initializing rekap immediately");
     setTimeout(() => {

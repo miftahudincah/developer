@@ -19,7 +19,6 @@ function setupAnnouncementDataReadyListener() {
 
     window.addEventListener('dataReady', (e) => {
         console.log("📢 announcement.js: dataReady received, initializing announcement system");
-        // Jika belum ada listener Firebase, pasang
         if (!announcementListenerAttached) {
             initAnnouncementListener();
         }
@@ -612,11 +611,9 @@ function cleanupAnnouncementSystem() {
 
 // ======================= INISIALISASI (TANPA AUTO-INIT) =======================
 
-// Hanya pasang event listener - tidak ada auto-init
 setupAnnouncementDataReadyListener();
 setupAnnouncementUiReadyListener();
 
-// Jika data sudah siap sebelum event listener dipasang, coba inisialisasi
 if (typeof window !== 'undefined' && window.dbData && !announcementListenerAttached) {
     console.log("📢 announcement.js: Data already available, initializing immediately");
     setTimeout(() => {
@@ -637,6 +634,6 @@ window.deleteAnnouncement = deleteAnnouncement;
 window.createTestAnnouncement = createTestAnnouncement;
 window.debugCheckAnnouncements = debugCheckAnnouncements;
 window.cleanupAnnouncementSystem = cleanupAnnouncementSystem;
-window.initAnnouncementSystem = initAnnouncementSystem; // masih diekspor untuk kompatibilitas, tapi tidak dipanggil otomatis
+window.initAnnouncementSystem = initAnnouncementSystem;
 
 console.log("✅ announcement.js V3.0 loaded - Event-based initialization");

@@ -1,14 +1,14 @@
 // setting.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
 // PENGATURAN SEKOLAH (SCHOOL CONFIG) & DELAY GLOBAL
 // Dengan dukungan manajemen KELAS dan JURUSAN yang bisa diedit
-// SENSOR STATUS: Dipisahkan ke modul sendiri (tetapi tetap di sini untuk kemudahan)
+// SENSOR STATUS: Dipisahkan ke modul sendiri (tetap di sini untuk kemudahan)
 // PERUBAHAN: Menghapus semua listener Firebase duplikat, menggunakan event 'dataReady' dan 'uiReady'
 // ============================================================================
 
 let currentSchoolConfig = {
-    type: 'smp',        // 'smp', 'smk', 'both'
-    majors: [],         // array of string (jurusan) - untuk SMK
-    classes: []         // array of string (kelas) - untuk semua tipe sekolah
+    type: 'smp',
+    majors: [],
+    classes: []
 };
 
 let settingDataReadyListenerAdded = false;
@@ -23,20 +23,16 @@ function setupSettingDataReadyListener() {
 
     window.addEventListener('dataReady', (e) => {
         console.log("⚙️ setting.js: dataReady received, updating settings UI");
-        // Data schoolConfig dan globalDelay sudah diisi oleh init.js
-        // Kita hanya perlu mengambil dari window.currentSchoolConfig (dari init.js)
         if (window.currentSchoolConfig) {
             currentSchoolConfig = window.currentSchoolConfig;
             updateSchoolTypeUI();
             renderClassesList();
             renderMajorsList();
         }
-        // Update tampilan delay global
         const delaySpan = document.getElementById('globalDelayDisplay');
         if (delaySpan && window.globalDelayValue !== undefined) {
             delaySpan.textContent = formatDelayText(window.globalDelayValue);
         }
-        // Populate dropdown yang bergantung
         if (typeof populateKelasOptions === 'function') populateKelasOptions();
         if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
         if (typeof populateStudentFilters === 'function') populateStudentFilters();
@@ -54,7 +50,6 @@ function setupSettingUiReadyListener() {
             console.log("🔍 uiReady: initializing sensor status for admin");
             initSensorStatusListener();
         } else {
-            // Sembunyikan panel sensor jika bukan admin
             const panel = document.getElementById('sensorStatusPanel');
             if (panel) panel.style.display = 'none';
         }
@@ -77,11 +72,9 @@ function formatDelayText(delayMinutes) {
 function toggleGlobalDelayInput() {
     const unit = document.getElementById('globalDelayUnit');
     if (!unit) return;
-    
     const minutesGroup = document.getElementById('globalDelayMinutesGroup');
     const hoursGroup = document.getElementById('globalDelayHoursGroup');
     const hiddenDelay = document.getElementById('globalDelayHidden');
-    
     if (unit.value === 'minutes') {
         if (minutesGroup) minutesGroup.style.display = 'flex';
         if (hoursGroup) hoursGroup.style.display = 'none';
@@ -124,7 +117,6 @@ function setGlobalDelayFormValue(delayMinutes) {
     const unit = document.getElementById('globalDelayUnit');
     const minutesInput = document.getElementById('globalDelayMinutesValue');
     const hoursSelect = document.getElementById('globalDelayHoursValue');
-    
     if (hours > 0 && minutes === 0) {
         if (unit) unit.value = 'hours';
         if (hoursSelect) hoursSelect.value = hours;
@@ -165,7 +157,6 @@ function initGlobalDelayListeners() {
     const unitSelect = document.getElementById('globalDelayUnit');
     const minutesInput = document.getElementById('globalDelayMinutesValue');
     const hoursSelect = document.getElementById('globalDelayHoursValue');
-    
     if (unitSelect) {
         unitSelect.removeEventListener('change', toggleGlobalDelayInput);
         unitSelect.addEventListener('change', toggleGlobalDelayInput);
@@ -186,13 +177,11 @@ function initGlobalDelayListeners() {
 function renderClassesList() {
     const container = document.getElementById('classesList');
     if (!container) return;
-    
     const classes = currentSchoolConfig.classes || [];
     if (classes.length === 0) {
         container.innerHTML = '<p class="text-small" style="margin: 8px; color: #888;">📭 Belum ada kelas. Tambahkan di bawah.</p>';
         return;
     }
-    
     let html = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
     classes.forEach((className, index) => {
         html += `
@@ -209,20 +198,16 @@ function renderClassesList() {
 function addClass() {
     const input = document.getElementById('newClassInput');
     if (!input) return;
-    
     let newClass = input.value.trim().toUpperCase();
     if (!newClass) {
         showToast("⚠️ Masukkan nama kelas!", "error");
         return;
     }
-    
     newClass = formatClassName(newClass);
-    
     if (currentSchoolConfig.classes.includes(newClass)) {
         showToast("❌ Kelas sudah ada!", "error");
         return;
     }
-    
     currentSchoolConfig.classes.push(newClass);
     input.value = '';
     renderClassesList();
@@ -242,7 +227,6 @@ function formatClassName(input) {
     };
     if (romanMap[result]) return romanMap[result];
     if (romanMap[result.replace(' ', '')]) return romanMap[result.replace(' ', '')];
-    
     const match = result.match(/^([0-9]+|[IVX]+)\s*([A-Z]+)?$/);
     if (match) {
         let num = match[1];
@@ -306,13 +290,11 @@ function updateSchoolTypeUI() {
 function renderMajorsList() {
     const container = document.getElementById('majorsList');
     if (!container) return;
-    
     const majors = currentSchoolConfig.majors || [];
     if (majors.length === 0) {
         container.innerHTML = '<p class="text-small" style="margin: 8px; color: #888;">📭 Belum ada jurusan. Tambahkan di bawah.</p>';
         return;
     }
-    
     let html = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
     majors.forEach((major, index) => {
         html += `
@@ -430,7 +412,6 @@ function resetAllSettings() {
         return;
     }
     if (!confirm("⚠️ Reset semua pengaturan ke default?\n\n- Delay global: 60 menit\n- Tipe sekolah: SMP\n- Kelas: VII, VIII, IX\n- Jurusan: kosong\n\nLanjutkan?")) return;
-    
     const defaultClasses = ['VII', 'VIII', 'IX'];
     const btn = document.getElementById('btnResetSettings');
     if (btn) {
@@ -453,8 +434,8 @@ function resetAllSettings() {
         const typeSelect = document.getElementById('schoolTypeSelect');
         if (typeSelect) typeSelect.value = 'smp';
     })
-      .catch(err => showToast("❌ Gagal mereset: " + err.message, "error"))
-      .finally(() => { if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Reset ke Default'; } });
+    .catch(err => showToast("❌ Gagal mereset: " + err.message, "error"))
+    .finally(() => { if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Reset ke Default'; } });
 }
 
 function exportSchoolConfig() {
@@ -497,7 +478,7 @@ function importSchoolConfig(file) {
     reader.readAsText(file);
 }
 
-// ======================= SENSOR STATUS (tetap pakai listener, tapi dipanggil via event) =======================
+// ======================= SENSOR STATUS =======================
 
 let sensorStatusListener = null;
 
@@ -507,14 +488,11 @@ function initSensorStatusListener() {
         if (panel) panel.style.display = 'none';
         return;
     }
-    
     const panel = document.getElementById('sensorStatusPanel');
     if (panel) panel.style.display = 'block';
-    
     if (sensorStatusListener) {
         db.ref('status/esp32/sensors').off('value', sensorStatusListener);
     }
-    
     sensorStatusListener = db.ref('status/esp32/sensors').on('value', (snapshot) => {
         const data = snapshot.val();
         if (data) {
@@ -630,8 +608,6 @@ function cleanupSettingsSystem() {
 function initAllSettings() {
     console.log("🚀 initAllSettings - Memulai inisialisasi UI settings...");
     initGlobalDelayListeners();
-    
-    // Setup dropdown hours
     const globalHoursSelect = document.getElementById('globalDelayHoursValue');
     if (globalHoursSelect && globalHoursSelect.options.length <= 1) {
         for (let i = 1; i <= 24; i++) {
@@ -644,23 +620,18 @@ function initAllSettings() {
             studentHoursSelect.innerHTML += `<option value="${i}">${i} jam</option>`;
         }
     }
-    
-    // Ambil nilai awal dari Firebase sekali saja untuk UI (tidak pakai listener)
     db.ref('settings/delayOut').once('value').then(snapshot => {
         const delay = snapshot.val();
         setGlobalDelayFormValue(delay || 60);
         const displaySpan = document.getElementById('globalDelayDisplay');
         if (displaySpan) displaySpan.textContent = formatDelayText(delay || 60);
     });
-    
     console.log("✅ initAllSettings - Selesai");
 }
 
-// Setup event listeners
 setupSettingDataReadyListener();
 setupSettingUiReadyListener();
 
-// Inisialisasi UI settings (tunggu DOM siap)
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => setTimeout(initAllSettings, 100));
 } else {

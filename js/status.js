@@ -40,21 +40,15 @@ function initStatusSystem() {
         return;
     }
     
-    // Cegah multiple initialization
     if (statusesListener) {
         console.log("Status system already initialized, skipping");
         return;
     }
     
     console.log("📸 Initializing status system...");
-    
-    // Setup listener real-time untuk status
     setupStatusListener();
-    
-    // Setup listener untuk command hapus expired
     startStatusExpiryChecker();
     
-    // Request notifikasi
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission();
     }
@@ -402,7 +396,6 @@ function cleanupStatusSystem() {
 // ======================= INISIALISASI EVENT LISTENER ========================
 setupStatusUiReadyListener();
 
-// Jika currentUser sudah ada sebelum event listener dipasang, langsung inisialisasi
 if (typeof window !== 'undefined' && window.currentUser && window.currentUser.uid && !statusesListener) {
     console.log("📸 status.js: currentUser already exists, initializing immediately");
     setTimeout(() => initStatusSystem(), 100);

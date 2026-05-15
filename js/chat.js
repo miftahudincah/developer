@@ -44,13 +44,8 @@ function initChatSystem() {
         return;
     }
     
-    // Hapus listener lama jika ada (pencegahan duplikasi)
     cleanupChatSystem();
-    
-    // Setup listener untuk pesan masuk (real-time)
     setupIncomingMessagesListener();
-    
-    // Setup listener untuk notifikasi chat
     setupChatNotifications();
     
     chatInitialized = true;
@@ -580,7 +575,6 @@ function cleanupChatSystem() {
 // ======================= INISIALISASI EVENT LISTENER ========================
 setupChatUiReadyListener();
 
-// Jika currentUser sudah ada sebelum event listener dipasang, langsung inisialisasi
 if (typeof window !== 'undefined' && window.currentUser && window.currentUser.uid && !chatInitialized) {
     console.log("💬 chat.js: currentUser already exists, initializing immediately");
     setTimeout(() => initChatSystem(), 100);

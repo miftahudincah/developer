@@ -10,7 +10,6 @@ let studentFormResetTimer = null;
 let studentsDataReadyListenerAdded = false;
 
 // ======================= EVENT LISTENER DATA READY ========================
-// Setup listener untuk event 'dataReady' dari init.js
 function setupStudentsDataReadyListener() {
     if (studentsDataReadyListenerAdded) {
         console.log("⚠️ students dataReady listener already added, skipping");
@@ -23,32 +22,13 @@ function setupStudentsDataReadyListener() {
     window.addEventListener('dataReady', (e) => {
         console.log("🔄 students.js: dataReady received, updating students UI");
         
-        // Update dropdown dinamis
-        if (typeof populateKelasOptions === 'function') {
-            populateKelasOptions();
-        }
-        if (typeof populateJurusanOptions === 'function') {
-            populateJurusanOptions();
-        }
-        if (typeof populateStudentFilters === 'function') {
-            populateStudentFilters();
-        }
-        if (typeof populateStudentSelectForCode === 'function') {
-            populateStudentSelectForCode();
-        }
-        
-        // Render tabel siswa jika tab aktif atau tidak (biar data siap)
-        if (typeof renderStudentsTable === 'function') {
-            renderStudentsTable();
-        }
-        
-        // Update statistik
+        if (typeof populateKelasOptions === 'function') populateKelasOptions();
+        if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
+        if (typeof populateStudentFilters === 'function') populateStudentFilters();
+        if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
+        if (typeof renderStudentsTable === 'function') renderStudentsTable();
         updateStudentStatistics();
     });
-    
-    // Juga listen untuk perubahan data via dbData (sudah diupdate oleh init.js)
-    // Kita gunakan MutationObserver atau cukup polling sederhana untuk update UI
-    // Tapi lebih baik kita mengandalkan event yang sudah ada
 }
 
 // ======================= DROPDOWN DINAMIS =======================
@@ -180,7 +160,6 @@ function renderStudentsTable() {
     const tbody = document.getElementById('tbody-students');
     if (!tbody) return;
     
-    // Pastikan dbData ada
     if (typeof dbData === 'undefined' || !dbData.users) {
         console.log("⏳ students.js: dbData not ready yet");
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;">⏳ Memuat data siswa...</td></tr>`;
@@ -214,8 +193,8 @@ function renderStudentsTable() {
                 <td>
                     <button class="btn-icon edit" onclick="editStudent('${s.id}')" title="Edit Siswa">✏️</button>
                     <button class="btn-icon delete" onclick="deleteStudentWithFP('${s.id}')" title="Hapus Siswa (termasuk sidik jari)">🗑️</button>
-                 </td>
-             </tr>
+                  </td>
+              </tr>
         `;
     });
     updateStudentStatistics();
@@ -480,10 +459,8 @@ function initDelayEventListeners() {
 }
 
 // ======================= INISIALISASI ========================
-// Setup event listener untuk dataReady
 setupStudentsDataReadyListener();
 
-// Jika data sudah siap sebelum event listener dipasang, langsung render
 if (typeof window !== 'undefined' && window.dbData && window.dbData.users) {
     console.log("📊 students.js: Data already available, rendering immediately");
     setTimeout(() => {

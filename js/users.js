@@ -20,30 +20,15 @@ function setupUsersDataReadyListener() {
     window.addEventListener('dataReady', (e) => {
         console.log("🔄 users.js: dataReady received, updating users UI");
         
-        // Render tabel users dan codes
-        if (typeof renderUsersTable === 'function') {
-            renderUsersTable();
-        }
-        if (typeof renderCodesTable === 'function') {
-            renderCodesTable();
-        }
-        
-        // Update statistik kode
+        if (typeof renderUsersTable === 'function') renderUsersTable();
+        if (typeof renderCodesTable === 'function') renderCodesTable();
         updateCodesStatistics();
-        
-        // Update dropdown siswa untuk generate kode
-        if (typeof populateStudentSelectForCode === 'function') {
-            populateStudentSelectForCode();
-        }
+        if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
     });
     
-    // Juga listen untuk perubahan currentUser (role permissions)
     window.addEventListener('uiReady', (e) => {
         console.log("👥 users.js: uiReady received, checking permissions");
-        // Role permissions akan dihandle oleh ui.js, tapi kita refresh tabel
-        if (typeof renderUsersTable === 'function') {
-            renderUsersTable();
-        }
+        if (typeof renderUsersTable === 'function') renderUsersTable();
     });
 }
 
@@ -92,7 +77,6 @@ function populateStudentSelectForCode() {
     const currentVal = select.value;
     const currentSelectedText = select.options[select.selectedIndex]?.text;
     
-    // Pastikan dbData tersedia
     if (typeof dbData === 'undefined' || !dbData.users || !dbData.users_auth) {
         console.log("⏳ users.js: dbData not ready yet for populateStudentSelectForCode");
         select.innerHTML = '<option value="">-- Memuat data siswa --</option>';
@@ -282,11 +266,10 @@ function renderCodesTable() {
     
     tbody.innerHTML = '';
     
-    // Pastikan dbData dan codes tersedia
     if (typeof dbData === 'undefined' || !dbData.codes || dbData.codes.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">
             🔑 Belum ada kode registrasi. Generate kode di atas.
-         </td></tr>`;
+          </td></tr>`;
         return;
     }
     
@@ -306,23 +289,23 @@ function renderCodesTable() {
                     <strong>${c.code}</strong>
                     <br>
                     <small style="font-weight:normal; color:#888">${typeLabel}${linkedLabel}${createdByName}</small>
-                 </td>
-                 <td>
+                  </td>
+                  <td>
                     ${c.used ? 
                         '<span style="color:#4caf50;">✅ Terpakai</span>' : 
                         `<span style="color:#ff9800;">🟢 Aktif</span>
                          ${timeRemaining ? `<br><small style="color:#888;">⏰ ${timeRemaining}</small>` : ''}`
                     }
-                 </td>
+                  </td>
                 <td style="font-size: 12px;">${c.createdAt ? new Date(c.createdAt).toLocaleString('id-ID') : '-'}</td>
                 <td style="font-size: 12px;">${c.userId ? c.userId.substring(0, 20) + '...' : '-'}</td>
-                 <td>
+                  <td>
                     ${!c.used ? `
                         <button class="btn-icon" onclick="copyToClipboard('${c.code}')" title="Salin Kode" style="background:transparent; border:none; cursor:pointer; color:#4a90e2;">📋</button>
                         <button class="btn-icon delete" onclick="deleteCode('${c.code}')" title="Hapus Kode">🗑️</button>
                     ` : '-'}
-                 </td>
-             </tr>
+                  </td>
+              </tr>
         `;
     });
     
@@ -403,12 +386,11 @@ function renderUsersTable() {
     
     tbody.innerHTML = '';
 
-    // Pastikan dbData dan users_auth tersedia
     if (typeof dbData === 'undefined' || !dbData.users_auth || dbData.users_auth.length === 0) {
         console.log("📭 Tidak ada data users_auth");
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             👥 Belum ada pengguna terdaftar.
-         </td></tr>`;
+          </td></tr>`;
         return;
     }
 
@@ -422,7 +404,7 @@ function renderUsersTable() {
     if (data.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             🔍 Tidak ada pengguna yang cocok dengan pencarian.
-        <\/td><\/tr>`;
+        </td></tr>`;
         return;
     }
 
@@ -486,19 +468,19 @@ function renderUsersTable() {
             <tr class="${isMe ? 'current-user-row' : ''}">
                 <td style="text-align:center;">
                     <img src="${avatar}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
-                <\/td>
+                </td>
                 <td>
                     <strong>${escapeHtmlString(u.nama)}</strong>
                     ${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}
-                <\/td>
-                <td style="color:#aaa; font-size:0.85rem;">${u.email || '-'}<\/td>
-                <td>${roleHtml}<\/td>
+                </td>
+                <td style="color:#aaa; font-size:0.85rem;">${u.email || '-'}</td>
+                <td>${roleHtml}</td>
                 <td style="color:#888; font-size:0.8rem;">
                     ${detailIcon} ${escapeHtmlString(detailText)}<br>
                     <small>📅 ${registeredDate}</small>
-                <\/td>
-                <td style="text-align:center;">${actionsHtml}<\/td>
-            <\/tr>
+                </td>
+                <td style="text-align:center;">${actionsHtml}</td>
+            </tr>
         `;
     });
     
@@ -614,10 +596,8 @@ function escapeHtmlString(str) {
 }
 
 // ======================= INISIALISASI ========================
-// Setup event listener untuk dataReady
 setupUsersDataReadyListener();
 
-// Jika data sudah siap sebelum event listener dipasang, langsung render
 if (typeof window !== 'undefined' && window.dbData && window.dbData.users_auth) {
     console.log("👥 users.js: Data already available, rendering immediately");
     setTimeout(() => {

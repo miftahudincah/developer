@@ -183,9 +183,7 @@ async function updateDashboardModern() {
         }
         
         // ========== GRAFIK MINGGUAN: SERAHKAN KE UI.JS ==========
-        // Chart dikelola sepenuhnya oleh ui.js, cukup panggil fungsi update jika perlu
         if (typeof window.updateDashboardChart === 'function') {
-            // updateDashboardChart akan menangani pembaruan chart tanpa konflik
             window.updateDashboardChart();
         }
         
@@ -326,9 +324,6 @@ function resetAppState() {
     console.log("🔄 Resetting app state...");
     stopPeriodicRefresh();
     isInitialized = false;
-    if (typeof window.weeklyChart !== 'undefined' && window.weeklyChart) {
-        // Tidak ada lagi chart di main.js, hanya untuk keamanan
-    }
     if (typeof dbData !== 'undefined') {
         dbData = { users: [], users_auth: [], attendance: [], codes: [] };
     }
