@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -6,6 +7,9 @@
     <meta name="referrer" content="no-referrer">
     <title>Sistem Absensi IoT - Fingerprint & Real-time</title>
     <link rel="icon" type="image/png" href="https://i.ibb.co.com/j9dVXQdc/Chat-GPT-Image-11-Mei-2026-10-31-44.png">
+
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
 
     <!-- CSS -->
     <link rel="stylesheet" href="style.css">
@@ -18,196 +22,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
-
-    <style>
-        /* ==================== BRANDING FOOTER (KIRI BAWAH) ==================== */
-        .branding-footer {
-            position: fixed;
-            bottom: 12px;
-            left: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: rgba(18, 18, 26, 0.75);
-            backdrop-filter: blur(8px);
-            padding: 6px 14px 6px 10px;
-            border-radius: 40px;
-            border: 1px solid rgba(0, 188, 212, 0.3);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-            z-index: 100;
-            transition: opacity 0.3s ease;
-            font-size: 0.7rem;
-            pointer-events: none;
-        }
-        .branding-footer:hover {
-            opacity: 0.9;
-            background: rgba(18, 18, 26, 0.9);
-        }
-        .branding-logo {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 1px solid var(--primary, #00bcd4);
-        }
-        .branding-text {
-            color: var(--text-primary, #ffffff);
-            font-weight: 500;
-            letter-spacing: 0.3px;
-            white-space: nowrap;
-        }
-        @media (max-width: 480px) {
-            .branding-footer {
-                bottom: 8px;
-                left: 8px;
-                padding: 4px 10px 4px 8px;
-                font-size: 0.6rem;
-            }
-            .branding-logo {
-                width: 20px;
-                height: 20px;
-            }
-        }
-
-        /* ==================== DASHBOARD MODERN ==================== */
-        .dashboard-modern-new {
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-        }
-        .stat-card-new {
-            background: var(--bg-card);
-            border-radius: 24px;
-            padding: 20px;
-            border: 1px solid var(--border);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .stat-card-new:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-        }
-        .stat-title-new {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-        }
-        .stat-number {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-        .stat-percent {
-            font-size: 0.7rem;
-            margin-top: 6px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .stat-percent.positive { color: #4caf50; }
-        .stat-percent.negative { color: #f44336; }
-        .stat-percent.neutral { color: var(--text-muted); }
-
-        .dashboard-two-col-new {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 24px;
-        }
-        .chart-col {
-            flex: 2;
-            min-width: 280px;
-            background: var(--bg-card);
-            border-radius: 24px;
-            padding: 20px;
-            border: 1px solid var(--border);
-        }
-        .class-col {
-            flex: 1.2;
-            min-width: 260px;
-            background: var(--bg-card);
-            border-radius: 24px;
-            padding: 20px;
-            border: 1px solid var(--border);
-        }
-        .section-title {
-            font-weight: 600;
-            margin-bottom: 16px;
-            color: var(--primary);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .class-item {
-            margin-bottom: 16px;
-        }
-        .class-name {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.8rem;
-            margin-bottom: 6px;
-        }
-        .progress-bar {
-            background: var(--bg-hover);
-            border-radius: 20px;
-            height: 8px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            background: linear-gradient(90deg, var(--primary), var(--primary-dark));
-            width: 0%;
-            height: 100%;
-            border-radius: 20px;
-        }
-        .recent-list {
-            margin-top: 16px;
-        }
-        .recent-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--border);
-        }
-        .recent-avatar {
-            width: 36px;
-            height: 36px;
-            background: var(--bg-hover);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-        }
-        .recent-info {
-            flex: 1;
-        }
-        .recent-name {
-            font-weight: 500;
-            font-size: 0.85rem;
-        }
-        .recent-time {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-        }
-        .weekly-chart-container {
-            margin-top: 10px;
-        }
-        canvas#weeklyBarChart {
-            max-height: 220px;
-            width: 100%;
-        }
-        @media (max-width: 768px) {
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-            .dashboard-two-col-new { flex-direction: column; }
-        }
-        @media (max-width: 480px) {
-            .stats-grid { grid-template-columns: 1fr; }
-        }
-    </style>
 </head>
 <body>
 
@@ -461,7 +275,7 @@
             <h4 class="role-admin role-guru">📋 Daftar Kode Aktif</h4>
             <div class="table-container role-admin role-guru">
                 <table>
-                    <thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></tr></thead>
+                    <thead><tr><th>Kode</th><th>Status</th><th>Dibuat</th><th>Pengguna</th><th>Aksi</th></td></thead>
                     <tbody id="tbody-codes"></tbody>
                 </table>
             </div>

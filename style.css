@@ -33,11 +33,18 @@
 }
 
 body {
-    font-family: 'Segoe UI', 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Ganti font dengan Inter yang lebih modern */
+    font-family: 'Inter', 'Segoe UI', 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
     background: linear-gradient(135deg, #0a0a0f 0%, #12121a 100%);
     color: var(--text-primary);
     min-height: 100vh;
     line-height: 1.5;
+}
+
+/* ==================== TYPOGRAPHY ==================== */
+.text-small {
+    font-size: 0.75rem;
+    color: var(--text-muted);
 }
 
 /* ==================== SCHOOL LOGO STYLES ==================== */
@@ -111,12 +118,6 @@ body {
 @keyframes skeleton-loading {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
-}
-
-/* ==================== TYPOGRAPHY ==================== */
-.text-small {
-    font-size: 0.75rem;
-    color: var(--text-muted);
 }
 
 /* ==================== AUTH SECTION ==================== */
@@ -223,11 +224,13 @@ button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.2s ease-in-out;
 }
 
 .btn-action:hover {
     opacity: 0.9;
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .btn-icon {
@@ -255,6 +258,7 @@ button {
 
 .btn-icon:hover {
     background: #3a3a48;
+    transform: scale(1.05);
 }
 
 .btn-save {
@@ -663,7 +667,7 @@ tr:hover {
     padding: 14px;
     margin-bottom: 12px;
     border-left: 4px solid var(--primary);
-    transition: var(--transition);
+    transition: all 0.2s ease-in-out;
 }
 
 .announcement-item:hover {
@@ -731,7 +735,8 @@ tr:hover {
     font-size: 24px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     z-index: 200;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease-in-out;
+    will-change: transform;
 }
 
 .floating-announcement-btn:hover,
@@ -777,283 +782,7 @@ tr:hover {
     font-weight: bold;
 }
 
-/* ==================== DASHBOARD MODERN (LAMA) ==================== */
-.dashboard-modern {
-    background: transparent;
-}
-
-/* Card statistik */
-.dashboard-cards-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-.stat-card {
-    background: var(--bg-card);
-    border-radius: 24px;
-    padding: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    border: 1px solid var(--border);
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-}
-
-.stat-title {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    letter-spacing: 0.5px;
-}
-
-.stat-value {
-    font-size: 1.8rem;
-    font-weight: 700;
-    margin: 8px 0 4px;
-    color: var(--text-primary);
-}
-
-.stat-change {
-    font-size: 0.7rem;
-    font-weight: 500;
-}
-
-.stat-change.positive {
-    color: #4caf50;
-}
-
-.stat-change.negative {
-    color: #f44336;
-}
-
-.stat-change.neutral {
-    color: var(--text-muted);
-}
-
-/* Dua kolom (grafik + aktivitas) */
-.dashboard-two-col {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 24px;
-    margin-bottom: 30px;
-}
-
-.dashboard-chart {
-    flex: 2;
-    min-width: 280px;
-    background: var(--bg-card);
-    border-radius: 24px;
-    padding: 16px;
-    border: 1px solid var(--border);
-}
-
-.chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    font-weight: 600;
-    color: var(--primary);
-}
-
-.chart-header select {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 6px 12px;
-    color: var(--text-primary);
-    font-size: 0.75rem;
-}
-
-.chart-legend {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-top: 12px;
-    font-size: 0.7rem;
-}
-
-.chart-legend span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.chart-legend span span {
-    width: 12px;
-    height: 12px;
-    border-radius: 4px;
-    display: inline-block;
-}
-
-.dashboard-activities {
-    flex: 1;
-    min-width: 260px;
-    background: var(--bg-card);
-    border-radius: 24px;
-    padding: 16px;
-    border: 1px solid var(--border);
-}
-
-.activity-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 16px;
-    font-weight: 600;
-    color: var(--primary);
-}
-
-.activity-badge {
-    background: var(--primary);
-    color: #121212;
-    padding: 2px 10px;
-    border-radius: 30px;
-    font-size: 0.7rem;
-}
-
-.activity-list {
-    max-height: 260px;
-    overflow-y: auto;
-}
-
-.activity-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.activity-avatar {
-    width: 36px;
-    height: 36px;
-    background: var(--bg-hover);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-}
-
-.activity-detail {
-    flex: 1;
-}
-
-.activity-name {
-    font-weight: 500;
-    font-size: 0.85rem;
-}
-
-.activity-desc {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-}
-
-.activity-time {
-    font-size: 0.65rem;
-    color: var(--text-muted);
-}
-
-.activity-footer {
-    margin-top: 12px;
-    text-align: center;
-}
-
-.btn-link {
-    background: none;
-    border: none;
-    color: var(--primary);
-    cursor: pointer;
-    font-size: 0.75rem;
-}
-
-.btn-link:hover {
-    text-decoration: underline;
-}
-
-/* Tugas / Pengumuman (baris bawah) */
-.dashboard-tasks {
-    background: var(--bg-card);
-    border-radius: 24px;
-    padding: 16px;
-    border: 1px solid var(--border);
-}
-
-.tasks-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    font-weight: 600;
-    color: var(--primary);
-}
-
-.btn-small {
-    background: var(--primary);
-    border: none;
-    border-radius: 30px;
-    padding: 6px 14px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #121212;
-    cursor: pointer;
-}
-
-.tasks-list {
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.task-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.task-check {
-    width: 20px;
-    height: 20px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: transparent;
-    cursor: pointer;
-}
-
-.task-info {
-    flex: 1;
-}
-
-.task-title {
-    font-size: 0.85rem;
-    font-weight: 500;
-}
-
-.task-meta {
-    font-size: 0.65rem;
-    color: var(--text-muted);
-}
-
-.skeleton {
-    background: linear-gradient(90deg, var(--bg-hover) 25%, var(--border) 50%, var(--bg-hover) 75%);
-    background-size: 200% 100%;
-    animation: loading 1.5s infinite;
-    border-radius: 8px;
-    height: 40px;
-    margin: 8px 0;
-}
-
-@keyframes loading {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-
-/* ==================== DASHBOARD MODERN BARU (Seperti gambar referensi) ==================== */
+/* ==================== DASHBOARD MODERN (BARU) ==================== */
 .dashboard-modern-new {
     display: flex;
     flex-direction: column;
@@ -1072,7 +801,7 @@ tr:hover {
     border-radius: 24px;
     padding: 20px;
     border: 1px solid var(--border);
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: all 0.2s ease-in-out;
 }
 
 .stat-card-new:hover {
@@ -1263,7 +992,7 @@ canvas#weeklyBarChart {
     background: var(--bg-card);
     border-radius: 20px;
     border: 1px solid var(--border);
-    transition: all 0.2s ease;
+    transition: all 0.2s ease-in-out;
     flex-wrap: wrap;
 }
 
@@ -1287,7 +1016,7 @@ canvas#weeklyBarChart {
     border-radius: 20px;
     border: 1px solid var(--border);
     margin-bottom: 10px;
-    transition: all 0.2s ease;
+    transition: all 0.2s ease-in-out;
     flex-wrap: wrap;
 }
 
