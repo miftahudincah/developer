@@ -1,13 +1,17 @@
-// students.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
+// students.js - VERSION 3.3 (PERBAIKAN: FALLBACK DINAMIS UNTUK tbody)
 // ======================= MANAJEMEN DATA SISWA =======================
 // Fitur: CRUD siswa, sinkronisasi dengan ESP32, delay per siswa,
 //        dukungan kelas & jurusan dinamis dari pengaturan sekolah,
 //        real-time update, import/export CSV.
-// PERUBAHAN: Menghapus listener duplikat, menggunakan event 'dataReady'
+// PERUBAHAN: 
+//   - Menambahkan fallback pembuatan tbody secara dinamis jika tidak ditemukan
+//   - Memperkuat retry mechanism dengan logging lebih detail
+//   - Memastikan tab siswa ada sebelum render
 // ====================================================================
 
 let studentFormResetTimer = null;
 let studentsDataReadyListenerAdded = false;
+let studentsTabActive = false;
 
 // ======================= EVENT LISTENER DATA READY ========================
 function setupStudentsDataReadyListener() {
@@ -26,8 +30,64 @@ function setupStudentsDataReadyListener() {
         if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
         if (typeof populateStudentFilters === 'function') populateStudentFilters();
         if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
-        if (typeof renderStudentsTable === 'function') renderStudentsTable();
+        
+        // Hanya render jika tab siswa sedang aktif
+        if (studentsTabActive) {
+            if (typeof renderStudentsTable === 'function') renderStudentsTable();
+        } else {
+            console.log("📊 students.js: Tab siswa tidak aktif, skip render sementara");
+        }
         updateStudentStatistics();
+    });
+}
+
+// Monitor tab aktif
+function initTabActiveMonitor() {
+    const checkActiveTab = () => {
+        const tabStudents = document.getElementById('tab-students');
+        studentsTabActive = !!(tabStudents && tabStudents.classList.contains('active'));
+        if (studentsTabActive) {
+            console.log("✅ Tab siswa aktif, siap render");
+            if (typeof dbData !== 'undefined' && dbData.users) {
+                renderStudentsTable();
+            }
+        }
+    };
+    
+    checkActiveTab();
+    
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'class') {
+                const target = mutation.target;
+                if (target.id === 'tab-students') {
+                    const wasActive = studentsTabActive;
+                    studentsTabActive = target.classList.contains('active');
+                    if (studentsTabActive && !wasActive) {
+                        console.log("📊 Tab siswa diaktifkan, render ulang");
+                        renderStudentsTable();
+                    }
+                }
+            }
+        });
+    });
+    
+    const tabStudents = document.getElementById('tab-students');
+    if (tabStudents) {
+        observer.observe(tabStudents, { attributes: true });
+    } else {
+        console.warn("Tab students belum ada, observer ditunda");
+        setTimeout(() => initTabActiveMonitor(), 500);
+        return;
+    }
+    
+    window.addEventListener('tabSwitched', (e) => {
+        if (e.detail && e.detail.tabId === 'students') {
+            studentsTabActive = true;
+            renderStudentsTable();
+        } else if (e.detail && e.detail.tabId !== 'students') {
+            studentsTabActive = false;
+        }
     });
 }
 
@@ -154,15 +214,79 @@ function formatDelayDisplay(delayMinutes) {
     return `${menit} menit`;
 }
 
-// ======================= RENDER TABEL SISWA =======================
+// ======================= RENDER TABEL SISWA (DENGAN FALLBACK DINAMIS) =======================
 
-function renderStudentsTable() {
-    const tbody = document.getElementById('tbody-students');
-    if (!tbody) return;
+function renderStudentsTable(retryCount = 0) {
+    const MAX_RETRY = 5;
+    const RETRY_DELAY = 200;
     
-    if (typeof dbData === 'undefined' || !dbData.users) {
-        console.log("⏳ students.js: dbData not ready yet");
+    // Pastikan tab students ada
+    const tabStudents = document.getElementById('tab-students');
+    if (!tabStudents) {
+        console.error("students.js: Tab students container not found!");
+        return;
+    }
+    
+    let tbody = document.getElementById('tbody-students');
+    if (!tbody) {
+        // Coba cari dengan selector di dalam tab-students
+        tbody = tabStudents.querySelector('.table-container tbody');
+    }
+    
+    if (!tbody) {
+        // Jika masih belum, coba buat tbody secara dinamis
+        const tableContainer = tabStudents.querySelector('.table-container');
+        if (tableContainer) {
+            let table = tableContainer.querySelector('table');
+            if (!table) {
+                // Buat tabel jika belum ada
+                table = document.createElement('table');
+                table.innerHTML = '<thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>';
+                tableContainer.appendChild(table);
+                console.log("students.js: Created table dynamically");
+            }
+            tbody = document.createElement('tbody');
+            tbody.id = 'tbody-students';
+            table.appendChild(tbody);
+            console.log("students.js: Created tbody-students dynamically");
+        } else {
+            console.warn("students.js: .table-container not found inside tab-students");
+        }
+    }
+    
+    if (!tbody) {
+        if (retryCount < MAX_RETRY) {
+            console.warn(`students.js: tbody-students not found, retrying (${retryCount+1}/${MAX_RETRY})...`);
+            setTimeout(() => renderStudentsTable(retryCount + 1), RETRY_DELAY);
+            return;
+        } else {
+            console.error("students.js: Gagal menemukan atau membuat tbody-students setelah beberapa percobaan.");
+            return;
+        }
+    }
+    
+    // Log untuk debugging
+    console.log("📊 renderStudentsTable - dbData.users:", dbData?.users);
+    console.log("📊 renderStudentsTable - dbData.users length:", dbData?.users?.length);
+    
+    // Cek apakah dbData ada dan users terdefinisi
+    if (typeof dbData === 'undefined') {
+        console.log("⏳ students.js: dbData not defined yet");
+        tbody.innerHTML = `<td><td colspan="6" style="text-align:center;padding:30px;">⏳ Memuat data siswa...</td></tr>`;
+        return;
+    }
+    
+    if (!dbData.users) {
+        console.log("⏳ students.js: dbData.users not ready yet");
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;">⏳ Memuat data siswa...</td></tr>`;
+        return;
+    }
+    
+    // Jika data users kosong
+    if (dbData.users.length === 0) {
+        console.log("📭 students.js: Tidak ada data siswa di dbData.users");
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;">📭 Belum ada data siswa. Silakan tambah siswa melalui form di atas.</td></tr>`;
+        updateStudentStatistics();
         return;
     }
     
@@ -178,6 +302,7 @@ function renderStudentsTable() {
     tbody.innerHTML = '';
     if (data.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;">📭 Data siswa tidak ditemukan.${search ? '<br><small>Coba kata kunci lain</small>' : ''}</td></tr>`;
+        updateStudentStatistics();
         return;
     }
 
@@ -193,11 +318,12 @@ function renderStudentsTable() {
                 <td>
                     <button class="btn-icon edit" onclick="editStudent('${s.id}')" title="Edit Siswa">✏️</button>
                     <button class="btn-icon delete" onclick="deleteStudentWithFP('${s.id}')" title="Hapus Siswa (termasuk sidik jari)">🗑️</button>
-                  </td>
-              </tr>
+                 </td>
+             </tr>
         `;
     });
     updateStudentStatistics();
+    console.log(`✅ renderStudentsTable selesai, menampilkan ${data.length} siswa`);
 }
 
 // ======================= UPDATE STATISTIK =======================
@@ -438,6 +564,7 @@ function escapeCsv(str) {
 function cleanupStudentsSystem() {
     if (studentFormResetTimer) clearTimeout(studentFormResetTimer);
     studentsDataReadyListenerAdded = false;
+    studentsTabActive = false;
     console.log("🧹 Students system cleaned up");
 }
 
@@ -460,15 +587,30 @@ function initDelayEventListeners() {
 
 // ======================= INISIALISASI ========================
 setupStudentsDataReadyListener();
+initTabActiveMonitor();
 
+// Jika data sudah ada dan tab aktif, render segera
 if (typeof window !== 'undefined' && window.dbData && window.dbData.users) {
-    console.log("📊 students.js: Data already available, rendering immediately");
+    console.log("📊 students.js: Data already available, checking tab active...");
     setTimeout(() => {
+        if (studentsTabActive) {
+            renderStudentsTable();
+        } else {
+            console.log("📊 students.js: Tab tidak aktif, render ditunda hingga tab aktif");
+        }
         if (typeof populateKelasOptions === 'function') populateKelasOptions();
         if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
         if (typeof populateStudentFilters === 'function') populateStudentFilters();
-        if (typeof renderStudentsTable === 'function') renderStudentsTable();
     }, 100);
+}
+
+// Override switchTab untuk mengirim event custom (jika belum ada)
+const originalSwitchTab = window.switchTab;
+if (originalSwitchTab && typeof originalSwitchTab === 'function') {
+    window.switchTab = function(tabId) {
+        originalSwitchTab(tabId);
+        window.dispatchEvent(new CustomEvent('tabSwitched', { detail: { tabId: tabId } }));
+    };
 }
 
 // ======================= EXPORT KE GLOBAL =======================
@@ -486,4 +628,4 @@ window.exportStudentsToCSV = exportStudentsToCSV;
 window.cleanupStudentsSystem = cleanupStudentsSystem;
 window.initDelayEventListeners = initDelayEventListeners;
 
-console.log("✅ students.js V3.0 loaded - Event-based (no duplicate listeners)");
+console.log("✅ students.js V3.3 loaded - Fallback dinamis untuk tbody-students");
