@@ -21,6 +21,11 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-functions-compat.js"></script>
+
+    <!-- QR Code Generator -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <!-- HTML5 QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
@@ -78,7 +83,13 @@
                         </span>
                     </div>
                 </div>
-                <div class="form-group"><label>Kode Pendaftaran</label><input type="text" id="regCode" placeholder="Kode Unik dari Guru" required></div>
+                <div class="form-group">
+                    <label>Kode Pendaftaran</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="regCode" placeholder="Kode Unik dari Guru" required style="flex:1;">
+                        <button type="button" class="btn-action btn-secondary" onclick="openQrScanner()" style="padding: 0 15px; white-space: nowrap;">📷 Scan QR</button>
+                    </div>
+                </div>
                 <button type="submit" id="btnRegSubmit" class="btn-auth btn-primary">DAFTAR</button>
             </form>
             <div class="auth-toggle">Sudah punya akun? <span onclick="toggleAuth('login')">Login disini</span></div>
@@ -251,7 +262,7 @@
                 <div class="search-box"><input type="text" id="searchStudentName" placeholder="🔍 Cari nama siswa..." oninput="renderStudentsTable()"></div>
             </div>
             <div class="table-container">
-                <table>
+                <tr>
                     <thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
                     <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr></tbody>
                 </table>
@@ -406,6 +417,21 @@
     <div id="modal-create-status" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📸 Buat Status</span><span onclick="closeModal('modal-create-status')">✖</span></div><div class="form-group"><label>Teks</label><textarea id="statusText" rows="3"></textarea></div><div class="form-group"><label>Gambar</label><input type="file" id="statusImageInput" accept="image/*"><div id="statusImagePreviewContainer" style="display:none;"><img id="statusImagePreview" style="max-width:100%;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-create-status')">Batal</button><button class="btn-save" onclick="createStatus()">Upload</button></div></div></div>
     <div id="modal-status-viewer" class="modal-overlay"><div class="modal-box" style="background:#000;"><div id="statusViewerContent"></div></div></div>
     <div id="modal-absence" class="modal-overlay"><div class="modal-box" style="max-width:700px;"><div class="modal-title"><span>📋 Atur Ketidakhadiran</span><span onclick="closeModal('modal-absence')">✖</span></div><div class="modal-body"><div style="display:flex; gap:10px; flex-wrap:wrap;"><input type="date" id="absenceDate"><select id="absenceKelas"><option value="all">Semua Kelas</option></select><select id="absenceJurusan"><option value="all">Semua Jurusan</option></select><button class="btn-action" onclick="loadAbsenceList()">Tampilkan</button></div><div id="absenceListContainer" style="max-height:55vh; overflow-y:auto;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-absence')">Tutup</button><button class="btn-save" onclick="saveAllAbsenceStatus()">Simpan</button></div></div></div>
+
+    <!-- MODAL QR SCANNER -->
+    <div id="modal-qr-scanner" class="modal-overlay">
+        <div class="modal-box" style="max-width: 500px;">
+            <div class="modal-title">
+                <span>📷 Scan QR Code</span>
+                <span onclick="closeModal('modal-qr-scanner')">✖</span>
+            </div>
+            <div id="qr-reader" style="width: 100%;"></div>
+            <div id="qr-reader-results" style="margin-top: 10px; text-align: center;"></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeModal('modal-qr-scanner')">Tutup</button>
+            </div>
+        </div>
+    </div>
 
     <!-- SCRIPTS -->
     <script src="js/config.js"></script>
