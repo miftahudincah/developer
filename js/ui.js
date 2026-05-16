@@ -1,9 +1,10 @@
-// ui.js - VERSION 4.3 (PERBAIKAN: Grafik dashboard hanya bulan ini, per minggu)
+// ui.js - VERSION 4.4 (PERBAIKAN: TAMBAHKAN POPULATE DATE FILTER)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // PERUBAHAN: 
 //   - uploadProfilePhoto aman jika modal belum terbuka
-//   - updateDashboardChart menampilkan data per minggu dalam BULAN BERJALAN (bukan 12 bulan)
-//   - Menghapus dependensi dropdown tahun (tidak lagi digunakan)
+//   - updateDashboardChart menampilkan data per minggu dalam BULAN BERJALAN
+//   - Menambahkan populateDateFilter saat initApp
+//   - Memperkuat pemanggilan populate functions
 // ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
@@ -42,22 +43,47 @@ function initApp() {
     loadSchoolLogo();
     updateSchoolLogoUI();
     
-    // Setup chart year listener - TIDAK DIPERLUKAN LAGI (tapi biarkan kosong)
+    // Setup chart year listener - TIDAK DIPERLUKAN LAGI
     setupChartYearListener();
     
-    // Populate filters dengan guard
-    try {
+    // ========== POPULATE ALL FILTERS ==========
+    console.log("🔧 Populating all filters in initApp...");
+    
+    // Populate filters dengan guard dan retry
+    const populateAllFilters = () => {
         if (typeof populateFilters === 'function') {
-            populateFilters();
+            try { populateFilters(); } catch(e) { console.warn("populateFilters error:", e); }
         } else {
             console.warn("populateFilters not available yet, will retry");
-            setTimeout(() => {
-                if (typeof populateFilters === 'function') populateFilters();
-            }, 500);
+            setTimeout(populateAllFilters, 300);
+            return;
         }
-    } catch (err) {
-        console.error("Error in populateFilters:", err);
-    }
+        
+        if (typeof populateDateFilter === 'function') {
+            try { populateDateFilter(); } catch(e) { console.warn("populateDateFilter error:", e); }
+        } else {
+            console.warn("populateDateFilter not available yet, will retry");
+            setTimeout(populateAllFilters, 300);
+            return;
+        }
+        
+        if (typeof populateStudentFilters === 'function') {
+            try { populateStudentFilters(); } catch(e) { console.warn("populateStudentFilters error:", e); }
+        }
+        
+        if (typeof populateKelasOptions === 'function') {
+            try { populateKelasOptions(); } catch(e) { console.warn("populateKelasOptions error:", e); }
+        }
+        
+        if (typeof populateJurusanOptions === 'function') {
+            try { populateJurusanOptions(); } catch(e) { console.warn("populateJurusanOptions error:", e); }
+        }
+        
+        console.log("✅ All filters populated in initApp");
+    };
+    
+    // Execute with small delay to ensure DOM is ready
+    setTimeout(populateAllFilters, 100);
     
     // Start clock (hanya sekali)
     try {
@@ -87,6 +113,8 @@ function initApp() {
         window.addEventListener('dataReady', function onDataReady() {
             window.removeEventListener('dataReady', onDataReady);
             renderTables();
+            // Repopulate filters after data is ready
+            setTimeout(populateAllFilters, 200);
         });
     }
     
@@ -117,11 +145,6 @@ function initApp() {
         initSystemConfigManual();
     }
     
-    // Inisialisasi konfigurasi tipe sekolah & jurusan
-    if (typeof loadSchoolConfig === 'function') {
-        loadSchoolConfig();
-    }
-    
     // Inisialisasi event listener untuk delay input
     if (typeof initDelayEventListeners === 'function') {
         initDelayEventListeners();
@@ -145,6 +168,12 @@ if (typeof window !== 'undefined') {
             window._rekapInitialized = true;
             initRekap();
         }
+        // Repopulate filters when data is ready
+        setTimeout(() => {
+            if (typeof populateFilters === 'function') populateFilters();
+            if (typeof populateDateFilter === 'function') populateDateFilter();
+            if (typeof populateStudentFilters === 'function') populateStudentFilters();
+        }, 200);
     });
 }
 
@@ -184,8 +213,6 @@ window.addEventListener('uiReady', (e) => {
 // ======================== FUNGSI LAINNYA ========================
 
 function setupChartYearListener() {
-    // Fungsi ini tidak lagi digunakan untuk grafik, tapi biarkan untuk kompatibilitas.
-    // Tapi kita tetap sembunyikan dropdown tahun jika ada.
     const yearSelect = document.getElementById('chartYearSelect');
     if (yearSelect) {
         yearSelect.style.display = 'none';
@@ -525,8 +552,12 @@ function switchTab(tabId) {
         if (tabId === 'dashboard') {
             renderDashboard();
         } else if (tabId === 'attendance' && typeof renderTable === 'function') {
+            // Repopulate filters before rendering attendance
+            if (typeof populateFilters === 'function') populateFilters();
+            if (typeof populateDateFilter === 'function') populateDateFilter();
             renderTable();
         } else if (tabId === 'students' && typeof renderStudentsTable === 'function') {
+            if (typeof populateStudentFilters === 'function') populateStudentFilters();
             renderStudentsTable();
         } else if (tabId === 'users' && typeof renderUsersTable === 'function') {
             renderUsersTable();
@@ -584,7 +615,6 @@ function debugAttendanceData() {
 }
 
 function updateYearDropdownOptions() {
-    // Tidak digunakan lagi, tapi biarkan untuk kompatibilitas
     const yearSelect = document.getElementById('chartYearSelect');
     if (yearSelect) yearSelect.style.display = 'none';
 }
@@ -657,7 +687,6 @@ function renderDashboard() {
     console.log("✅ Dashboard rendered successfully");
 }
 
-// ** PERUBAHAN UTAMA: Grafik hanya menampilkan BULAN INI, data per MINGGU **
 function updateDashboardChart() {
     if (dashboardChartRetryTimeout) {
         clearTimeout(dashboardChartRetryTimeout);
@@ -683,35 +712,29 @@ function updateDashboardChart() {
 
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth(); // 0-11
+    const month = now.getMonth();
 
-    // Tentukan hari pertama dan terakhir bulan ini
     const startOfMonth = new Date(year, month, 1);
     const endOfMonth = new Date(year, month + 1, 0);
     const daysInMonth = endOfMonth.getDate();
 
-    // Kelompokkan hari per minggu (1-7, 8-14, 15-21, 22-28, 29-31)
-    const weeks = [[], [], [], [], []]; // maksimal 5 minggu
+    const weeks = [[], [], [], [], []];
     for (let d = 1; d <= daysInMonth; d++) {
         const weekIndex = Math.floor((d - 1) / 7);
         if (weekIndex < 5) weeks[weekIndex].push(d);
     }
-    // Hapus minggu kosong di akhir
     while (weeks.length > 0 && weeks[weeks.length-1].length === 0) weeks.pop();
 
-    // Inisialisasi data per minggu
     const weeklyHadir = new Array(weeks.length).fill(0);
     const weeklyIzin = new Array(weeks.length).fill(0);
     const weeklyAlpha = new Array(weeks.length).fill(0);
 
-    // Filter data absensi dalam bulan ini
     const monthAttendance = dbData.attendance.filter(rec => {
         if (!rec.date) return false;
         const d = new Date(rec.date);
         return d.getFullYear() === year && d.getMonth() === month;
     });
 
-    // Akumulasi ke minggu
     monthAttendance.forEach(rec => {
         const day = new Date(rec.date).getDate();
         let weekIdx = Math.floor((day - 1) / 7);
@@ -726,11 +749,10 @@ function updateDashboardChart() {
         } else if (status === 'Alpha') {
             weeklyAlpha[weekIdx]++;
         } else if (rec.timeIn) {
-            weeklyHadir[weekIdx]++; // fallback
+            weeklyHadir[weekIdx]++;
         }
     });
 
-    // Label minggu (rentang tanggal)
     const weekLabels = weeks.map((days, idx) => {
         if (days.length === 0) return `Minggu ${idx+1}`;
         const start = days[0];
@@ -738,13 +760,11 @@ function updateDashboardChart() {
         return `${start}-${end}`;
     });
 
-    // Hapus chart lama
     if (dashboardChart) {
         try { dashboardChart.destroy(); } catch(e) {}
         dashboardChart = null;
     }
 
-    // Buat chart baru
     try {
         dashboardChart = new Chart(ctx, {
             type: 'bar',
@@ -1016,7 +1036,6 @@ function handleChangePassword(e) {
 
 // ======================== PERBAIKAN UPLOAD PROFILE PHOTO ========================
 async function uploadProfilePhoto(input) {
-    // Validasi awal
     if (!input.files || !input.files[0]) return;
     
     const imgEl = document.getElementById('profileImg');
@@ -1051,28 +1070,22 @@ async function uploadProfilePhoto(input) {
         if (data.success) {
             const urlProxy = `https://wsrv.nl/?url=${encodeURIComponent(data.data.image.url)}`;
             
-            // Update Firebase
             await db.ref(`users_auth/${currentUser.uid}`).update({ photoUrl: urlProxy });
             
-            // Update currentUser object
             currentUser.photoUrl = urlProxy;
             
-            // Simpan ke localStorage dengan aman
             try {
                 if (typeof saveUserToLocalStorage === 'function') {
                     saveUserToLocalStorage(currentUser);
                 }
             } catch (storageErr) {
                 console.warn('Gagal menyimpan ke localStorage:', storageErr);
-                // Abaikan, tidak perlu tampilkan error ke user karena operasi utama sukses
             }
             
-            // Update elemen DOM (headerAvatar dan profileImg)
             const headerAvatar = document.getElementById('headerAvatar');
             if (headerAvatar) headerAvatar.src = urlProxy;
             imgEl.src = urlProxy;
             
-            // Notifikasi sukses
             showToast('✅ Foto profil berhasil diperbarui!', 'success');
         } else {
             console.error('ImgBB upload failed:', data);
@@ -1298,4 +1311,4 @@ window.updateDashboardChart = updateDashboardChart;
 window.setupChartYearListener = setupChartYearListener;
 window.updateYearDropdownOptions = updateYearDropdownOptions;
 
-console.log("✅ ui.js V4.3 loaded - Grafik per minggu dalam bulan berjalan");
+console.log("✅ ui.js V4.4 loaded - Added populateDateFilter and strengthened filter initialization");

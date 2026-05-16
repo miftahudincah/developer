@@ -1,7 +1,7 @@
-// attendance.js - VERSION 3.2 (PERBAIKAN: SORTING DI RENDER FILTERED TABLE)
+// attendance.js - VERSION 3.3 (PERBAIKAN: POPULATE FILTERS DROPDOWN)
 // Mengelola data absensi, filter, validasi delay pulang,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
-// PERUBAHAN: Menambahkan sorting di renderFilteredTable agar data terbaru paling atas.
+// PERUBAHAN: Menambahkan fungsi populateFilters() dan populateDateFilter()
 // ============================================================================
 
 // ======================== GLOBAL VARIABLES ========================
@@ -17,6 +17,13 @@ function setupAttendanceDataReadyListener() {
 
     window.addEventListener('dataReady', (e) => {
         console.log("📋 attendance.js: dataReady received, updating attendance UI");
+        // Populate filters when data is ready
+        if (typeof populateFilters === 'function') {
+            populateFilters();
+        }
+        if (typeof populateDateFilter === 'function') {
+            populateDateFilter();
+        }
         if (typeof updateAttendanceDonutChart === 'function') {
             updateAttendanceDonutChart();
         }
@@ -31,12 +38,122 @@ function setupAttendanceDataReadyListener() {
             originalSwitchTab(tabId);
             if (tabId === 'attendance') {
                 setTimeout(() => {
+                    if (typeof populateFilters === 'function') populateFilters();
+                    if (typeof populateDateFilter === 'function') populateDateFilter();
                     if (typeof renderTable === 'function') renderTable();
                     if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
                 }, 100);
             }
         };
     }
+}
+
+// ======================== POPULATE FILTER DROPDOWNS ========================
+
+function populateFilters() {
+    console.log("🔧 populateFilters dipanggil untuk tab Absensi");
+    
+    const kelasSelect = document.getElementById('filterKelas');
+    const jurusanSelect = document.getElementById('filterJurusan');
+    
+    if (!kelasSelect || !jurusanSelect) {
+        console.warn("⚠️ Filter elements not found, retrying in 500ms...");
+        setTimeout(() => populateFilters(), 500);
+        return;
+    }
+    
+    // Get kelas options from school config
+    let kelasOptions = [];
+    if (window.currentSchoolConfig && window.currentSchoolConfig.classes && window.currentSchoolConfig.classes.length > 0) {
+        kelasOptions = window.currentSchoolConfig.classes;
+        console.log(`📚 Menggunakan kelas dari school_config: ${kelasOptions.length} kelas`);
+    } else {
+        // Fallback berdasarkan tipe sekolah
+        const schoolType = window.currentSchoolConfig?.type || 'smp';
+        if (schoolType === 'smp') {
+            kelasOptions = ['VII', 'VIII', 'IX'];
+        } else if (schoolType === 'smk') {
+            kelasOptions = ['X', 'XI', 'XII'];
+        } else {
+            kelasOptions = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+        }
+        console.log(`📚 Menggunakan kelas default (${schoolType}): ${kelasOptions.join(', ')}`);
+    }
+    
+    // Simpan nilai yang dipilih sebelumnya
+    const currentKelas = kelasSelect.value;
+    const currentJurusan = jurusanSelect.value;
+    
+    // Populate Kelas dropdown
+    kelasSelect.innerHTML = '<option value="all">📚 Semua Kelas</option>';
+    kelasOptions.forEach(kelas => {
+        kelasSelect.innerHTML += `<option value="${kelas}">${kelas}</option>`;
+    });
+    
+    // Restore previous value if still exists
+    if (currentKelas !== 'all' && kelasOptions.includes(currentKelas)) {
+        kelasSelect.value = currentKelas;
+    }
+    
+    // Get jurusan options from school config
+    let jurusanOptions = [];
+    if (window.currentSchoolConfig && window.currentSchoolConfig.majors && window.currentSchoolConfig.majors.length > 0) {
+        jurusanOptions = window.currentSchoolConfig.majors;
+        console.log(`🎓 Menggunakan jurusan dari school_config: ${jurusanOptions.length} jurusan`);
+    } else {
+        jurusanOptions = ['UMUM'];
+        console.log(`🎓 Menggunakan jurusan default: UMUM`);
+    }
+    
+    // Populate Jurusan dropdown
+    jurusanSelect.innerHTML = '<option value="all">🎓 Semua Jurusan</option>';
+    jurusanOptions.forEach(jurusan => {
+        jurusanSelect.innerHTML += `<option value="${jurusan}">${jurusan}</option>`;
+    });
+    
+    // Restore previous value if still exists
+    if (currentJurusan !== 'all' && jurusanOptions.includes(currentJurusan)) {
+        jurusanSelect.value = currentJurusan;
+    }
+    
+    console.log(`✅ populateFilters selesai: ${kelasOptions.length} kelas, ${jurusanOptions.length} jurusan`);
+}
+
+function populateDateFilter() {
+    console.log("🔧 populateDateFilter dipanggil");
+    
+    const dateSelect = document.getElementById('filterDate');
+    if (!dateSelect) {
+        console.warn("⚠️ filterDate element not found, retrying in 500ms...");
+        setTimeout(() => populateDateFilter(), 500);
+        return;
+    }
+    
+    const currentValue = dateSelect.value;
+    
+    // Build date options
+    dateSelect.innerHTML = '<option value="all">📅 Semua Tanggal</option>';
+    dateSelect.innerHTML += '<option value="today">📆 Hari Ini</option>';
+    
+    // Add last 7 days as options
+    for (let i = 1; i <= 7; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        const dayName = date.toLocaleDateString('id-ID', { weekday: 'long' });
+        dateSelect.innerHTML += `<option value="${dateStr}">${dayName}, ${dateStr}</option>`;
+    }
+    
+    // Restore previous value if valid
+    if (currentValue && currentValue !== 'all' && currentValue !== 'today') {
+        // Check if the date still exists in options
+        const exists = Array.from(dateSelect.options).some(opt => opt.value === currentValue);
+        if (exists) {
+            dateSelect.value = currentValue;
+        }
+    }
+    
+    console.log(`✅ populateDateFilter selesai, total options: ${dateSelect.options.length}`);
 }
 
 // ======================== INITIALIZATION (UI ONLY) ========================
@@ -46,6 +163,9 @@ function initAttendanceUI() {
     if (typeof Audio !== 'undefined') {
         new Audio();
     }
+    // Populate filters immediately
+    populateFilters();
+    populateDateFilter();
     setTimeout(() => updateAttendanceDonutChart(), 100);
 }
 
@@ -547,12 +667,10 @@ function filterByDateRange(startDate, endDate) {
     renderFilteredTable(filtered);
 }
 
-// PERBAIKAN: Menambahkan sorting agar data terbaru paling atas
 function renderFilteredTable(filteredData) {
     const tbody = document.getElementById('tbody-attendance');
     if (!tbody) return;
     
-    // 🔽 SORTIR DESCENDING BERDASARKAN TIMESTAMP (TERBARU DI ATAS)
     filteredData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
     tbody.innerHTML = '';
@@ -751,6 +869,21 @@ function cleanupAttendanceUI() {
 // ======================== INISIALISASI ========================
 setupAttendanceDataReadyListener();
 
+// Initial population of filters when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            populateFilters();
+            populateDateFilter();
+        }, 100);
+    });
+} else {
+    setTimeout(() => {
+        populateFilters();
+        populateDateFilter();
+    }, 100);
+}
+
 if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance) {
     setTimeout(() => {
         if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
@@ -775,5 +908,7 @@ window.openAbsenceModal = openAbsenceModal;
 window.loadAbsenceList = loadAbsenceList;
 window.saveAllAbsenceStatus = saveAllAbsenceStatus;
 window.updateAttendanceDonutChart = updateAttendanceDonutChart;
+window.populateFilters = populateFilters;
+window.populateDateFilter = populateDateFilter;
 
-console.log("✅ attendance.js V3.2 loaded - Added sorting in renderFilteredTable");
+console.log("✅ attendance.js V3.3 loaded - Added populateFilters() and populateDateFilter()");
