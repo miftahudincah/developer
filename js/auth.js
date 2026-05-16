@@ -1,4 +1,4 @@
-// auth.js - VERSI REGISTRASI LANGSUNG (TAMBAHAN: SCAN QR CODE) - FIXED
+// auth.js - VERSI REGISTRASI LANGSUNG (QR SCANNER FIXED)
 
 let lastRegisterAttempt = 0;
 const REGISTER_COOLDOWN = 30000;
@@ -16,7 +16,6 @@ function openQrScanner() {
         return;
     }
     
-    // Cek apakah library QR scanner tersedia
     if (typeof Html5Qrcode === 'undefined') {
         showToast("Library QR scanner belum dimuat. Muat ulang halaman.", "error");
         console.error("Html5Qrcode is not defined");
@@ -53,13 +52,17 @@ function openQrScanner() {
 
 function startScanner(qrReader, resultsDiv) {
     html5QrCode = new Html5Qrcode("qr-reader");
-    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    const config = {
+        fps: 15,
+        qrbox: { width: 280, height: 280 },
+        aspectRatio: 1.0,
+        disableFlip: false
+    };
     
     html5QrCode.start(
-        { facingMode: "environment" }, // kamera belakang
+        { facingMode: "environment" },
         config,
         (decodedText, decodedResult) => {
-            // Sukses scan
             if (resultsDiv) resultsDiv.innerHTML = '<span style="color:#4caf50;">✅ QR terbaca! Memproses...</span>';
             handleQrScan(decodedText);
             // Hentikan scanner setelah berhasil
@@ -72,7 +75,7 @@ function startScanner(qrReader, resultsDiv) {
             }
         },
         (errorMessage) => {
-            // Abaikan error (biasanya karena tidak ada QR)
+            // Abaikan error scanning biasa (tidak ada QR)
             if (resultsDiv && !resultsDiv.innerHTML.includes('✅')) {
                 resultsDiv.innerHTML = '<small style="color:#aaa;">🔍 Arahkan kamera ke QR Code...</small>';
             }
@@ -86,12 +89,10 @@ function startScanner(qrReader, resultsDiv) {
             resultsDiv.innerHTML = '<span style="color:red;">❌ Gagal mengakses kamera. Pastikan izin diberikan dan gunakan HTTPS.</span>';
         }
         showToast("Tidak dapat mengakses kamera", "error");
-        // Tutup modal setelah 2 detik jika gagal
         setTimeout(() => closeModal('modal-qr-scanner'), 2000);
     });
 }
 
-// Cleanup scanner saat modal ditutup
 function closeQrScanner() {
     if (html5QrCode && isScanning) {
         html5QrCode.stop().then(() => {
@@ -107,7 +108,6 @@ function handleQrScan(data) {
         // Coba parse sebagai JSON
         const parsed = JSON.parse(data);
         if (parsed.code) {
-            // Isi field kode
             document.getElementById('regCode').value = parsed.code;
             if (parsed.studentId) {
                 // QR untuk siswa: isi ID dan pilih role siswa
