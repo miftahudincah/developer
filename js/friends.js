@@ -1,8 +1,10 @@
-// friends.js - VERSION 2.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
+// friends.js - VERSION 2.1 (PERBAIKAN: FOTO PROFIL DINAMIS + CEK DUPLIKAT)
 // Fitur Pertemanan (Friendship System)
 // Mengirim request, menerima/menolak, dan daftar teman
 // Dengan integrasi Chat System
-// PERUBAHAN: Inisialisasi via event 'uiReady', bukan auto-init
+// PERUBAHAN: 
+//   - Foto profil teman diambil langsung dari users_auth setiap render
+//   - Pencegahan duplikasi teman saat menerima request
 // ============================================================================
 
 let friendsRealtimeListener = null;
@@ -79,12 +81,53 @@ function setupFriendsListListener() {
         db.ref(`friendships/list/${currentUser.uid}`).off('value', friendsRealtimeListener);
     }
     
-    friendsRealtimeListener = db.ref(`friendships/list/${currentUser.uid}`).on('value', (snapshot) => {
+    friendsRealtimeListener = db.ref(`friendships/list/${currentUser.uid}`).on('value', async (snapshot) => {
         if (!currentUser) return;
         const data = snapshot.val();
         const friendsList = data ? Object.values(data) : [];
-        renderFriendsList(friendsList);
-        updateFriendsCount(friendsList.length);
+        
+        // Ambil data terbaru dari users_auth untuk semua teman (update foto & nama)
+        const updatedFriends = await enrichFriendsWithLatestData(friendsList);
+        
+        renderFriendsList(updatedFriends);
+        updateFriendsCount(updatedFriends.length);
+    });
+}
+
+// Ambil data terbaru dari users_auth untuk setiap teman
+async function enrichFriendsWithLatestData(friendsList) {
+    if (!friendsList || friendsList.length === 0) return [];
+    
+    // Ambil semua UID teman
+    const friendUids = friendsList.map(f => f.friendUid).filter(Boolean);
+    if (friendUids.length === 0) return friendsList;
+    
+    // Batch get dari users_auth (menggunakan Promise.all)
+    const snapshots = await Promise.all(
+        friendUids.map(uid => db.ref(`users_auth/${uid}`).once('value'))
+    );
+    
+    const userDataMap = {};
+    snapshots.forEach(snap => {
+        const uid = snap.key;
+        const val = snap.val();
+        if (val) {
+            userDataMap[uid] = val;
+        }
+    });
+    
+    // Perbarui setiap friend dengan data terbaru
+    return friendsList.map(friend => {
+        const latest = userDataMap[friend.friendUid];
+        if (latest) {
+            return {
+                ...friend,
+                friendName: latest.nama || friend.friendName,
+                friendEmail: latest.email || friend.friendEmail,
+                friendPhoto: latest.photoUrl || null  // ambil foto terbaru (bisa null)
+            };
+        }
+        return friend;
     });
 }
 
@@ -218,6 +261,7 @@ function renderFriendsList(friends) {
         return;
     }
     
+    // Gunakan foto yang sudah diperkaya (dari enrichFriendsWithLatestData)
     container.innerHTML = friends.map(friend => `
         <div class="friend-item" data-friend-uid="${friend.friendUid}">
             <div class="friend-avatar">
@@ -430,6 +474,16 @@ async function acceptFriendRequest(requestId, fromUid) {
         showToast("Anda harus login!", "error");
         return;
     }
+    
+    // 🔥 CEK APAKAH SUDAH BERTEMAN (CEGAH DUPLIKAT)
+    const existingFriend = await db.ref(`friendships/list/${currentUser.uid}/${fromUid}`).once('value');
+    if (existingFriend.exists()) {
+        showToast("👥 Anda sudah berteman dengan pengguna ini.", "info");
+        // Hapus request yang masih pending
+        await db.ref(`friendships/requests/${requestId}`).remove();
+        return;
+    }
+    
     showToast("⏳ Memproses...", "info");
     
     try {
@@ -439,6 +493,8 @@ async function acceptFriendRequest(requestId, fromUid) {
         });
         
         const now = firebase.database.ServerValue.TIMESTAMP;
+        
+        // Data untuk currentUser (menyimpan info teman)
         const friendData1 = {
             friendUid: fromUid,
             friendName: currentUser.nama,
@@ -446,7 +502,9 @@ async function acceptFriendRequest(requestId, fromUid) {
             friendPhoto: currentUser.photoUrl || null,
             createdAt: now
         };
-        const friendData2 = {
+        
+        // Data untuk teman (menyimpan info currentUser)
+        let friendData2 = {
             friendUid: currentUser.uid,
             friendName: currentUser.nama,
             friendEmail: currentUser.email,
@@ -454,6 +512,7 @@ async function acceptFriendRequest(requestId, fromUid) {
             createdAt: now
         };
         
+        // Ambil data pengirim (teman) untuk melengkapi friendData2
         const senderSnapshot = await db.ref(`users_auth/${fromUid}`).once('value');
         const senderData = senderSnapshot.val();
         if (senderData) {
@@ -563,8 +622,10 @@ async function loadFriendsList() {
     const snapshot = await db.ref(`friendships/list/${currentUser.uid}`).once('value');
     const data = snapshot.val();
     const friendsList = data ? Object.values(data) : [];
-    renderFriendsList(friendsList);
-    updateFriendsCount(friendsList.length);
+    // Perkaya dengan data terbaru
+    const enriched = await enrichFriendsWithLatestData(friendsList);
+    renderFriendsList(enriched);
+    updateFriendsCount(enriched.length);
 }
 
 // ======================= UTILITY =======================
@@ -685,7 +746,7 @@ if (typeof window !== 'undefined' && window.currentUser) {
     }, 100);
 }
 
-// ======================= EXPORT KE GLOBAL =======================
+// ======================= EKSPOR KE GLOBAL =======================
 window.initFriendsSystem = initFriendsSystem;
 window.searchUserByEmail = searchUserByEmail;
 window.sendFriendRequest = sendFriendRequest;
@@ -699,4 +760,4 @@ window.startChatWithFriend = startChatWithFriend;
 window.startChatFromProfile = startChatFromProfile;
 window.cleanupFriendsSystem = cleanupFriendsSystem;
 
-console.log("✅ friends.js V2.0 loaded - Event-based (no duplicate auto-init)");
+console.log("✅ friends.js V2.1 loaded - Foto profil dinamis + pencegahan duplikasi");
