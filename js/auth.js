@@ -1,10 +1,11 @@
-// auth.js - VERSI REGISTRASI LANGSUNG (TAMBAHAN: SCAN QR CODE)
+// auth.js - VERSI REGISTRASI LANGSUNG (TAMBAHAN: SCAN QR CODE) - FIXED
 
 let lastRegisterAttempt = 0;
 const REGISTER_COOLDOWN = 30000;
 
 // Variabel untuk QR Scanner
 let html5QrCode = null;
+let isScanning = false;
 
 // ======================= FUNGSI QR SCANNER =======================
 
@@ -14,49 +15,91 @@ function openQrScanner() {
         showToast("Modal scanner tidak ditemukan!", "error");
         return;
     }
+    
+    // Cek apakah library QR scanner tersedia
+    if (typeof Html5Qrcode === 'undefined') {
+        showToast("Library QR scanner belum dimuat. Muat ulang halaman.", "error");
+        console.error("Html5Qrcode is not defined");
+        return;
+    }
+    
     modal.classList.add('open');
     
     const qrReader = document.getElementById('qr-reader');
     const resultsDiv = document.getElementById('qr-reader-results');
-    if (!qrReader) return;
-    
-    // Hentikan scanner sebelumnya jika ada
-    if (html5QrCode) {
-        html5QrCode.stop().then(() => {
-            html5QrCode.clear();
-        }).catch(() => {});
+    if (!qrReader) {
+        showToast("Elemen scanner tidak ditemukan!", "error");
+        return;
     }
     
+    // Bersihkan area reader
+    qrReader.innerHTML = '';
+    if (resultsDiv) resultsDiv.innerHTML = '<span style="color:#ff9800;">⏳ Mengaktifkan kamera...</span>';
+    
+    // Hentikan scanner sebelumnya jika ada
+    if (html5QrCode && isScanning) {
+        html5QrCode.stop().then(() => {
+            html5QrCode.clear();
+            isScanning = false;
+            startScanner(qrReader, resultsDiv);
+        }).catch((err) => {
+            console.warn("Error stopping previous scanner:", err);
+            startScanner(qrReader, resultsDiv);
+        });
+    } else {
+        startScanner(qrReader, resultsDiv);
+    }
+}
+
+function startScanner(qrReader, resultsDiv) {
     html5QrCode = new Html5Qrcode("qr-reader");
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    
     html5QrCode.start(
         { facingMode: "environment" }, // kamera belakang
-        {
-            fps: 10,
-            qrbox: { width: 250, height: 250 }
-        },
+        config,
         (decodedText, decodedResult) => {
             // Sukses scan
+            if (resultsDiv) resultsDiv.innerHTML = '<span style="color:#4caf50;">✅ QR terbaca! Memproses...</span>';
             handleQrScan(decodedText);
-            // Hentikan scanner
-            html5QrCode.stop().then(() => {
-                html5QrCode.clear();
-                closeModal('modal-qr-scanner');
-                if (resultsDiv) resultsDiv.innerHTML = '';
-            }).catch(() => {});
+            // Hentikan scanner setelah berhasil
+            if (html5QrCode && isScanning) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    isScanning = false;
+                    closeModal('modal-qr-scanner');
+                }).catch((e) => console.warn(e));
+            }
         },
         (errorMessage) => {
             // Abaikan error (biasanya karena tidak ada QR)
-            if (resultsDiv && !resultsDiv.innerHTML) {
-                resultsDiv.innerHTML = '<small style="color:#ff9800;">🔍 Arahkan kamera ke QR Code...</small>';
+            if (resultsDiv && !resultsDiv.innerHTML.includes('✅')) {
+                resultsDiv.innerHTML = '<small style="color:#aaa;">🔍 Arahkan kamera ke QR Code...</small>';
             }
         }
-    ).catch(err => {
+    ).then(() => {
+        isScanning = true;
+        if (resultsDiv) resultsDiv.innerHTML = '<small style="color:#4caf50;">📷 Kamera aktif. Arahkan ke QR Code.</small>';
+    }).catch((err) => {
         console.error("Unable to start scanning", err);
         if (resultsDiv) {
-            resultsDiv.innerHTML = '<span style="color:red;">❌ Gagal mengakses kamera. Pastikan izin diberikan.</span>';
+            resultsDiv.innerHTML = '<span style="color:red;">❌ Gagal mengakses kamera. Pastikan izin diberikan dan gunakan HTTPS.</span>';
         }
         showToast("Tidak dapat mengakses kamera", "error");
+        // Tutup modal setelah 2 detik jika gagal
+        setTimeout(() => closeModal('modal-qr-scanner'), 2000);
     });
+}
+
+// Cleanup scanner saat modal ditutup
+function closeQrScanner() {
+    if (html5QrCode && isScanning) {
+        html5QrCode.stop().then(() => {
+            html5QrCode.clear();
+            isScanning = false;
+        }).catch((e) => console.warn(e));
+    }
+    closeModal('modal-qr-scanner');
 }
 
 function handleQrScan(data) {
@@ -307,6 +350,7 @@ function togglePassword(id, icon) {
 
 // Ekspor fungsi QR scanner ke global
 window.openQrScanner = openQrScanner;
+window.closeQrScanner = closeQrScanner;
 window.handleQrScan = handleQrScan;
 
 // Ekspor fungsi lain
@@ -318,4 +362,4 @@ window.togglePassword = togglePassword;
 window.processForgot = processForgot;
 window.handleChangePassword = handleChangePassword;
 
-console.log("✅ auth.js (direct registration + QR scanner) loaded");
+console.log("✅ auth.js (direct registration + QR scanner fixed) loaded");
