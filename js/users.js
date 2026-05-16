@@ -1,6 +1,6 @@
-// users.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
+// users.js - VERSION 3.1 (QR CODE GENERATOR)
 // Fungsi untuk mengelola user, kode registrasi, dan role management
-// PERUBAHAN: Menghapus listener duplikat, menggunakan event 'dataReady'
+// PERUBAHAN: Menambahkan generate QR Code untuk kode registrasi
 // ============================================================================
 
 let lastCodeCount = 0;
@@ -106,7 +106,7 @@ function populateStudentSelectForCode() {
     }
 }
 
-// ======================= GENERATE KODE REGISTRASI =======================
+// ======================= GENERATE KODE REGISTRASI (DENGAN QR CODE) =======================
 
 function generateRegistrationCode() {
     if (!currentUser) {
@@ -125,6 +125,7 @@ function generateRegistrationCode() {
         return;
     }
     
+    // Generate kode unik
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     const code = `REG-${timestamp.slice(-3)}${random}`;
@@ -141,6 +142,26 @@ function generateRegistrationCode() {
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '⏳ Generating...';
+    }
+
+    // Fungsi untuk generate QR code di dalam container
+    function generateQRCode(containerId, qrText) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = ''; // Bersihkan sebelumnya
+        try {
+            new QRCode(container, {
+                text: qrText,
+                width: 150,
+                height: 150,
+                colorDark: "#00bcd4",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        } catch(e) {
+            console.error("QR Code generation error:", e);
+            container.innerHTML = '<small>⚠️ Gagal generate QR</small>';
+        }
     }
 
     if (targetType === 'siswa') {
@@ -180,20 +201,34 @@ function generateRegistrationCode() {
         const student = dbData.users.find(s => s.id == selectedId);
         const studentName = student?.nama || selectedId;
 
+        // Data yang akan di-encode ke QR (JSON untuk siswa)
+        const qrData = JSON.stringify({
+            code: code,
+            studentId: selectedId
+        });
+
         db.ref('codes/' + code).set(codeData).then(() => {
             const display = document.getElementById('generatedKeyDisplay');
             display.style.display = 'block';
+            // Buat ID unik untuk container QR
+            const qrContainerId = `qrcode-${code.replace(/[^a-zA-Z0-9]/g, '')}`;
             display.innerHTML = `
                 <div style="background: #1a1a2e; border-radius: 8px; padding: 15px; margin: 10px 0; border-left: 4px solid #4a90e2;">
                     <div style="font-size: 12px; color: #888;">✨ KODE REGISTRASI BERHASIL DIGENERATE ✨</div>
                     <div style="font-size: 20px; font-family: monospace; font-weight: bold; color: #4a90e2; margin: 10px 0;">${code}</div>
                     <div>Tipe: <strong>${targetType.toUpperCase()}</strong></div>
-                    <div>Terkunci ID: <strong>${selectedId}</strong> - ${studentName}</div>
-                    <div>Dibuat oleh: <strong>${currentUser.nama || currentUser.email}</strong></div>
+                    <div>Terkunci ID: <strong>${selectedId}</strong> - ${escapeHtmlString(studentName)}</div>
+                    <div>Dibuat oleh: <strong>${escapeHtmlString(currentUser.nama || currentUser.email)}</strong></div>
                     <div style="margin-top: 10px;"><small>⏰ Kode akan expired dalam 5 jam</small></div>
-                    <button class="btn-action btn-success" onclick="copyToClipboard('${code}')" style="margin-top: 10px;">📋 Copy Kode</button>
+                    <div id="${qrContainerId}" style="margin: 15px auto; display: flex; justify-content: center;"></div>
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn-action btn-success" onclick="copyToClipboard('${code}')">📋 Copy Kode</button>
+                        <button class="btn-action btn-primary" onclick="downloadQRCode('${qrContainerId}', '${code}')">📷 Download QR</button>
+                    </div>
                 </div>
             `;
+            // Generate QR
+            generateQRCode(qrContainerId, qrData);
             showToast(`✅ Kode untuk ${studentName} berhasil dibuat!`, "success");
         }).catch(err => {
             console.error("Generate code error:", err);
@@ -206,19 +241,28 @@ function generateRegistrationCode() {
         });
 
     } else {
+        // Untuk GURU
+        const qrData = JSON.stringify({ code: code });
+        
         db.ref('codes/' + code).set(codeData).then(() => {
             const display = document.getElementById('generatedKeyDisplay');
             display.style.display = 'block';
+            const qrContainerId = `qrcode-${code.replace(/[^a-zA-Z0-9]/g, '')}`;
             display.innerHTML = `
                 <div style="background: #1a1a2e; border-radius: 8px; padding: 15px; margin: 10px 0; border-left: 4px solid #ff9800;">
                     <div style="font-size: 12px; color: #888;">✨ KODE REGISTRASI GURU ✨</div>
                     <div style="font-size: 20px; font-family: monospace; font-weight: bold; color: #ff9800; margin: 10px 0;">${code}</div>
                     <div>Tipe: <strong>${targetType.toUpperCase()}</strong></div>
-                    <div>Dibuat oleh: <strong>${currentUser.nama || currentUser.email}</strong></div>
+                    <div>Dibuat oleh: <strong>${escapeHtmlString(currentUser.nama || currentUser.email)}</strong></div>
                     <div style="margin-top: 10px;"><small>⏰ Kode akan expired dalam 5 jam</small></div>
-                    <button class="btn-action btn-success" onclick="copyToClipboard('${code}')" style="margin-top: 10px;">📋 Copy Kode</button>
+                    <div id="${qrContainerId}" style="margin: 15px auto; display: flex; justify-content: center;"></div>
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn-action btn-success" onclick="copyToClipboard('${code}')">📋 Copy Kode</button>
+                        <button class="btn-action btn-primary" onclick="downloadQRCode('${qrContainerId}', '${code}')">📷 Download QR</button>
+                    </div>
                 </div>
             `;
+            generateQRCode(qrContainerId, qrData);
             showToast(`✅ Kode registrasi Guru berhasil dibuat!`, "success");
         }).catch(err => {
             console.error("Generate code error:", err);
@@ -230,6 +274,26 @@ function generateRegistrationCode() {
             }
         });
     }
+}
+
+// ======================= FUNGSI DOWNLOAD QR CODE =======================
+
+function downloadQRCode(containerId, filename) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+        showToast("QR Code tidak ditemukan!", "error");
+        return;
+    }
+    const canvas = container.querySelector('canvas');
+    if (!canvas) {
+        showToast("Gagal mengambil gambar QR", "error");
+        return;
+    }
+    const link = document.createElement('a');
+    link.download = `qr_${filename}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+    showToast("✅ QR Code berhasil diunduh", "success");
 }
 
 function copyToClipboard(text) {
@@ -296,7 +360,7 @@ function renderCodesTable() {
                         `<span style="color:#ff9800;">🟢 Aktif</span>
                          ${timeRemaining ? `<br><small style="color:#888;">⏰ ${timeRemaining}</small>` : ''}`
                     }
-                  </td>
+                   </td>
                 <td style="font-size: 12px;">${c.createdAt ? new Date(c.createdAt).toLocaleString('id-ID') : '-'}</td>
                 <td style="font-size: 12px;">${c.userId ? c.userId.substring(0, 20) + '...' : '-'}</td>
                   <td>
@@ -304,7 +368,7 @@ function renderCodesTable() {
                         <button class="btn-icon" onclick="copyToClipboard('${c.code}')" title="Salin Kode" style="background:transparent; border:none; cursor:pointer; color:#4a90e2;">📋</button>
                         <button class="btn-icon delete" onclick="deleteCode('${c.code}')" title="Hapus Kode">🗑️</button>
                     ` : '-'}
-                  </td>
+                   </td>
               </tr>
         `;
     });
@@ -390,7 +454,7 @@ function renderUsersTable() {
         console.log("📭 Tidak ada data users_auth");
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             👥 Belum ada pengguna terdaftar.
-          </td></tr>`;
+           </td></tr>`;
         return;
     }
 
@@ -404,7 +468,7 @@ function renderUsersTable() {
     if (data.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             🔍 Tidak ada pengguna yang cocok dengan pencarian.
-        </td></tr>`;
+         </td></tr>`;
         return;
     }
 
@@ -619,5 +683,6 @@ window.resetSystemData = resetSystemData;
 window.copyToClipboard = copyToClipboard;
 window.resetUserPassword = resetUserPassword;
 window.cleanupUsersSystem = cleanupUsersSystem;
+window.downloadQRCode = downloadQRCode; // Ekspor fungsi download QR
 
-console.log("✅ users.js V3.0 loaded - Event-based (no duplicate listeners)");
+console.log("✅ users.js V3.1 loaded - QR Code generator added");
