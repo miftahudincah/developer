@@ -1,9 +1,9 @@
-// ui.js - VERSION 4.2 (PERBAIKAN: uploadProfilePhoto lebih robust, notifikasi error hanya jika gagal)
+// ui.js - VERSION 4.3 (PERBAIKAN: Grafik dashboard hanya bulan ini, per minggu)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // PERUBAHAN: 
 //   - uploadProfilePhoto aman jika modal belum terbuka
-//   - updateDashboardChart menggunakan canvas weeklyBarChart (sesuai dashboard modern)
-//   - Perbaikan notifikasi error palsu saat ganti foto profil
+//   - updateDashboardChart menampilkan data per minggu dalam BULAN BERJALAN (bukan 12 bulan)
+//   - Menghapus dependensi dropdown tahun (tidak lagi digunakan)
 // ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
@@ -42,7 +42,7 @@ function initApp() {
     loadSchoolLogo();
     updateSchoolLogoUI();
     
-    // Setup chart year listener
+    // Setup chart year listener - TIDAK DIPERLUKAN LAGI (tapi biarkan kosong)
     setupChartYearListener();
     
     // Populate filters dengan guard
@@ -184,14 +184,11 @@ window.addEventListener('uiReady', (e) => {
 // ======================== FUNGSI LAINNYA ========================
 
 function setupChartYearListener() {
+    // Fungsi ini tidak lagi digunakan untuk grafik, tapi biarkan untuk kompatibilitas.
+    // Tapi kita tetap sembunyikan dropdown tahun jika ada.
     const yearSelect = document.getElementById('chartYearSelect');
     if (yearSelect) {
-        const newSelect = yearSelect.cloneNode(true);
-        yearSelect.parentNode.replaceChild(newSelect, yearSelect);
-        newSelect.addEventListener('change', function() {
-            console.log("📅 Year changed to:", this.value);
-            updateDashboardChart();
-        });
+        yearSelect.style.display = 'none';
     }
 }
 
@@ -587,38 +584,9 @@ function debugAttendanceData() {
 }
 
 function updateYearDropdownOptions() {
+    // Tidak digunakan lagi, tapi biarkan untuk kompatibilitas
     const yearSelect = document.getElementById('chartYearSelect');
-    if (!yearSelect) return;
-    
-    const availableYears = new Set();
-    if (dbData && dbData.attendance && dbData.attendance.length > 0) {
-        dbData.attendance.forEach(rec => {
-            if (rec.date) {
-                const year = new Date(rec.date).getFullYear();
-                if (!isNaN(year)) availableYears.add(year);
-            }
-        });
-    }
-    if (availableYears.size === 0) {
-        availableYears.add(2024);
-        availableYears.add(2025);
-        availableYears.add(2026);
-    }
-    const years = Array.from(availableYears).sort((a,b) => b - a);
-    const currentValue = yearSelect.value;
-    const existingOptions = Array.from(yearSelect.options).map(opt => opt.value);
-    for (const year of years) {
-        if (!existingOptions.includes(year.toString())) {
-            const option = document.createElement('option');
-            option.value = year;
-            option.textContent = year;
-            yearSelect.appendChild(option);
-        }
-    }
-    if (!years.includes(parseInt(currentValue)) && years.length > 0) {
-        yearSelect.value = years[0];
-        console.log(`📅 Tahun berubah otomatis dari ${currentValue} ke ${years[0]}`);
-    }
+    if (yearSelect) yearSelect.style.display = 'none';
 }
 
 function renderDashboard() {
@@ -689,17 +657,17 @@ function renderDashboard() {
     console.log("✅ Dashboard rendered successfully");
 }
 
+// ** PERUBAHAN UTAMA: Grafik hanya menampilkan BULAN INI, data per MINGGU **
 function updateDashboardChart() {
     if (dashboardChartRetryTimeout) {
         clearTimeout(dashboardChartRetryTimeout);
         dashboardChartRetryTimeout = null;
     }
 
-    // Cari canvas: prioritas weeklyBarChart (dashboard modern), fallback dashboardBarChart
     let canvas = document.getElementById('weeklyBarChart');
     if (!canvas) canvas = document.getElementById('dashboardBarChart');
     if (!canvas) {
-        console.warn("⚠️ Canvas chart tidak ditemukan (weeklyBarChart/dashboardBarChart), coba lagi nanti...");
+        console.warn("⚠️ Canvas chart tidak ditemukan, coba lagi nanti...");
         dashboardChartRetryTimeout = setTimeout(() => updateDashboardChart(), 500);
         return;
     }
@@ -713,115 +681,79 @@ function updateDashboardChart() {
         return;
     }
 
-    let yearSelect = document.getElementById('chartYearSelect');
-    let selectedYear = 2025;
-    let availableYears = [];
-    if (dbData.attendance.length > 0) {
-        dbData.attendance.forEach(rec => {
-            if (rec.date) {
-                const year = new Date(rec.date).getFullYear();
-                if (!isNaN(year) && !availableYears.includes(year)) {
-                    availableYears.push(year);
-                }
-            }
-        });
-    }
-    
-    if (availableYears.length > 0) {
-        selectedYear = Math.max(...availableYears);
-        console.log(`📅 Tahun data tersedia: ${availableYears.join(', ')}, menggunakan: ${selectedYear}`);
-        if (yearSelect) {
-            for (const year of availableYears) {
-                let optionExists = false;
-                for (let i = 0; i < yearSelect.options.length; i++) {
-                    if (yearSelect.options[i].value == year) {
-                        optionExists = true;
-                        break;
-                    }
-                }
-                if (!optionExists) {
-                    const option = document.createElement('option');
-                    option.value = year;
-                    option.textContent = year;
-                    yearSelect.appendChild(option);
-                }
-            }
-            const currentYear = parseInt(yearSelect.value);
-            if (isNaN(currentYear) || !availableYears.includes(currentYear)) {
-                yearSelect.value = selectedYear;
-                console.log(`📅 Set dropdown ke tahun: ${selectedYear}`);
-            } else {
-                selectedYear = currentYear;
-            }
-        }
-    } else {
-        if (yearSelect && yearSelect.value) {
-            selectedYear = parseInt(yearSelect.value);
-        }
-        console.log(`📅 Tidak ada data, menggunakan tahun dropdown: ${selectedYear}`);
-    }
-    
-    const year = selectedYear;
-    const monthlyHadir = new Array(12).fill(0);
-    const monthlyIzin = new Array(12).fill(0);
-    const monthlyAlpha = new Array(12).fill(0);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-11
 
-    if (dbData.attendance.length > 0) {
-        console.log(`📊 Memproses ${dbData.attendance.length} data absensi untuk chart tahun ${year}`);
-        let dataFound = false;
-        dbData.attendance.forEach(rec => {
-            if (!rec.date) return;
-            const d = new Date(rec.date);
-            if (isNaN(d.getTime())) return;
-            const recordYear = d.getFullYear();
-            const month = d.getMonth();
-            if (recordYear === year) {
-                dataFound = true;
-                let status = rec.status || '';
-                if (status === 'Hadir' || status === 'Pulang') {
-                    monthlyHadir[month]++;
-                } else if (status === 'Izin' || status === 'Sakit') {
-                    monthlyIzin[month]++;
-                } else if (status === 'Alpha') {
-                    monthlyAlpha[month]++;
-                } else if (rec.timeIn) {
-                    monthlyHadir[month]++;
-                }
-            }
-        });
-        const totalDataYear = monthlyHadir.reduce((a,b) => a+b, 0) + 
-                              monthlyIzin.reduce((a,b) => a+b, 0) + 
-                              monthlyAlpha.reduce((a,b) => a+b, 0);
-        if (dataFound) {
-            console.log(`📊 Data untuk tahun ${year}: ${totalDataYear} transaksi`);
-        } else {
-            console.warn(`⚠️ Tidak ada data untuk tahun ${year}. Data tersedia di tahun: ${availableYears.join(', ')}`);
-            if (typeof showToast === 'function') {
-                showToast(`📊 Data absensi tersedia di tahun ${availableYears.join(', ')}. Pilih tahun yang sesuai.`, "info");
-            }
-        }
-    } else {
-        console.warn("⚠️ Tidak ada data absensi!");
-    }
+    // Tentukan hari pertama dan terakhir bulan ini
+    const startOfMonth = new Date(year, month, 1);
+    const endOfMonth = new Date(year, month + 1, 0);
+    const daysInMonth = endOfMonth.getDate();
 
+    // Kelompokkan hari per minggu (1-7, 8-14, 15-21, 22-28, 29-31)
+    const weeks = [[], [], [], [], []]; // maksimal 5 minggu
+    for (let d = 1; d <= daysInMonth; d++) {
+        const weekIndex = Math.floor((d - 1) / 7);
+        if (weekIndex < 5) weeks[weekIndex].push(d);
+    }
+    // Hapus minggu kosong di akhir
+    while (weeks.length > 0 && weeks[weeks.length-1].length === 0) weeks.pop();
+
+    // Inisialisasi data per minggu
+    const weeklyHadir = new Array(weeks.length).fill(0);
+    const weeklyIzin = new Array(weeks.length).fill(0);
+    const weeklyAlpha = new Array(weeks.length).fill(0);
+
+    // Filter data absensi dalam bulan ini
+    const monthAttendance = dbData.attendance.filter(rec => {
+        if (!rec.date) return false;
+        const d = new Date(rec.date);
+        return d.getFullYear() === year && d.getMonth() === month;
+    });
+
+    // Akumulasi ke minggu
+    monthAttendance.forEach(rec => {
+        const day = new Date(rec.date).getDate();
+        let weekIdx = Math.floor((day - 1) / 7);
+        if (weekIdx >= weeks.length) weekIdx = weeks.length - 1;
+        if (weekIdx < 0) weekIdx = 0;
+
+        let status = rec.status || '';
+        if (status === 'Hadir' || status === 'Pulang') {
+            weeklyHadir[weekIdx]++;
+        } else if (status === 'Izin' || status === 'Sakit') {
+            weeklyIzin[weekIdx]++;
+        } else if (status === 'Alpha') {
+            weeklyAlpha[weekIdx]++;
+        } else if (rec.timeIn) {
+            weeklyHadir[weekIdx]++; // fallback
+        }
+    });
+
+    // Label minggu (rentang tanggal)
+    const weekLabels = weeks.map((days, idx) => {
+        if (days.length === 0) return `Minggu ${idx+1}`;
+        const start = days[0];
+        const end = days[days.length-1];
+        return `${start}-${end}`;
+    });
+
+    // Hapus chart lama
     if (dashboardChart) {
-        try {
-            dashboardChart.destroy();
-        } catch(e) {
-            console.warn("Error destroying old chart:", e);
-        }
+        try { dashboardChart.destroy(); } catch(e) {}
         dashboardChart = null;
     }
 
+    // Buat chart baru
     try {
         dashboardChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
+                labels: weekLabels,
                 datasets: [
                     {
                         label: 'Hadir',
-                        data: monthlyHadir,
+                        data: weeklyHadir,
                         backgroundColor: '#00bcd4',
                         borderRadius: 6,
                         barPercentage: 0.7,
@@ -829,7 +761,7 @@ function updateDashboardChart() {
                     },
                     {
                         label: 'Izin/Sakit',
-                        data: monthlyIzin,
+                        data: weeklyIzin,
                         backgroundColor: '#ff9800',
                         borderRadius: 6,
                         barPercentage: 0.7,
@@ -837,7 +769,7 @@ function updateDashboardChart() {
                     },
                     {
                         label: 'Alpha',
-                        data: monthlyAlpha,
+                        data: weeklyAlpha,
                         backgroundColor: '#f44336',
                         borderRadius: 6,
                         barPercentage: 0.7,
@@ -878,10 +810,11 @@ function updateDashboardChart() {
                 }
             }
         });
-        const totalData = monthlyHadir.reduce((a,b) => a+b, 0) + 
-                         monthlyIzin.reduce((a,b) => a+b, 0) + 
-                         monthlyAlpha.reduce((a,b) => a+b, 0);
-        console.log(`✅ Dashboard chart berhasil di-update untuk tahun ${year} (total data: ${totalData})`);
+        const totalData = weeklyHadir.reduce((a,b) => a+b, 0) + 
+                         weeklyIzin.reduce((a,b) => a+b, 0) + 
+                         weeklyAlpha.reduce((a,b) => a+b, 0);
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        console.log(`✅ Dashboard chart berhasil di-update untuk ${monthNames[month]} ${year} (total data: ${totalData})`);
     } catch (err) {
         console.error("❌ Gagal membuat chart:", err);
     }
@@ -1365,4 +1298,4 @@ window.updateDashboardChart = updateDashboardChart;
 window.setupChartYearListener = setupChartYearListener;
 window.updateYearDropdownOptions = updateYearDropdownOptions;
 
-console.log("✅ ui.js V4.2 loaded - Perbaikan upload profile (error handling) & chart canvas");
+console.log("✅ ui.js V4.3 loaded - Grafik per minggu dalam bulan berjalan");

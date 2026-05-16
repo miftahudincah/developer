@@ -1,7 +1,7 @@
-// attendance.js - VERSION 3.1 (PERBAIKAN: RENDER TANPA TAB AKTIF)
+// attendance.js - VERSION 3.2 (PERBAIKAN: SORTING DI RENDER FILTERED TABLE)
 // Mengelola data absensi, filter, validasi delay pulang,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
-// PERUBAHAN: Render tabel selalu dijalankan saat dataReady, tanpa menunggu tab aktif.
+// PERUBAHAN: Menambahkan sorting di renderFilteredTable agar data terbaru paling atas.
 // ============================================================================
 
 // ======================== GLOBAL VARIABLES ========================
@@ -144,7 +144,7 @@ async function renderTable() {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">
             📭 Data absensi tidak ditemukan.
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
-           </td></tr>`;
+            </td></tr>`;
         updateAttendanceStatistics(data);
         updateAttendanceDonutChart();
         return;
@@ -547,9 +547,14 @@ function filterByDateRange(startDate, endDate) {
     renderFilteredTable(filtered);
 }
 
+// PERBAIKAN: Menambahkan sorting agar data terbaru paling atas
 function renderFilteredTable(filteredData) {
     const tbody = document.getElementById('tbody-attendance');
     if (!tbody) return;
+    
+    // 🔽 SORTIR DESCENDING BERDASARKAN TIMESTAMP (TERBARU DI ATAS)
+    filteredData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
     tbody.innerHTML = '';
     if (filteredData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada data dalam rentang tanggal tersebut.</td></tr>`;
@@ -771,4 +776,4 @@ window.loadAbsenceList = loadAbsenceList;
 window.saveAllAbsenceStatus = saveAllAbsenceStatus;
 window.updateAttendanceDonutChart = updateAttendanceDonutChart;
 
-console.log("✅ attendance.js V3.1 loaded - Render tanpa conditional tab aktif");
+console.log("✅ attendance.js V3.2 loaded - Added sorting in renderFilteredTable");
