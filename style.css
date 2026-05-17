@@ -34,12 +34,12 @@
 }
 
 body {
-    /* Ganti font dengan Inter yang lebih modern */
     font-family: 'Inter', 'Segoe UI', 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
     background: linear-gradient(135deg, #0a0a0f 0%, #12121a 100%);
     color: var(--text-primary);
     min-height: 100vh;
     line-height: 1.5;
+    padding-bottom: 70px; /* Space untuk footer dan floating buttons */
 }
 
 /* ==================== LIGHT MODE THEME ==================== */
@@ -498,6 +498,7 @@ textarea {
     max-width: 1400px;
     margin: 0 auto;
     padding: 16px;
+    padding-bottom: 80px;
 }
 
 .header-bar {
@@ -844,10 +845,10 @@ tr:hover {
     color: #121212;
 }
 
-/* ==================== FLOATING BUTTONS ==================== */
+/* ==================== FLOATING BUTTONS - VERSI MOBILE AMAN ==================== */
 .floating-announcement-btn,
-.floating-friends-btn,
-.floating-chat-btn {
+.floating-chat-btn,
+.floating-friends-btn {
     position: fixed;
     width: 52px;
     height: 52px;
@@ -856,34 +857,82 @@ tr:hover {
     align-items: center;
     justify-content: center;
     font-size: 24px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    z-index: 200;
-    transition: all 0.2s ease-in-out;
-    will-change: transform;
-}
-
-.floating-announcement-btn:hover,
-.floating-friends-btn:hover,
-.floating-chat-btn:hover {
-    transform: scale(1.08);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    z-index: 990;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: none;
 }
 
 .floating-announcement-btn {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
     bottom: 20px;
     right: 20px;
-    background: linear-gradient(135deg, var(--primary), var(--secondary));
-}
-
-.floating-friends-btn {
-    bottom: 20px;
-    left: 20px;
-    background: linear-gradient(135deg, #4a90e2, #357abd);
 }
 
 .floating-chat-btn {
+    background: linear-gradient(135deg, #4caf50, #2e7d32);
     bottom: 20px;
     right: 90px;
-    background: linear-gradient(135deg, #4caf50, #2e7d32);
+}
+
+.floating-friends-btn {
+    background: linear-gradient(135deg, #4a90e2, #357abd);
+    bottom: 20px;
+    left: 20px;
+}
+
+/* Hover effect untuk desktop */
+@media (min-width: 769px) {
+    .floating-announcement-btn:hover,
+    .floating-chat-btn:hover,
+    .floating-friends-btn:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    }
+}
+
+/* Responsive Mobile - Tombol tidak menghalangi konten */
+@media (max-width: 768px) {
+    .floating-announcement-btn,
+    .floating-chat-btn,
+    .floating-friends-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 20px;
+        bottom: 70px; /* Naikkan ke atas footer */
+    }
+    
+    /* Posisi vertikal (bertumpuk di kanan) - lebih aman untuk mobile */
+    .floating-announcement-btn {
+        right: 15px;
+        bottom: 70px;
+    }
+    
+    .floating-chat-btn {
+        right: 15px;
+        bottom: 130px;
+    }
+    
+    .floating-friends-btn {
+        left: 15px;
+        bottom: 70px;
+    }
+}
+
+@media (max-width: 480px) {
+    .floating-announcement-btn,
+    .floating-chat-btn,
+    .floating-friends-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+        bottom: 65px;
+    }
+    
+    .floating-chat-btn {
+        bottom: 120px;
+    }
 }
 
 /* Badge untuk notifikasi */
@@ -903,6 +952,59 @@ tr:hover {
     align-items: center;
     justify-content: center;
     font-weight: bold;
+}
+
+/* ==================== BRANDING FOOTER (TIDAK MENGHALANGI) ==================== */
+.branding-footer {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(18, 18, 26, 0.75);
+    backdrop-filter: blur(8px);
+    padding: 6px 14px 6px 10px;
+    border-radius: 40px;
+    border: 1px solid rgba(0, 188, 212, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+    transition: opacity 0.3s ease;
+    font-size: 0.7rem;
+    pointer-events: none;
+}
+
+.branding-footer:hover {
+    opacity: 0.9;
+    background: rgba(18, 18, 26, 0.9);
+}
+
+.branding-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--primary);
+}
+
+.branding-text {
+    color: var(--text-primary);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .branding-footer {
+        bottom: 8px;
+        left: 8px;
+        padding: 4px 10px 4px 8px;
+        font-size: 0.6rem;
+    }
+    .branding-logo {
+        width: 20px;
+        height: 20px;
+    }
 }
 
 /* ==================== DASHBOARD MODERN (BARU) ==================== */
@@ -2127,30 +2229,6 @@ hr {
         margin-top: 8px;
     }
     
-    .floating-friends-btn {
-        bottom: 20px;
-        left: 20px;
-        width: 48px;
-        height: 48px;
-        font-size: 22px;
-    }
-    
-    .floating-announcement-btn {
-        bottom: 20px;
-        right: 20px;
-        width: 48px;
-        height: 48px;
-        font-size: 22px;
-    }
-    
-    .floating-chat-btn {
-        bottom: 20px;
-        right: 80px;
-        width: 48px;
-        height: 48px;
-        font-size: 22px;
-    }
-    
     .chat-container {
         flex-direction: column;
         height: auto;
@@ -2195,6 +2273,7 @@ hr {
 @media (max-width: 480px) {
     #dashboard-section {
         padding: 12px;
+        padding-bottom: 80px;
     }
     
     .header-bar {
@@ -2264,29 +2343,6 @@ hr {
     /* Chat bubble lebih lebar di HP */
     .chat-message-bubble {
         max-width: 90%;
-    }
-    
-    /* Floating button jarak lebih kecil di HP kecil */
-    .floating-friends-btn {
-        bottom: 16px;
-        left: 16px;
-        width: 44px;
-        height: 44px;
-        font-size: 20px;
-    }
-    .floating-chat-btn {
-        bottom: 16px;
-        right: 70px;
-        width: 44px;
-        height: 44px;
-        font-size: 20px;
-    }
-    .floating-announcement-btn {
-        bottom: 16px;
-        right: 16px;
-        width: 44px;
-        height: 44px;
-        font-size: 20px;
     }
     
     /* Canvas jangan overflow */
@@ -2460,8 +2516,6 @@ hr {
 }
 
 /* ==================== PERBAIKAN TAMPILAN ABSENSI UNTUK ANDROID ==================== */
-
-/* Kontrol bar di tab absensi - lebih rapi di mobile */
 #tab-attendance .controls-bar {
     display: flex;
     flex-direction: column;
@@ -2473,7 +2527,6 @@ hr {
     margin-bottom: 20px;
 }
 
-/* Baris filter (kelas, jurusan, tanggal) */
 #tab-attendance .controls-bar > div:first-child {
     display: flex;
     flex-wrap: wrap;
@@ -2481,7 +2534,6 @@ hr {
     justify-content: space-between;
 }
 
-/* Setiap grup filter */
 #tab-attendance .filter-group {
     flex: 1;
     min-width: 100px;
@@ -2508,7 +2560,6 @@ hr {
     font-weight: 500;
 }
 
-/* Container tombol aksi */
 #tab-attendance .controls-bar > div:last-child {
     display: flex;
     flex-wrap: wrap;
@@ -2517,7 +2568,6 @@ hr {
     margin-top: 8px;
 }
 
-/* Tombol aksi menjadi lebih besar dan mudah disentuh */
 #tab-attendance .controls-bar .btn-action {
     flex: 1 0 auto;
     min-width: 130px;
@@ -2528,7 +2578,6 @@ hr {
     text-align: center;
 }
 
-/* Statistik absensi (ringkasan hari ini) */
 #attendanceStats {
     background: var(--bg-card);
     border-radius: 20px;
@@ -2549,7 +2598,6 @@ hr {
     border-radius: 16px;
 }
 
-/* Container chart ringkasan hari ini */
 #tab-attendance .chart-container > div {
     display: flex;
     flex-direction: column;
@@ -2562,7 +2610,6 @@ hr {
     margin: 0 auto;
 }
 
-/* Tabel responsif - horizontal scroll tetap, tapi dengan padding lebih baik */
 #tab-attendance .table-container {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -2581,7 +2628,6 @@ hr {
     white-space: nowrap;
 }
 
-/* Tombol hapus di tabel */
 .btn-icon.delete {
     background: rgba(244, 67, 54, 0.1);
     border-radius: 30px;
@@ -2589,7 +2635,6 @@ hr {
     font-size: 1rem;
 }
 
-/* Responsive lebih kecil */
 @media (max-width: 600px) {
     #tab-attendance .filter-group {
         flex: 1 1 100%;
@@ -2612,14 +2657,11 @@ hr {
     }
 }
 
-/* ==================== PERBAIKAN WARNA TEKS DI TAB USERS (GENERATE KODE) ==================== */
-
-/* Container utama tab users */
+/* ==================== PERBAIKAN WARNA TEKS DI TAB USERS ==================== */
 #tab-users {
     color: var(--text-primary);
 }
 
-/* Key box (bagian generate kode) */
 #tab-users .key-box {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -2628,20 +2670,17 @@ hr {
     margin-bottom: 20px;
 }
 
-/* Label radio button dan teks di dalam key-box */
 #tab-users .key-box label,
 #tab-users .key-box .text-small,
 #tab-users .key-box small {
     color: var(--text-secondary);
 }
 
-/* Radio button label text */
 #tab-users .key-box label {
     color: var(--text-primary);
     font-weight: 500;
 }
 
-/* Dropdown select siswa */
 #tab-users #selectStudentForCode {
     background: var(--bg-hover);
     border: 1px solid var(--border);
@@ -2657,7 +2696,6 @@ hr {
     color: var(--text-primary);
 }
 
-/* Tombol generate kode */
 #tab-users .btn-secondary {
     background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
     color: #121212;
@@ -2667,7 +2705,6 @@ hr {
     border-radius: 40px;
 }
 
-/* Display generated key (hasil generate kode) */
 #generatedKeyDisplay {
     background: var(--bg-card);
     border-radius: 20px;
@@ -2691,7 +2728,6 @@ hr {
     color: white;
 }
 
-/* Tabel daftar kode aktif */
 #tbody-codes td,
 #tbody-codes th {
     color: var(--text-primary);
@@ -2707,7 +2743,6 @@ hr {
     background: rgba(255, 152, 0, 0.1);
 }
 
-/* Status badge pada kode */
 #tbody-codes td span[style*="color:#4caf50"] {
     color: #4caf50 !important;
 }
@@ -2716,13 +2751,11 @@ hr {
     color: #ff9800 !important;
 }
 
-/* Teks kecil seperti "Aktif" dan waktu */
 #tbody-codes .text-small,
 #tbody-codes small {
     color: var(--text-muted);
 }
 
-/* Tombol aksi di tabel kode */
 #tbody-codes .btn-icon {
     background: transparent;
     color: var(--primary);
@@ -2734,7 +2767,6 @@ hr {
     color: var(--danger);
 }
 
-/* Dropdown di tabel users */
 #tbody-users select.form-control {
     background: var(--bg-hover);
     border: 1px solid var(--border);
@@ -2743,7 +2775,6 @@ hr {
     padding: 6px;
 }
 
-/* Responsive tambahan untuk layar kecil */
 @media (max-width: 600px) {
     #tab-users .key-box {
         flex-direction: column;
@@ -2758,58 +2789,5 @@ hr {
     #generatedKeyDisplay div div {
         font-size: 0.9rem;
         word-break: break-all;
-    }
-}
-
-/* ==================== BRANDING FOOTER (TIDAK MENGHALANGI TOMBOL CHAT) ==================== */
-.branding-footer {
-    position: fixed;
-    bottom: 12px;
-    left: 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(18, 18, 26, 0.75);
-    backdrop-filter: blur(8px);
-    padding: 6px 14px 6px 10px;
-    border-radius: 40px;
-    border: 1px solid rgba(0, 188, 212, 0.3);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    z-index: 100;
-    transition: opacity 0.3s ease;
-    font-size: 0.7rem;
-    pointer-events: none;
-}
-
-.branding-footer:hover {
-    opacity: 0.9;
-    background: rgba(18, 18, 26, 0.9);
-}
-
-.branding-logo {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 1px solid var(--primary);
-}
-
-.branding-text {
-    color: var(--text-primary);
-    font-weight: 500;
-    letter-spacing: 0.3px;
-    white-space: nowrap;
-}
-
-@media (max-width: 480px) {
-    .branding-footer {
-        bottom: 8px;
-        left: 8px;
-        padding: 4px 10px 4px 8px;
-        font-size: 0.6rem;
-    }
-    .branding-logo {
-        width: 20px;
-        height: 20px;
     }
 }

@@ -262,7 +262,7 @@
                 <div class="search-box"><input type="text" id="searchStudentName" placeholder="🔍 Cari nama siswa..." oninput="renderStudentsTable()"></div>
             </div>
             <div class="table-container">
-                <tr>
+                <table>
                     <thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
                     <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr></tbody>
                 </table>
@@ -362,10 +362,10 @@
                 </div>
                 <hr>
                 <div class="form-group"><label>🏫 Nama Sekolah</label><div style="display:flex; gap:10px;"><input type="text" id="inputSchoolName" placeholder="Nama Sekolah" style="flex:1;"><button class="btn-action btn-primary role-admin" onclick="saveSchoolName()">Simpan</button></div></div>
-                <div class="form-group"><label>📋 Tipe Sekolah</label><div style="display:flex; gap:10px;"><select id="schoolTypeSelect" style="flex:1;"><option value="smp">SMP</option><option value="smk">SMK</option><option value="both">SMP & SMK</option></select><button class="btn-action btn-primary role-admin" onclick="saveSchoolType()">Simpan</button></div></div>
+                <div class="form-group"><label>📋 Tipe Sekolah</label><div style="display:flex; gap:10px;"><select id="schoolTypeSelect" style="flex:1;"><option value="smp">SMP</option><option value="smk">SMK</option><option value="both">SMP & SMK</option></select><button class="btn-action btn-primary role-admin" id="btnSaveSchoolType" onclick="saveSchoolType()">Simpan</button></div></div>
                 <hr>
-                <div id="classesManager"><h4>📚 Daftar Kelas</h4><div id="classesList" style="margin-bottom:10px; min-height:50px;"></div><div style="display:flex; gap:10px; flex-wrap:wrap;"><input type="text" id="newClassInput" placeholder="Contoh: VII A, X RPL" style="flex:2;"><button class="btn-action btn-success role-admin" onclick="addClass()">➕ Tambah</button><button class="btn-action btn-primary role-admin" onclick="saveClasses()">💾 Simpan</button></div></div>
-                <div id="majorsManager" style="display:none;"><h4>🎓 Daftar Jurusan (SMK)</h4><div id="majorsList" style="margin-bottom:10px; min-height:50px;"></div><div style="display:flex; gap:10px;"><input type="text" id="newMajorInput" placeholder="Contoh: RPL, TKJ" style="flex:2;"><button class="btn-action btn-success role-admin" onclick="addMajor()">➕ Tambah</button><button class="btn-action btn-primary role-admin" onclick="saveMajors()">💾 Simpan</button></div></div>
+                <div id="classesManager"><h4>📚 Daftar Kelas</h4><div id="classesList" style="margin-bottom:10px; min-height:50px;"></div><div style="display:flex; gap:10px; flex-wrap:wrap;"><input type="text" id="newClassInput" placeholder="Contoh: VII A, X RPL" style="flex:2;"><button class="btn-action btn-success role-admin" onclick="addClass()">➕ Tambah</button><button class="btn-action btn-primary role-admin" id="btnSaveClasses" onclick="saveClasses()">💾 Simpan</button></div></div>
+                <div id="majorsManager" style="display:none;"><h4>🎓 Daftar Jurusan (SMK)</h4><div id="majorsList" style="margin-bottom:10px; min-height:50px;"></div><div style="display:flex; gap:10px;"><input type="text" id="newMajorInput" placeholder="Contoh: RPL, TKJ" style="flex:2;"><button class="btn-action btn-success role-admin" onclick="addMajor()">➕ Tambah</button><button class="btn-action btn-primary role-admin" id="btnSaveMajors" onclick="saveMajors()">💾 Simpan</button></div></div>
                 <hr>
                 <div class="form-group"><label>⏰ Delay Pulang Global</label><div style="display:flex; gap:10px; flex-wrap:wrap;"><select id="globalDelayUnit"><option value="minutes">Menit</option><option value="hours">Jam</option></select><div id="globalDelayMinutesGroup"><input type="number" id="globalDelayMinutesValue" value="60" style="width:80px;"> menit</div><div id="globalDelayHoursGroup" style="display:none;"><select id="globalDelayHoursValue" style="width:80px;"></select> jam</div><button class="btn-action btn-primary role-admin" onclick="saveGlobalDelay()">Simpan</button></div><div><small>Delay saat ini: <strong id="globalDelayDisplay">60 menit</strong></small></div></div>
                 
@@ -433,19 +433,31 @@
         </div>
     </div>
 
-    <!-- SCRIPTS -->
+    <!-- SCRIPTS - URUTAN SANGAT PENTING! -->
+    <!-- 1. Core Firebase & Konfigurasi -->
     <script src="js/config.js"></script>
     <script src="js/db.js"></script>
+    
+    <!-- 2. Auth & UI Dasar -->
     <script src="js/auth.js"></script>
     <script src="js/ui.js"></script>
+    
+    <!-- 3. Modul Data (INIT HARUS SEBELUM attendance.js) -->
+    <script src="js/init.js"></script>
+    
+    <!-- 4. Modul Utama (Attendance HARUS sebelum students.js) -->
     <script src="js/attendance.js"></script>
     <script src="js/students.js"></script>
     <script src="js/users.js"></script>
     <script src="js/setting.js"></script>
+    
+    <!-- 5. Modul Fitur Lainnya -->
     <script src="js/announcement.js"></script>
     <script src="js/friends.js"></script>
     <script src="js/status.js"></script>
     <script src="js/chat.js"></script>
+    
+    <!-- 6. Main & Rekap (PALING AKHIR) -->
     <script src="js/main.js"></script>
     <script src="js/rekap.js"></script>
 
@@ -507,14 +519,6 @@
                 periodSelect.addEventListener('change',toggleCustomRange); 
                 toggleCustomRange();
             }
-            
-            // Populate dropdowns setelah data siap (akan dipanggil oleh init.js)
-            setTimeout(function(){ 
-                if(typeof populateFilters==='function') populateFilters(); 
-                if(typeof populateStudentFilters==='function') populateStudentFilters(); 
-                if(typeof populateKelasOptions==='function') populateKelasOptions(); 
-                if(typeof populateJurusanOptions==='function') populateJurusanOptions(); 
-            },200);
 
             // ==================== LIGHT/DARK MODE TOGGLE ====================
             function applyTheme(theme) {
