@@ -1,4 +1,4 @@
-// init.js - VERSION 4.3 (PERBAIKAN: JANGAN RESET SCHOOL CONFIG KE DEFAULT)
+// init.js - VERSION 4.5 (PERBAIKAN: SCHOOL CONFIG SYNC DAN FORCE POPULATE)
 // INISIALISASI DATA DENGAN FLAG SYSTEM + EVENT DATA READY
 // ============================================================================
 
@@ -26,7 +26,7 @@ function checkAllDataReady() {
         console.log("✅ All data ready, initializing app...");
         appInitialized = true;
         
-        // Dispatch event dataReady untuk modul lain (rekap, friends, chat, status, sensor)
+        // Dispatch event dataReady untuk modul lain
         if (!window._dataReadyDispatched) {
             window._dataReadyDispatched = true;
             console.log("📡 Dispatching 'dataReady' event to all modules...");
@@ -50,9 +50,75 @@ function checkAllDataReady() {
     }
 }
 
+// Sync school config ke semua tempat yang membutuhkan
+function syncSchoolConfigToAll() {
+    console.log("🔄 Syncing school config to all modules...");
+    
+    // Pastikan window.currentSchoolConfig sudah ada
+    if (!window.currentSchoolConfig) {
+        window.currentSchoolConfig = {
+            type: 'smp',
+            majors: [],
+            classes: ['VII', 'VIII', 'IX']
+        };
+    }
+    
+    // Sync ke currentSchoolConfig di setting.js (jika ada)
+    if (typeof currentSchoolConfig !== 'undefined') {
+        currentSchoolConfig.type = window.currentSchoolConfig.type;
+        currentSchoolConfig.majors = [...window.currentSchoolConfig.majors];
+        currentSchoolConfig.classes = [...window.currentSchoolConfig.classes];
+        console.log(`✅ Synced currentSchoolConfig: type=${currentSchoolConfig.type}`);
+    }
+    
+    // Sync ke window (pastikan)
+    window.currentSchoolConfig = {
+        type: window.currentSchoolConfig.type,
+        majors: [...window.currentSchoolConfig.majors],
+        classes: [...window.currentSchoolConfig.classes]
+    };
+    
+    // Update UI dropdown tipe sekolah
+    const typeSelect = document.getElementById('schoolTypeSelect');
+    if (typeSelect && typeSelect.value !== window.currentSchoolConfig.type) {
+        typeSelect.value = window.currentSchoolConfig.type;
+        console.log(`📋 Set schoolTypeSelect to: ${window.currentSchoolConfig.type}`);
+    }
+    
+    // Update majors manager visibility
+    const majorsDiv = document.getElementById('majorsManager');
+    if (majorsDiv) {
+        const shouldShow = (window.currentSchoolConfig.type === 'smk' || window.currentSchoolConfig.type === 'both');
+        majorsDiv.style.display = shouldShow ? 'block' : 'none';
+        console.log(`📋 Majors manager visibility: ${shouldShow ? 'show' : 'hide'}`);
+    }
+    
+    // Render daftar kelas dan jurusan
+    if (typeof renderClassesList === 'function') {
+        renderClassesList();
+    }
+    if (typeof renderMajorsList === 'function') {
+        renderMajorsList();
+    }
+    
+    // Force populate semua dropdown
+    setTimeout(() => {
+        console.log("🔄 Force repopulating all dropdowns after school config sync...");
+        if (typeof populateKelasOptions === 'function') populateKelasOptions();
+        if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
+        if (typeof populateStudentFilters === 'function') populateStudentFilters();
+        if (typeof populateFilters === 'function') populateFilters();
+        if (typeof populateDateFilter === 'function') populateDateFilter();
+        if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
+    }, 50);
+}
+
 // Render semua komponen setelah data siap
 function renderAllData() {
     console.log("🎨 renderAllData - Rendering all components...");
+    
+    // Pastikan school config sudah di-sync sebelum populate
+    syncSchoolConfigToAll();
     
     // 1. Populate semua dropdown dinamis
     if (typeof populateKelasOptions === 'function') {
@@ -74,7 +140,7 @@ function renderAllData() {
         try { populateStudentSelectForCode(); } catch(e) { console.warn("populateStudentSelectForCode error:", e); }
     }
     
-    // 2. Render semua tabel (selalu, tanpa conditional)
+    // 2. Render semua tabel
     if (typeof renderStudentsTable === 'function') {
         try { renderStudentsTable(); } catch(e) { console.warn("renderStudentsTable error:", e); }
     }
@@ -131,7 +197,6 @@ function setupRekapDefaultDates() {
 }
 
 // ======================== LISTENER INITIALIZATION ========================
-// HANYA SATU KALI - TIDAK DUPLIKAT DENGAN main.js
 
 function initDataListeners() {
     if (initListenersAttached) {
@@ -280,87 +345,129 @@ function initDataListeners() {
         }
     });
     
-    // ========== 4. LISTENER SCHOOL CONFIG (DIPERBAIKI - TIDAK RESET KE DEFAULT) ==========
+    // ========== 4. LISTENER SCHOOL CONFIG (DIPERBAIKI) ==========
     db.ref('school_config').on('value', (snapshot) => {
         const data = snapshot.val();
         
-        // Cek apakah ada data di Firebase
-        if (data && Object.keys(data).length > 0) {
-            // Data ditemukan di Firebase, gunakan data tersebut
-            console.log("🏫 School config found in Firebase:", data);
+        console.log("📡 School config listener triggered, data from Firebase:", JSON.stringify(data));
+        
+        // 🔥 CEK APAKAH ADA DATA DI FIREBASE
+        if (data && typeof data === 'object') {
+            // Data ditemukan di Firebase
+            const configType = data.type || 'smp';
+            const configClasses = data.classes || [];
+            const configMajors = data.majors || [];
             
-            if (typeof currentSchoolConfig !== 'undefined') {
-                currentSchoolConfig.type = data.type || 'smp';
-                currentSchoolConfig.majors = data.majors || [];
-                currentSchoolConfig.classes = data.classes || [];
-            }
+            console.log(`🏫 School config LOADED from Firebase: type=${configType}, classes=${configClasses.length}, majors=${configMajors.length}`);
+            if (configClasses.length > 0) console.log(`   Classes: ${configClasses.join(', ')}`);
+            if (configMajors.length > 0) console.log(`   Majors: ${configMajors.join(', ')}`);
             
+            // 🔥 UPDATE window.currentSchoolConfig (global)
             window.currentSchoolConfig = {
-                type: data.type || 'smp',
-                majors: data.majors || [],
-                classes: data.classes || []
+                type: configType,
+                majors: [...configMajors],
+                classes: [...configClasses]
             };
             
+            // 🔥 UPDATE variabel currentSchoolConfig di setting.js (jika ada)
+            if (typeof currentSchoolConfig !== 'undefined') {
+                currentSchoolConfig.type = configType;
+                currentSchoolConfig.majors = [...configMajors];
+                currentSchoolConfig.classes = [...configClasses];
+                console.log(`✅ Updated currentSchoolConfig (setting.js): type=${currentSchoolConfig.type}`);
+            }
+            
+            // 🔥 PANGGIL fungsi sync ke semua tempat
+            if (typeof syncSchoolConfigToWindow === 'function') {
+                syncSchoolConfigToWindow();
+                console.log("✅ Called syncSchoolConfigToWindow()");
+            }
+            
             isSchoolConfigLoadedFromFirebase = true;
-            console.log(`✅ School config loaded from Firebase: type=${window.currentSchoolConfig.type}, classes=${window.currentSchoolConfig.classes.length}, majors=${window.currentSchoolConfig.majors.length}`);
+            
+            // 🔥 UPDATE UI dropdown tipe sekolah
+            const typeSelect = document.getElementById('schoolTypeSelect');
+            if (typeSelect) {
+                if (typeSelect.value !== configType) {
+                    typeSelect.value = configType;
+                    console.log(`📋 Set schoolTypeSelect to: ${configType}`);
+                } else {
+                    console.log(`📋 schoolTypeSelect already = ${configType}`);
+                }
+            } else {
+                console.warn("⚠️ schoolTypeSelect not found in DOM yet");
+            }
+            
+            // Update majors manager visibility
+            const majorsDiv = document.getElementById('majorsManager');
+            if (majorsDiv) {
+                const shouldShow = (configType === 'smk' || configType === 'both');
+                majorsDiv.style.display = shouldShow ? 'block' : 'none';
+                console.log(`📋 Majors manager visibility: ${shouldShow ? 'show' : 'hide'}`);
+            }
+            
+            // Render daftar kelas dan jurusan
+            if (typeof renderClassesList === 'function') {
+                renderClassesList();
+            }
+            if (typeof renderMajorsList === 'function') {
+                renderMajorsList();
+            }
             
         } else {
-            // TIDAK ADA data di Firebase - JANGAN RESET KE DEFAULT
-            // Biarkan config yang sudah ada (dari memory) tetap digunakan
-            console.log("⚠️ No school config in Firebase, keeping existing config");
+            // TIDAK ADA data di Firebase
+            console.log("⚠️ No school config found in Firebase");
             
             if (!window.currentSchoolConfig) {
-                // Hanya jika benar-benar belum ada config sama sekali, baru buat default sementara
+                // Buat default config
                 window.currentSchoolConfig = {
                     type: 'smp',
                     majors: [],
                     classes: ['VII', 'VIII', 'IX']
                 };
-                console.log("📚 Created temporary default school config");
+                console.log("📚 Created default school config");
+                
+                // Simpan default ke Firebase
+                db.ref('school_config').set({
+                    type: 'smp',
+                    classes: ['VII', 'VIII', 'IX'],
+                    majors: []
+                }).then(() => {
+                    console.log("✅ Default config saved to Firebase");
+                }).catch(err => {
+                    console.error("❌ Failed to save default config:", err);
+                });
+            } else {
+                console.log(`📚 Keeping existing config: type=${window.currentSchoolConfig.type}`);
             }
             
-            // Tandai tetap sebagai siap (biarkan config yang ada digunakan)
+            // Update currentSchoolConfig jika perlu
+            if (typeof currentSchoolConfig !== 'undefined' && !currentSchoolConfig.type) {
+                currentSchoolConfig.type = window.currentSchoolConfig.type;
+                currentSchoolConfig.majors = [...window.currentSchoolConfig.majors];
+                currentSchoolConfig.classes = [...window.currentSchoolConfig.classes];
+            }
+            
             isSchoolConfigLoadedFromFirebase = false;
         }
         
         dataReady.schoolConfig = true;
         checkAllDataReady();
         
-        // Update UI (tanpa conditional)
-        const typeSelect = document.getElementById('schoolTypeSelect');
-        if (typeSelect && window.currentSchoolConfig) {
-            typeSelect.value = window.currentSchoolConfig.type;
-        }
+        // 🔥 Populate semua dropdown setelah config dimuat (dengan delay)
+        setTimeout(() => {
+            console.log("🔄 Populating all dropdowns after school config loaded...");
+            if (typeof populateKelasOptions === 'function') populateKelasOptions();
+            if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
+            if (typeof populateStudentFilters === 'function') populateStudentFilters();
+            if (typeof populateFilters === 'function') populateFilters();
+            if (typeof populateDateFilter === 'function') populateDateFilter();
+            if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
+        }, 150);
         
-        const majorsDiv = document.getElementById('majorsManager');
-        if (majorsDiv && window.currentSchoolConfig) {
-            majorsDiv.style.display = (window.currentSchoolConfig.type === 'smk' || window.currentSchoolConfig.type === 'both') ? 'block' : 'none';
-        }
-        
-        if (typeof renderMajorsList === 'function') {
-            renderMajorsList();
-        }
-        if (typeof renderClassesList === 'function') {
-            renderClassesList();
-        }
-        if (typeof populateKelasOptions === 'function') {
-            populateKelasOptions();
-        }
-        if (typeof populateJurusanOptions === 'function') {
-            populateJurusanOptions();
-        }
-        if (typeof populateStudentFilters === 'function') {
-            populateStudentFilters();
-        }
-        if (typeof populateFilters === 'function') {
-            populateFilters();
-        }
-        if (typeof populateDateFilter === 'function') {
-            populateDateFilter();
-        }
-        
+        // Refresh rekap jika perlu
         if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
-            setTimeout(() => loadRekap(), 100);
+            setTimeout(() => loadRekap(), 200);
         }
     });
     
@@ -368,6 +475,9 @@ function initDataListeners() {
     db.ref('settings/delayOut').on('value', (snapshot) => {
         const delay = snapshot.val();
         console.log(`⏰ Global delay: ${delay || 60} minutes`);
+        
+        // Simpan ke global variable
+        window.globalDelayValue = delay || 60;
         
         const displaySpan = document.getElementById('globalDelayDisplay');
         if (displaySpan) {
@@ -492,5 +602,6 @@ window.renderAllData = renderAllData;
 window.setupRekapDefaultDates = setupRekapDefaultDates;
 window.initDataListeners = initDataListeners;
 window.cleanupInitListeners = cleanupInitListeners;
+window.syncSchoolConfigToAll = syncSchoolConfigToAll;
 
-console.log("✅ init.js V4.3 loaded - Fixed: Don't reset school config to default when no data in Firebase");
+console.log("✅ init.js V4.5 loaded - Fixed school config sync and force populate");

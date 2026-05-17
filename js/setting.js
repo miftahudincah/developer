@@ -1,12 +1,13 @@
-// setting.js - VERSION 3.2 (PERBAIKAN: PASTIKAN KONFIG TERSIMPAN)
+// setting.js - VERSION 3.4 (PERBAIKAN: FORCE SYNC & RELOAD SCHOOL CONFIG)
 // PENGATURAN SEKOLAH (SCHOOL CONFIG) & DELAY GLOBAL
 // Dengan dukungan manajemen KELAS dan JURUSAN yang bisa diedit
 // SENSOR STATUS: Dipisahkan ke modul sendiri (tetap di sini untuk kemudahan)
 // PERUBAHAN: 
-//   - Memastikan window.currentSchoolConfig selalu sinkron dengan currentSchoolConfig
+//   - Menambahkan forceReloadSchoolConfig() untuk debugging
+//   - Memperbaiki syncSchoolConfigToWindow() dengan return promise
 //   - Menambahkan retry mechanism untuk populate functions
 //   - Memperkuat event listener untuk school config
-//   - PERBAIKAN: Tidak mereset config ke default saat tidak ada data di Firebase
+//   - PERBAIKAN: saveSchoolType sekarang menyimpan ke Firebase dengan benar
 // ============================================================================
 
 let currentSchoolConfig = {
@@ -19,7 +20,7 @@ let settingDataReadyListenerAdded = false;
 let settingUiReadyListenerAdded = false;
 let isSchoolConfigLoaded = false;
 
-// Pastikan window.currentSchoolConfig selalu sinkron
+// Pastikan window.currentSchoolConfig selalu sinkron (dengan return promise)
 function syncSchoolConfigToWindow() {
     window.currentSchoolConfig = {
         type: currentSchoolConfig.type,
@@ -29,6 +30,93 @@ function syncSchoolConfigToWindow() {
     console.log("🔄 Synced school config to window:", window.currentSchoolConfig.type, 
                 "classes:", window.currentSchoolConfig.classes.length,
                 "majors:", window.currentSchoolConfig.majors.length);
+    
+    // Update UI dropdown setelah sync
+    const typeSelect = document.getElementById('schoolTypeSelect');
+    if (typeSelect && typeSelect.value !== currentSchoolConfig.type) {
+        typeSelect.value = currentSchoolConfig.type;
+        console.log(`📋 Set schoolTypeSelect to: ${currentSchoolConfig.type}`);
+    }
+    
+    // Update majors manager visibility
+    const majorsDiv = document.getElementById('majorsManager');
+    if (majorsDiv) {
+        const shouldShow = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both');
+        majorsDiv.style.display = shouldShow ? 'block' : 'none';
+    }
+    
+    return window.currentSchoolConfig;
+}
+
+// Fungsi untuk memaksa reload school config dari Firebase
+function forceReloadSchoolConfig() {
+    console.log("🔄 Force reloading school config from Firebase...");
+    
+    if (!currentUser || currentUser.role !== 'admin') {
+        showToast("⛔ Hanya admin yang dapat me-refresh config!", "error");
+        return;
+    }
+    
+    const btn = event?.target;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Memuat...';
+    }
+    
+    db.ref('school_config').once('value').then((snapshot) => {
+        const data = snapshot.val();
+        console.log("📡 Force reload result:", JSON.stringify(data));
+        
+        if (data && typeof data === 'object') {
+            const configType = data.type || 'smp';
+            const configClasses = data.classes || [];
+            const configMajors = data.majors || [];
+            
+            console.log(`🏫 Reloaded config: type=${configType}, classes=${configClasses.length}, majors=${configMajors.length}`);
+            
+            // Update local config
+            currentSchoolConfig.type = configType;
+            currentSchoolConfig.majors = [...configMajors];
+            currentSchoolConfig.classes = [...configClasses];
+            
+            // Sync ke window
+            syncSchoolConfigToWindow();
+            
+            // Update UI
+            updateSchoolTypeUI();
+            renderClassesList();
+            renderMajorsList();
+            
+            // Force populate semua dropdown
+            setTimeout(() => {
+                console.log("🔄 Force repopulating all dropdowns after force reload...");
+                if (typeof populateKelasOptions === 'function') populateKelasOptions();
+                if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
+                if (typeof populateStudentFilters === 'function') populateStudentFilters();
+                if (typeof populateFilters === 'function') populateFilters();
+                if (typeof populateDateFilter === 'function') populateDateFilter();
+                if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
+            }, 100);
+            
+            // Refresh rekap jika perlu
+            if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
+                setTimeout(() => loadRekap(), 200);
+            }
+            
+            showToast("✅ Konfigurasi sekolah dimuat ulang!", "success");
+        } else {
+            console.log("⚠️ No school config found in Firebase");
+            showToast("⚠️ Tidak ada konfigurasi di Firebase", "warning");
+        }
+    }).catch(err => {
+        console.error("Force reload error:", err);
+        showToast("❌ Gagal memuat ulang config: " + err.message, "error");
+    }).finally(() => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🔄 Refresh Config';
+        }
+    });
 }
 
 // Inisialisasi awal
@@ -54,6 +142,7 @@ function setupSettingDataReadyListener() {
             updateSchoolTypeUI();
             renderClassesList();
             renderMajorsList();
+            syncSchoolConfigToWindow();
         }
         
         const delaySpan = document.getElementById('globalDelayDisplay');
@@ -178,7 +267,6 @@ function saveGlobalDelay() {
     db.ref('settings/delayOut').set(delayMinutes)
         .then(() => {
             showToast(`✅ Delay global berhasil diupdate menjadi ${formatDelayText(delayMinutes)}`);
-            // Update display
             const displaySpan = document.getElementById('globalDelayDisplay');
             if (displaySpan) displaySpan.textContent = formatDelayText(delayMinutes);
         })
@@ -307,7 +395,6 @@ function saveClasses() {
         .then(() => {
             showToast(`✅ Daftar kelas berhasil disimpan (${currentSchoolConfig.classes.length} kelas).`);
             syncSchoolConfigToWindow();
-            // Trigger populate functions after save
             setTimeout(() => {
                 if (typeof populateKelasOptions === 'function') populateKelasOptions();
                 if (typeof populateStudentFilters === 'function') populateStudentFilters();
@@ -329,10 +416,13 @@ function updateSchoolTypeUI() {
     const typeSelect = document.getElementById('schoolTypeSelect');
     if (typeSelect && typeSelect.value !== currentSchoolConfig.type) {
         typeSelect.value = currentSchoolConfig.type;
+        console.log(`📋 updateSchoolTypeUI set schoolTypeSelect to: ${currentSchoolConfig.type}`);
     }
     const majorsManager = document.getElementById('majorsManager');
     if (majorsManager) {
-        majorsManager.style.display = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both') ? 'block' : 'none';
+        const shouldShow = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both');
+        majorsManager.style.display = shouldShow ? 'block' : 'none';
+        console.log(`📋 Majors manager visibility: ${shouldShow ? 'show' : 'hide'}`);
     }
 }
 
@@ -362,19 +452,17 @@ function escapeHtmlStr(str) {
     return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
 
+// 🔥 PERBAIKAN UTAMA: Fungsi saveSchoolType - Pastikan data tersimpan ke Firebase
 function saveSchoolType() {
     if (!currentUser || currentUser.role !== 'admin') {
         showToast("⛔ Hanya admin yang dapat mengubah tipe sekolah.", "error");
         return;
     }
-    const newType = document.getElementById('schoolTypeSelect').value;
-    const btn = document.querySelector('#tab-config button[onclick="saveSchoolType()"]');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '💾 Menyimpan...';
-    }
     
-    // Jika memilih 'both', kelas yang sesuai
+    const newType = document.getElementById('schoolTypeSelect').value;
+    console.log("📝 saveSchoolType dipanggil dengan tipe:", newType);
+    
+    // Tentukan kelas berdasarkan tipe sekolah
     let newClasses;
     if (newType === 'both') {
         newClasses = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
@@ -386,42 +474,75 @@ function saveSchoolType() {
         newClasses = ['VII', 'VIII', 'IX'];
     }
     
-    // Simpan ke Firebase
-    Promise.all([
-        db.ref('school_config/type').set(newType),
-        db.ref('school_config/classes').set(newClasses),
-        // Jika bukan SMK/Both, kosongkan jurusan
-        ...(newType !== 'smk' && newType !== 'both' ? [db.ref('school_config/majors').set([])] : [])
-    ]).then(() => {
-        showToast("✅ Tipe sekolah berhasil disimpan.");
-        currentSchoolConfig.type = newType;
-        currentSchoolConfig.classes = newClasses;
-        if (newType !== 'smk' && newType !== 'both') {
-            currentSchoolConfig.majors = [];
-        }
-        syncSchoolConfigToWindow();
-        updateSchoolTypeUI();
-        renderClassesList();
-        renderMajorsList();
-        
-        // Trigger populate functions after save
-        setTimeout(() => {
-            if (typeof populateKelasOptions === 'function') populateKelasOptions();
-            if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-            if (typeof populateStudentFilters === 'function') populateStudentFilters();
-            if (typeof populateFilters === 'function') populateFilters();
-        }, 100);
-    })
-    .catch(err => {
-        console.error("Save school type error:", err);
-        showToast("❌ Gagal: " + err.message, "error");
-    })
-    .finally(() => {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = 'Simpan';
-        }
-    });
+    // Jika tipe bukan SMK atau both, kosongkan jurusan
+    let newMajors = [];
+    if (newType === 'smk' || newType === 'both') {
+        newMajors = currentSchoolConfig.majors; // pertahankan jurusan yang sudah ada
+    }
+    
+    const btn = document.querySelector('#tab-config button[onclick="saveSchoolType()"]');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '💾 Menyimpan...';
+    }
+    
+    // 🔥 Simpan ke Firebase menggunakan update (atomic)
+    const updateData = {
+        type: newType,
+        classes: newClasses,
+        majors: newMajors
+    };
+    
+    console.log("📤 Saving to Firebase:", updateData);
+    
+    db.ref('school_config').update(updateData)
+        .then(() => {
+            console.log("✅ School config saved to Firebase:", updateData);
+            showToast("✅ Tipe sekolah berhasil disimpan ke Firebase!");
+            
+            // Update local config
+            currentSchoolConfig.type = newType;
+            currentSchoolConfig.classes = newClasses;
+            currentSchoolConfig.majors = newMajors;
+            
+            // Sinkronkan ke window
+            syncSchoolConfigToWindow();
+            
+            // Update UI
+            updateSchoolTypeUI();
+            renderClassesList();
+            renderMajorsList();
+            
+            // Trigger populate functions after save
+            setTimeout(() => {
+                console.log("🔄 Populating all dropdowns after save...");
+                if (typeof populateKelasOptions === 'function') populateKelasOptions();
+                if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
+                if (typeof populateStudentFilters === 'function') populateStudentFilters();
+                if (typeof populateFilters === 'function') populateFilters();
+                if (typeof populateDateFilter === 'function') populateDateFilter();
+                if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
+            }, 100);
+            
+            // Refresh UI
+            setTimeout(() => {
+                if (typeof renderStudentsTable === 'function') renderStudentsTable();
+                if (typeof renderTable === 'function') renderTable();
+                if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
+                    loadRekap();
+                }
+            }, 200);
+        })
+        .catch(err => {
+            console.error("❌ Save school type error:", err);
+            showToast("❌ Gagal menyimpan: " + err.message, "error");
+        })
+        .finally(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = 'Simpan';
+            }
+        });
 }
 
 function addMajor() {
@@ -756,5 +877,6 @@ window.initSensorStatusListener = initSensorStatusListener;
 window.refreshSensorStatus = refreshSensorStatus;
 window.cleanupSensorStatus = cleanupSensorStatus;
 window.syncSchoolConfigToWindow = syncSchoolConfigToWindow;
+window.forceReloadSchoolConfig = forceReloadSchoolConfig;
 
-console.log("✅ setting.js V3.2 loaded - Fixed school config persistence");
+console.log("✅ setting.js V3.4 loaded - Added forceReloadSchoolConfig() and improved sync");
