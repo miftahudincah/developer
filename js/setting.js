@@ -1,8 +1,9 @@
-// setting.js - VERSION 3.4 (PERBAIKAN: FORCE SYNC & RELOAD SCHOOL CONFIG)
+// setting.js - VERSION 3.5 (DEVELOPER ACCESS ADDED)
 // PENGATURAN SEKOLAH (SCHOOL CONFIG) & DELAY GLOBAL
 // Dengan dukungan manajemen KELAS dan JURUSAN yang bisa diedit
 // SENSOR STATUS: Dipisahkan ke modul sendiri (tetap di sini untuk kemudahan)
 // PERUBAHAN: 
+//   - Menambahkan akses role developer (developer = admin untuk semua fungsi)
 //   - Menambahkan forceReloadSchoolConfig() untuk debugging
 //   - Memperbaiki syncSchoolConfigToWindow() dengan return promise
 //   - Menambahkan retry mechanism untuk populate functions
@@ -52,8 +53,9 @@ function syncSchoolConfigToWindow() {
 function forceReloadSchoolConfig() {
     console.log("🔄 Force reloading school config from Firebase...");
     
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya admin yang dapat me-refresh config!", "error");
+    // Izinkan admin dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya admin atau developer yang dapat me-refresh config!", "error");
         return;
     }
     
@@ -168,8 +170,9 @@ function setupSettingUiReadyListener() {
 
     window.addEventListener('uiReady', (e) => {
         const user = e.detail.currentUser;
-        if (user && user.role === 'admin') {
-            console.log("🔍 uiReady: initializing sensor status for admin");
+        // Izinkan admin dan developer untuk melihat sensor status
+        if (user && (user.role === 'admin' || user.role === 'developer')) {
+            console.log("🔍 uiReady: initializing sensor status for admin/developer");
             initSensorStatusListener();
         } else {
             const panel = document.getElementById('sensorStatusPanel');
@@ -250,8 +253,9 @@ function setGlobalDelayFormValue(delayMinutes) {
 }
 
 function saveGlobalDelay() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya admin yang dapat mengubah delay global.", "error");
+    // Izinkan admin dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya admin dan developer yang dapat mengubah delay global.", "error");
         return;
     }
     const delayMinutes = getGlobalDelayFromForm();
@@ -378,8 +382,9 @@ function removeClass(index) {
 }
 
 function saveClasses() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya admin yang dapat mengubah daftar kelas.", "error");
+    // Izinkan admin dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya admin dan developer yang dapat mengubah daftar kelas.", "error");
         return;
     }
     if (currentSchoolConfig.classes.length === 0) {
@@ -454,8 +459,9 @@ function escapeHtmlStr(str) {
 
 // 🔥 PERBAIKAN UTAMA: Fungsi saveSchoolType - Pastikan data tersimpan ke Firebase
 function saveSchoolType() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya admin yang dapat mengubah tipe sekolah.", "error");
+    // Izinkan admin dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya admin dan developer yang dapat mengubah tipe sekolah.", "error");
         return;
     }
     
@@ -576,8 +582,9 @@ function removeMajor(index) {
 }
 
 function saveMajors() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya admin yang dapat mengubah jurusan.", "error");
+    // Izinkan admin dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya admin dan developer yang dapat mengubah jurusan.", "error");
         return;
     }
     const btn = document.getElementById('btnSaveMajors');
@@ -613,8 +620,9 @@ function getDefaultClasses(schoolType) {
 // ======================= RESET, EXPORT, IMPORT =======================
 
 function resetAllSettings() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya admin yang dapat mereset pengaturan!", "error");
+    // Izinkan admin dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya admin dan developer yang dapat mereset pengaturan!", "error");
         return;
     }
     if (!confirm("⚠️ Reset semua pengaturan ke default?\n\n- Delay global: 60 menit\n- Tipe sekolah: SMP\n- Kelas: VII, VIII, IX\n- Jurusan: kosong\n\nLanjutkan?")) return;
@@ -696,7 +704,8 @@ function importSchoolConfig(file) {
 let sensorStatusListener = null;
 
 function initSensorStatusListener() {
-    if (!currentUser || currentUser.role !== 'admin') {
+    // Izinkan admin dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
         const panel = document.getElementById('sensorStatusPanel');
         if (panel) panel.style.display = 'none';
         return;
@@ -879,4 +888,4 @@ window.cleanupSensorStatus = cleanupSensorStatus;
 window.syncSchoolConfigToWindow = syncSchoolConfigToWindow;
 window.forceReloadSchoolConfig = forceReloadSchoolConfig;
 
-console.log("✅ setting.js V3.4 loaded - Added forceReloadSchoolConfig() and improved sync");
+console.log("✅ setting.js V3.5 loaded - Developer role fully supported");

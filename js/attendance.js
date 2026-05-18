@@ -1,7 +1,7 @@
-// attendance.js - VERSION 3.3 (PERBAIKAN: POPULATE FILTERS DROPDOWN)
+// attendance.js - VERSION 3.4 (DEVELOPER ACCESS ADDED)
 // Mengelola data absensi, filter, validasi delay pulang,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
-// PERUBAHAN: Menambahkan fungsi populateFilters() dan populateDateFilter()
+// PERUBAHAN: Menambahkan akses untuk role developer (sama seperti admin & guru)
 // ============================================================================
 
 // ======================== GLOBAL VARIABLES ========================
@@ -17,19 +17,10 @@ function setupAttendanceDataReadyListener() {
 
     window.addEventListener('dataReady', (e) => {
         console.log("📋 attendance.js: dataReady received, updating attendance UI");
-        // Populate filters when data is ready
-        if (typeof populateFilters === 'function') {
-            populateFilters();
-        }
-        if (typeof populateDateFilter === 'function') {
-            populateDateFilter();
-        }
-        if (typeof updateAttendanceDonutChart === 'function') {
-            updateAttendanceDonutChart();
-        }
-        if (typeof renderTable === 'function') {
-            renderTable();
-        }
+        if (typeof populateFilters === 'function') populateFilters();
+        if (typeof populateDateFilter === 'function') populateDateFilter();
+        if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
+        if (typeof renderTable === 'function') renderTable();
     });
 
     const originalSwitchTab = window.switchTab;
@@ -62,13 +53,11 @@ function populateFilters() {
         return;
     }
     
-    // Get kelas options from school config
     let kelasOptions = [];
     if (window.currentSchoolConfig && window.currentSchoolConfig.classes && window.currentSchoolConfig.classes.length > 0) {
         kelasOptions = window.currentSchoolConfig.classes;
         console.log(`📚 Menggunakan kelas dari school_config: ${kelasOptions.length} kelas`);
     } else {
-        // Fallback berdasarkan tipe sekolah
         const schoolType = window.currentSchoolConfig?.type || 'smp';
         if (schoolType === 'smp') {
             kelasOptions = ['VII', 'VIII', 'IX'];
@@ -80,22 +69,18 @@ function populateFilters() {
         console.log(`📚 Menggunakan kelas default (${schoolType}): ${kelasOptions.join(', ')}`);
     }
     
-    // Simpan nilai yang dipilih sebelumnya
     const currentKelas = kelasSelect.value;
     const currentJurusan = jurusanSelect.value;
     
-    // Populate Kelas dropdown
     kelasSelect.innerHTML = '<option value="all">📚 Semua Kelas</option>';
     kelasOptions.forEach(kelas => {
         kelasSelect.innerHTML += `<option value="${kelas}">${kelas}</option>`;
     });
     
-    // Restore previous value if still exists
     if (currentKelas !== 'all' && kelasOptions.includes(currentKelas)) {
         kelasSelect.value = currentKelas;
     }
     
-    // Get jurusan options from school config
     let jurusanOptions = [];
     if (window.currentSchoolConfig && window.currentSchoolConfig.majors && window.currentSchoolConfig.majors.length > 0) {
         jurusanOptions = window.currentSchoolConfig.majors;
@@ -105,13 +90,11 @@ function populateFilters() {
         console.log(`🎓 Menggunakan jurusan default: UMUM`);
     }
     
-    // Populate Jurusan dropdown
     jurusanSelect.innerHTML = '<option value="all">🎓 Semua Jurusan</option>';
     jurusanOptions.forEach(jurusan => {
         jurusanSelect.innerHTML += `<option value="${jurusan}">${jurusan}</option>`;
     });
     
-    // Restore previous value if still exists
     if (currentJurusan !== 'all' && jurusanOptions.includes(currentJurusan)) {
         jurusanSelect.value = currentJurusan;
     }
@@ -131,11 +114,9 @@ function populateDateFilter() {
     
     const currentValue = dateSelect.value;
     
-    // Build date options
     dateSelect.innerHTML = '<option value="all">📅 Semua Tanggal</option>';
     dateSelect.innerHTML += '<option value="today">📆 Hari Ini</option>';
     
-    // Add last 7 days as options
     for (let i = 1; i <= 7; i++) {
         const date = new Date();
         date.setDate(date.getDate() - i);
@@ -144,13 +125,9 @@ function populateDateFilter() {
         dateSelect.innerHTML += `<option value="${dateStr}">${dayName}, ${dateStr}</option>`;
     }
     
-    // Restore previous value if valid
     if (currentValue && currentValue !== 'all' && currentValue !== 'today') {
-        // Check if the date still exists in options
         const exists = Array.from(dateSelect.options).some(opt => opt.value === currentValue);
-        if (exists) {
-            dateSelect.value = currentValue;
-        }
+        if (exists) dateSelect.value = currentValue;
     }
     
     console.log(`✅ populateDateFilter selesai, total options: ${dateSelect.options.length}`);
@@ -163,7 +140,6 @@ function initAttendanceUI() {
     if (typeof Audio !== 'undefined') {
         new Audio();
     }
-    // Populate filters immediately
     populateFilters();
     populateDateFilter();
     setTimeout(() => updateAttendanceDonutChart(), 100);
@@ -261,7 +237,7 @@ async function renderTable() {
     tbody.innerHTML = '';
     
     if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">
+        tbody.innerHTML = `<td><td colspan="7" style="text-align:center; padding:20px; color:#888;">
             📭 Data absensi tidak ditemukan.
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
             </td></tr>`;
@@ -305,7 +281,7 @@ async function renderTable() {
                 <td>${row.kelas || '-'}</td>
                 <td>${row.jurusan || '-'}</td>
                 <td>${statusHtml}</td>
-                <td class="role-guru role-admin">
+                <td class="role-guru role-admin role-developer">
                     <button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button>
                 </td>
             </tr>
@@ -379,8 +355,9 @@ function simulateAttendance() {
         showToast("Anda harus login!", "error");
         return;
     }
-    if (currentUser.role === 'siswa') {
-        showToast("⛔ Simulasi hanya untuk Admin/Guru!", "error");
+    // Izinkan admin, guru, dan developer
+    if (currentUser.role !== 'admin' && currentUser.role !== 'guru' && currentUser.role !== 'developer') {
+        showToast("⛔ Simulasi hanya untuk Admin, Guru, dan Developer!", "error");
         return;
     }
     
@@ -436,8 +413,9 @@ function simulateAttendanceOut() {
         showToast("Anda harus login!", "error");
         return;
     }
-    if (currentUser.role === 'siswa') {
-        showToast("⛔ Simulasi hanya untuk Admin/Guru!", "error");
+    // Izinkan admin, guru, dan developer
+    if (currentUser.role !== 'admin' && currentUser.role !== 'guru' && currentUser.role !== 'developer') {
+        showToast("⛔ Simulasi hanya untuk Admin, Guru, dan Developer!", "error");
         return;
     }
     
@@ -689,7 +667,7 @@ function renderFilteredTable(filteredData) {
                 <td>${row.kelas || '-'}</td>
                 <td>${row.jurusan || '-'}</td>
                 <td><span style="color:${row.status === 'Pulang' ? 'var(--danger)' : 'var(--success)'}">${row.status === 'Pulang' ? '🏠' : '✅'} ${row.status}</span></td>
-                <td class="role-guru role-admin"><button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button></td>
+                <td class="role-guru role-admin role-developer"><button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button></td>
             </tr>
         `);
     });
@@ -699,8 +677,9 @@ function renderFilteredTable(filteredData) {
 // ======================== MANUAL ATTENDANCE STATUS ========================
 
 function openAbsenceModal() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'guru')) {
-        showToast("⛔ Hanya Admin/Guru yang dapat mengatur ketidakhadiran!", "error");
+    // Izinkan admin, guru, dan developer
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'guru' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya Admin, Guru, dan Developer yang dapat mengatur ketidakhadiran!", "error");
         return;
     }
     const modal = document.getElementById('modal-absence');
@@ -869,7 +848,6 @@ function cleanupAttendanceUI() {
 // ======================== INISIALISASI ========================
 setupAttendanceDataReadyListener();
 
-// Initial population of filters when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
@@ -911,4 +889,4 @@ window.updateAttendanceDonutChart = updateAttendanceDonutChart;
 window.populateFilters = populateFilters;
 window.populateDateFilter = populateDateFilter;
 
-console.log("✅ attendance.js V3.3 loaded - Added populateFilters() and populateDateFilter()");
+console.log("✅ attendance.js V3.4 loaded - Developer role fully supported");

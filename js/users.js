@@ -1,5 +1,6 @@
-// users.js - VERSION 3.3 (DENGAN DUKUNGAN ROLE DEVELOPER)
-// Role developer (zaki5go@gmail.com) tidak bisa diubah/dihapus oleh admin
+// users.js - VERSION 3.5 (DEVELOPER CAN MANAGE ALL USERS EXCEPT DEVELOPER ACCOUNT)
+// Role developer (zaki5go@gmail.com) memiliki akses penuh seperti admin untuk mengelola user
+// Developer dapat mengubah role user lain dan menghapus user (kecuali akun developer sendiri)
 // ============================================================================
 
 let lastCodeCount = 0;
@@ -271,7 +272,7 @@ function renderCodesTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (typeof dbData === 'undefined' || !dbData.codes || dbData.codes.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">🔑 Belum ada kode registrasi. Generate kode di atas.</td></tr>`;
+        tbody.innerHTML = `<table><td colspan="5" style="text-align:center; padding: 30px; color:#888;">🔑 Belum ada kode registrasi. Generate kode di atas.</td></tr>`;
         return;
     }
     const sorted = [...dbData.codes].reverse();
@@ -312,12 +313,13 @@ function getCodeTimeRemaining(createdAt) {
     else return '< 1 menit';
 }
 
-// ======================= UPDATE USER ROLE (DENGAN PERLINDUNGAN DEVELOPER) =======================
+// ======================= UPDATE USER ROLE (DEVELOPER & ADMIN) =======================
+// Developer dan Admin dapat mengubah role user lain (kecuali developer lain dan tidak bisa mengubah ke developer)
 
 function updateUserRole(uid, newRole) {
-    // Hanya admin (bukan developer) yang bisa mengubah role, dan tidak bisa mengubah ke developer
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya Admin yang dapat mengubah role!", "error");
+    // Izinkan admin dan developer untuk mengubah role
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya Admin dan Developer yang dapat mengubah role!", "error");
         return;
     }
     
@@ -328,14 +330,19 @@ function updateUserRole(uid, newRole) {
     }
     
     // ========== PERLINDUNGAN DEVELOPER ==========
-    // 1. Tidak boleh mengubah role user yang sudah menjadi developer
+    // 1. Tidak boleh mengubah role user yang sudah menjadi developer (termasuk diri sendiri)
     if (user.role === 'developer') {
         showToast("⛔ Role Developer tidak dapat diubah!", "error");
         return;
     }
-    // 2. Tidak boleh mengubah role menjadi developer
+    // 2. Tidak boleh mengubah role menjadi developer (karena developer hanya untuk akun paten)
     if (newRole === 'developer') {
-        showToast("⛔ Tidak dapat memberikan role Developer!", "error");
+        showToast("⛔ Tidak dapat memberikan role Developer! Role ini hanya untuk akun paten.", "error");
+        return;
+    }
+    // 3. Developer tidak bisa mengubah role dirinya sendiri (sudah terproteksi di atas)
+    if (currentUser.uid === uid) {
+        showToast("❌ Anda tidak dapat mengubah role sendiri!", "error");
         return;
     }
     // ===========================================
@@ -365,7 +372,8 @@ function updateUserRole(uid, newRole) {
     });
 }
 
-// ======================= RENDER USERS TABLE (DENGAN BADGE DEVELOPER) =======================
+// ======================= RENDER USERS TABLE (DEVELOPER & ADMIN) =======================
+// Developer dan Admin sama-sama bisa mengelola user
 
 function renderUsersTable() {
     console.log("🎨 renderUsersTable dipanggil");
@@ -399,8 +407,11 @@ function renderUsersTable() {
         // Tentukan apakah user ini adalah developer
         const isDeveloper = (u.role === 'developer');
         
-        // Jika current user adalah admin dan user yang ditampilkan BUKAN developer, maka tampilkan dropdown role
-        if (currentUser && currentUser.role === 'admin' && !isMe && !isDeveloper) {
+        // Jika current user adalah admin atau developer, dan user yang ditampilkan BUKAN developer, maka tampilkan dropdown role
+        const canManage = currentUser && (currentUser.role === 'admin' || currentUser.role === 'developer');
+        const canManageThisUser = canManage && !isDeveloper && !isMe;
+        
+        if (canManageThisUser) {
             roleHtml = `
                 <select class="form-control" onchange="updateUserRole('${u.uid}', this.value)" 
                         style="background:#2c2c2c; color:white; border:1px solid #444; padding:5px; border-radius:4px; font-size:0.8rem;">
@@ -474,11 +485,13 @@ function resetUserPassword(email) {
         });
 }
 
-// ======================= DELETE USER (DENGAN PERLINDUNGAN DEVELOPER) =======================
+// ======================= DELETE USER (DEVELOPER & ADMIN) =======================
+// Developer dan Admin dapat menghapus user (kecuali developer dan diri sendiri)
 
 function deleteUser(uid, nama) {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya Admin yang dapat menghapus user!", "error");
+    // Izinkan admin dan developer untuk menghapus user
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya Admin dan Developer yang dapat menghapus user!", "error");
         return;
     }
     if (currentUser.uid === uid) {
@@ -504,7 +517,7 @@ function deleteUser(uid, nama) {
         .finally(() => { if (btn) btn.disabled = false; });
 }
 
-// ======================= RESET SYSTEM DATA (SUDAH MELINDUNGI AKUN DEVELOPER) =======================
+// ======================= RESET SYSTEM DATA (ADMIN & DEVELOPER) =======================
 
 function resetSystemData() {
     if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
@@ -588,4 +601,4 @@ window.copyToClipboard = copyToClipboard;
 window.resetUserPassword = resetUserPassword;
 window.cleanupUsersSystem = cleanupUsersSystem;
 
-console.log("✅ users.js V3.3 loaded - Role developer protected");
+console.log("✅ users.js V3.5 loaded - Developer can now manage all users (except developer account)");
