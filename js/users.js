@@ -1,6 +1,7 @@
-// users.js - VERSION 3.1 (EVENT-BASED, NO DUPLICATE LISTENERS) + QR CODE HITAM PUTIH
+// users.js - VERSION 3.2 (PERBAIKAN: Reset data melindungi akun tertentu)
 // Fungsi untuk mengelola user, kode registrasi, dan role management
 // PERUBAHAN: Menambahkan generate QR code (hitam putih) pada kode registrasi
+//            dan reset sistem tidak menghapus akun dengan email tertentu
 // ============================================================================
 
 let lastCodeCount = 0;
@@ -311,9 +312,9 @@ function renderCodesTable() {
     tbody.innerHTML = '';
     
     if (typeof dbData === 'undefined' || !dbData.codes || dbData.codes.length === 0) {
-        tbody.innerHTML = `<td><td colspan="5" style="text-align:center; padding: 30px; color:#888;">
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">
             🔑 Belum ada kode registrasi. Generate kode di atas.
-           </td></tr>`;
+            </td></tr>`;
         return;
     }
     
@@ -333,14 +334,14 @@ function renderCodesTable() {
                     <strong>${c.code}</strong>
                     <br>
                     <small style="font-weight:normal; color:#888">${typeLabel}${linkedLabel}${createdByName}</small>
-                </td>
-                <td>
+                 </td>
+                 <td>
                     ${c.used ? 
                         '<span style="color:#4caf50;">✅ Terpakai</span>' : 
                         `<span style="color:#ff9800;">🟢 Aktif</span>
                          ${timeRemaining ? `<br><small style="color:#888;">⏰ ${timeRemaining}</small>` : ''}`
                     }
-                </td>
+                 </td>
                 <td style="font-size: 12px;">${c.createdAt ? new Date(c.createdAt).toLocaleString('id-ID') : '-'}</td>
                 <td style="font-size: 12px;">${c.userId ? c.userId.substring(0, 20) + '...' : '-'}</td>
                 <td>
@@ -348,8 +349,8 @@ function renderCodesTable() {
                         <button class="btn-icon" onclick="copyToClipboard('${c.code}')" title="Salin Kode" style="background:transparent; border:none; cursor:pointer; color:#4a90e2;">📋</button>
                         <button class="btn-icon delete" onclick="deleteCode('${c.code}')" title="Hapus Kode">🗑️</button>
                     ` : '-'}
-                </td>
-            </tr>
+                 </td>
+             </tr>
         `;
     });
     
@@ -434,7 +435,7 @@ function renderUsersTable() {
         console.log("📭 Tidak ada data users_auth");
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             👥 Belum ada pengguna terdaftar.
-        </td></tr>`;
+         </td></tr>`;
         return;
     }
 
@@ -448,7 +449,7 @@ function renderUsersTable() {
     if (data.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
             🔍 Tidak ada pengguna yang cocok dengan pencarian.
-        </td></tr>`;
+         </td></tr>`;
         return;
     }
 
@@ -512,19 +513,19 @@ function renderUsersTable() {
             <tr class="${isMe ? 'current-user-row' : ''}">
                 <td style="text-align:center;">
                     <img src="${avatar}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
-                </td>
-                <td>
+                 </td>
+                 <td>
                     <strong>${escapeHtmlString(u.nama)}</strong>
                     ${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}
-                </td>
+                 </td>
                 <td style="color:#aaa; font-size:0.85rem;">${u.email || '-'}</td>
                 <td>${roleHtml}</td>
                 <td style="color:#888; font-size:0.8rem;">
                     ${detailIcon} ${escapeHtmlString(detailText)}<br>
                     <small>📅 ${registeredDate}</small>
-                </td>
+                 </td>
                 <td style="text-align:center;">${actionsHtml}</td>
-            </tr>
+             </tr>
         `;
     });
     
@@ -582,13 +583,14 @@ function deleteUser(uid, nama) {
         });
 }
 
+// ======================= RESET SYSTEM DATA (DENGAN PERLINDUNGAN AKUN) =======================
 function resetSystemData() {
     if (!currentUser || currentUser.role !== 'admin') {
         showToast("⛔ Hanya Admin yang dapat mereset sistem!", "error");
         return;
     }
     
-    if(!confirm("🚨 PERINGATAN BERAT! 🚨\n\nSemua data akan dihapus:\n- Data siswa (users)\n- Data absensi\n- Kode registrasi\n- Data pengguna (users_auth)\n\nTINDAKAN INI TIDAK DAPAT DIBATALKAN!\n\nKetik 'RESET' untuk konfirmasi:")) return;
+    if(!confirm("🚨 PERINGATAN BERAT! 🚨\n\nSemua data akan dihapus:\n- Data siswa (users)\n- Data absensi\n- Kode registrasi\n- Data pengguna (users_auth) KECUALI akun zaki5go@gmail.com\n\nTINDAKAN INI TIDAK DAPAT DIBATALKAN!\n\nKetik 'RESET' untuk konfirmasi:")) return;
     
     const confirmation = prompt("Ketik 'RESET' untuk konfirmasi:");
     if (confirmation !== "RESET") {
@@ -598,16 +600,34 @@ function resetSystemData() {
     
     showToast("⏳ Mereset data sistem...", "info");
     
+    const protectedEmail = "zaki5go@gmail.com";
+    
+    // Hapus node yang tidak perlu dilindungi
     const promises = [
         db.ref('users').remove(),
         db.ref('absensi').remove(),
-        db.ref('codes').remove(),
-        db.ref('users_auth').remove()
+        db.ref('codes').remove()
     ];
+    
+    // Hapus semua user di users_auth KECUALI yang emailnya = protectedEmail
+    const deleteUsersPromise = db.ref('users_auth').once('value').then(snapshot => {
+        const users = snapshot.val();
+        if (users) {
+            const deletePromises = [];
+            for (const [uid, userData] of Object.entries(users)) {
+                if (userData.email !== protectedEmail) {
+                    deletePromises.push(db.ref('users_auth/' + uid).remove());
+                }
+            }
+            return Promise.all(deletePromises);
+        }
+    }).catch(err => console.error("Gagal melindungi akun:", err));
+    
+    promises.push(deleteUsersPromise);
     
     Promise.all(promises)
         .then(() => {
-            showToast("✅ Semua data berhasil direset!", "success");
+            showToast("✅ Reset berhasil! Akun " + protectedEmail + " tetap aman.", "success");
             setTimeout(() => {
                 auth.signOut().then(() => {
                     location.reload();
@@ -664,4 +684,4 @@ window.copyToClipboard = copyToClipboard;
 window.resetUserPassword = resetUserPassword;
 window.cleanupUsersSystem = cleanupUsersSystem;
 
-console.log("✅ users.js V3.1 loaded - QR code hitam putih");
+console.log("✅ users.js V3.2 loaded - Reset system protects specific email");
