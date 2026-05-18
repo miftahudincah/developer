@@ -1,6 +1,6 @@
-// announcement.js - VERSION 3.0 (EVENT-BASED, NO AUTO-INIT)
+// announcement.js - VERSION 3.1 (DEVELOPER ACCESS ADDED)
 // Fitur Pengumuman dengan Timer Otomatis, Real-time Updates, dan Notifikasi
-// PERUBAHAN: Inisialisasi via event 'dataReady' dan 'uiReady', bukan auto-init
+// Sekarang role 'developer' memiliki akses penuh seperti admin & guru
 // ============================================================================
 
 let announcementCheckInterval = null;
@@ -36,7 +36,8 @@ function setupAnnouncementUiReadyListener() {
 
     window.addEventListener('uiReady', (e) => {
         const user = e.detail.currentUser;
-        if (user && (user.role === 'admin' || user.role === 'guru')) {
+        // Izinkan developer, admin, dan guru
+        if (user && (user.role === 'admin' || user.role === 'guru' || user.role === 'developer')) {
             console.log("📢 announcement.js: uiReady received, checking permissions for floating button");
             const floatingBtn = document.getElementById('floatingAnnouncementBtn');
             if (floatingBtn) floatingBtn.style.display = 'flex';
@@ -110,7 +111,8 @@ function renderAnnouncement() {
             const createdAtDate = ann.createdAt ? new Date(ann.createdAt).toLocaleString('id-ID') : '';
             
             let actionButtons = '';
-            if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru')) {
+            // Izinkan developer, admin, guru untuk edit/hapus
+            if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru' || currentUser.role === 'developer')) {
                 actionButtons = `
                     <span class="announcement-edit" onclick="editAnnouncement('${ann.id}')" title="Edit Pengumuman" style="cursor:pointer; margin-left:8px;">✏️</span>
                     <span class="announcement-delete" onclick="deleteAnnouncement('${ann.id}')" title="Hapus Pengumuman" style="cursor:pointer;">🗑️</span>
@@ -355,8 +357,9 @@ function saveAnnouncement() {
         showToast("Anda harus login!", "error");
         return;
     }
-    if (currentUser.role !== 'admin' && currentUser.role !== 'guru') {
-        showToast("⛔ Hanya Admin dan Guru yang dapat membuat pengumuman!", "error");
+    // Izinkan developer, admin, dan guru
+    if (currentUser.role !== 'admin' && currentUser.role !== 'guru' && currentUser.role !== 'developer') {
+        showToast("⛔ Hanya Admin, Guru, dan Developer yang dapat membuat pengumuman!", "error");
         return;
     }
     
@@ -431,7 +434,7 @@ function showAnnouncementNotification(title, message) {
 }
 
 function deleteAnnouncement(announcementId) {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'guru')) {
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'guru' && currentUser.role !== 'developer')) {
         showToast("⛔ Anda tidak memiliki akses!", "error");
         return;
     }
@@ -543,8 +546,8 @@ function createTestAnnouncement() {
         showToast("Anda harus login terlebih dahulu!", "error");
         return;
     }
-    if (currentUser.role !== 'admin' && currentUser.role !== 'guru') {
-        showToast("⛔ Hanya admin/guru yang bisa membuat test!", "error");
+    if (currentUser.role !== 'admin' && currentUser.role !== 'guru' && currentUser.role !== 'developer') {
+        showToast("⛔ Hanya admin, guru, dan developer yang bisa membuat test!", "error");
         return;
     }
     const expiryDate = new Date();
@@ -634,6 +637,6 @@ window.deleteAnnouncement = deleteAnnouncement;
 window.createTestAnnouncement = createTestAnnouncement;
 window.debugCheckAnnouncements = debugCheckAnnouncements;
 window.cleanupAnnouncementSystem = cleanupAnnouncementSystem;
-window.initAnnouncementSystem = initAnnouncementSystem;
+window.initAnnouncementSystem = initAnnouncementSystem; // alias
 
-console.log("✅ announcement.js V3.0 loaded - Event-based initialization");
+console.log("✅ announcement.js V3.1 loaded - Developer role now has full access");
