@@ -1,10 +1,11 @@
-// ui.js - VERSION 4.4 (PERBAIKAN: TAMBAHKAN POPULATE DATE FILTER)
+// ui.js - VERSION 4.5 (DENGAN DUKUNGAN ROLE DEVELOPER)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // PERUBAHAN: 
 //   - uploadProfilePhoto aman jika modal belum terbuka
 //   - updateDashboardChart menampilkan data per minggu dalam BULAN BERJALAN
 //   - Menambahkan populateDateFilter saat initApp
 //   - Memperkuat pemanggilan populate functions
+//   - TAMBAHAN: Role developer (zaki5go@gmail.com) mendapat akses penuh seperti admin
 // ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
@@ -82,10 +83,9 @@ function initApp() {
         console.log("✅ All filters populated in initApp");
     };
     
-    // Execute with small delay to ensure DOM is ready
     setTimeout(populateAllFilters, 100);
     
-    // Start clock (hanya sekali)
+    // Start clock
     try {
         if (clockInterval) clearInterval(clockInterval);
         clockInterval = setInterval(updateClock, 1000);
@@ -98,7 +98,6 @@ function initApp() {
     // ========== PANGGILAN INISIALISASI VIA EVENT ==========
     window.dispatchEvent(new CustomEvent('uiReady', { detail: { currentUser } }));
     
-    // Render semua tabel (data sudah siap dari init.js, tapi pastikan)
     const renderTables = () => {
         if (typeof renderTable === 'function') renderTable();
         if (typeof renderStudentsTable === 'function') renderStudentsTable();
@@ -106,24 +105,21 @@ function initApp() {
         if (typeof renderUsersTable === 'function') renderUsersTable();
     };
     
-    // Cek apakah data sudah siap
     if (window.dbData && window.dbData.attendance && window.dbData.users) {
         renderTables();
     } else {
         window.addEventListener('dataReady', function onDataReady() {
             window.removeEventListener('dataReady', onDataReady);
             renderTables();
-            // Repopulate filters after data is ready
             setTimeout(populateAllFilters, 200);
         });
     }
     
-    // Switch ke tab default (Dashboard)
     switchTab('dashboard');
     
-    // Tampilkan floating button
     setTimeout(() => {
-        if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru')) {
+        // Tampilkan floating button untuk admin, guru, dan developer
+        if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru' || currentUser.role === 'developer')) {
             const floatingBtn = document.getElementById('floatingAnnouncementBtn');
             if (floatingBtn) floatingBtn.style.display = 'flex';
         }
@@ -133,26 +129,22 @@ function initApp() {
         if (floatingChatBtn) floatingChatBtn.style.display = 'flex';
     }, 1000);
     
-    // Inisialisasi pengumuman
     if (typeof initAnnouncementSystem === 'function') {
         setTimeout(() => initAnnouncementSystem(), 500);
     }
     
-    // Inisialisasi konfigurasi nama sekolah
     if (typeof initSystemConfig === 'function') {
         initSystemConfig();
     } else {
         initSystemConfigManual();
     }
     
-    // Inisialisasi event listener untuk delay input
     if (typeof initDelayEventListeners === 'function') {
         initDelayEventListeners();
     } else {
         initManualDelayListeners();
     }
     
-    // Inisialisasi event listener untuk global delay
     if (typeof initGlobalDelayListeners === 'function') {
         initGlobalDelayListeners();
     }
@@ -168,7 +160,6 @@ if (typeof window !== 'undefined') {
             window._rekapInitialized = true;
             initRekap();
         }
-        // Repopulate filters when data is ready
         setTimeout(() => {
             if (typeof populateFilters === 'function') populateFilters();
             if (typeof populateDateFilter === 'function') populateDateFilter();
@@ -203,7 +194,7 @@ window.addEventListener('uiReady', (e) => {
 
 window.addEventListener('uiReady', (e) => {
     const user = e.detail.currentUser;
-    if (user && user.role === 'admin' && typeof initSensorStatusListener === 'function' && !window._sensorInitialized) {
+    if (user && (user.role === 'admin' || user.role === 'developer') && typeof initSensorStatusListener === 'function' && !window._sensorInitialized) {
         console.log("🔍 uiReady received, initializing sensor status listener");
         window._sensorInitialized = true;
         initSensorStatusListener();
@@ -230,7 +221,9 @@ function updateUserInterface() {
     
     const userRoleDisplay = document.getElementById('userRoleDisplay');
     if (userRoleDisplay) {
-        userRoleDisplay.textContent = currentUser.role.toUpperCase();
+        let roleText = currentUser.role.toUpperCase();
+        if (currentUser.role === 'developer') roleText = '👨‍💻 DEVELOPER';
+        userRoleDisplay.textContent = roleText;
         userRoleDisplay.className = `role-badge role-${currentUser.role}`;
     }
     
@@ -314,7 +307,7 @@ function loadSchoolLogo() {
                 previewLogo.src = logoUrl;
                 previewLogo.classList.remove('skeleton');
             }
-            if (btnRemove && currentUser && currentUser.role === 'admin') {
+            if (btnRemove && currentUser && (currentUser.role === 'admin' || currentUser.role === 'developer')) {
                 btnRemove.style.display = 'inline-block';
             }
             console.log("🏫 Logo sekolah loaded:", logoUrl);
@@ -335,8 +328,8 @@ async function uploadSchoolLogo(input) {
         showToast('Anda harus login!', 'error');
         return;
     }
-    if (currentUser.role !== 'admin') {
-        showToast('⛔ Hanya Admin yang dapat mengubah logo sekolah!', 'error');
+    if (currentUser.role !== 'admin' && currentUser.role !== 'developer') {
+        showToast('⛔ Hanya Admin atau Developer yang dapat mengubah logo sekolah!', 'error');
         return;
     }
     if (!input.files || !input.files[0]) return;
@@ -404,8 +397,8 @@ function removeSchoolLogo() {
         showToast('Anda harus login!', 'error');
         return;
     }
-    if (currentUser.role !== 'admin') {
-        showToast('⛔ Hanya Admin yang dapat menghapus logo sekolah!', 'error');
+    if (currentUser.role !== 'admin' && currentUser.role !== 'developer') {
+        showToast('⛔ Hanya Admin atau Developer yang dapat menghapus logo sekolah!', 'error');
         return;
     }
     if (!confirm('⚠️ Yakin ingin menghapus logo sekolah?\n\nLogo akan kembali ke default.')) return;
@@ -442,7 +435,8 @@ function updateSchoolLogoUI() {
         const uploadHint = logoSettingGroup.querySelector('.logo-upload-hint');
         const removeBtn = document.getElementById('btnRemoveLogo');
         const previewWrapper = logoSettingGroup.querySelector('.logo-preview-wrapper');
-        if (currentUser.role !== 'admin') {
+        const isAdminOrDev = (currentUser.role === 'admin' || currentUser.role === 'developer');
+        if (!isAdminOrDev) {
             if (uploadHint) uploadHint.style.display = 'none';
             if (removeBtn) removeBtn.style.display = 'none';
             if (previewWrapper) {
@@ -484,35 +478,41 @@ function openChatModal() {
     }
 }
 
-// ======================== ROLE PERMISSIONS ========================
+// ======================== ROLE PERMISSIONS (DENGAN DEVELOPER) ========================
 function applyRolePermissions() {
     if (!currentUser) return;
     const role = currentUser.role;
     console.log("🎭 Apply role permissions untuk role:", role);
     
+    // Developer diperlakukan sama seperti admin untuk akses
+    const isAdminOrDev = (role === 'admin' || role === 'developer');
+    const isGuruOrDev = (role === 'admin' || role === 'guru' || role === 'developer');
+    
     document.querySelectorAll('.role-admin').forEach(el => {
-        if (role === 'admin') { 
-            el.style.display = ''; 
-            el.style.visibility = 'visible'; 
-            el.style.opacity = '1'; 
-        }
-        else el.style.display = 'none';
+        if (isAdminOrDev) {
+            el.style.display = '';
+            el.style.visibility = 'visible';
+            el.style.opacity = '1';
+        } else el.style.display = 'none';
     });
+    
     document.querySelectorAll('.role-guru').forEach(el => {
-        if (role === 'admin' || role === 'guru') { 
-            el.style.display = ''; 
-            el.style.visibility = 'visible'; 
-            el.style.opacity = '1'; 
-        }
-        else el.style.display = 'none';
+        if (isGuruOrDev) {
+            el.style.display = '';
+            el.style.visibility = 'visible';
+            el.style.opacity = '1';
+        } else el.style.display = 'none';
     });
     
     const btnAnnouncement = document.querySelector('.btn-announcement');
-    if (btnAnnouncement) btnAnnouncement.style.display = (role === 'admin' || role === 'guru') ? 'inline-flex' : 'none';
+    if (btnAnnouncement) btnAnnouncement.style.display = isGuruOrDev ? 'inline-flex' : 'none';
+    
     const floatingBtn = document.getElementById('floatingAnnouncementBtn');
-    if (floatingBtn) floatingBtn.style.display = (role === 'admin' || role === 'guru') ? 'flex' : 'none';
+    if (floatingBtn) floatingBtn.style.display = isGuruOrDev ? 'flex' : 'none';
+    
     const floatingFriendsBtn = document.getElementById('floatingFriendsBtn');
     if (floatingFriendsBtn) floatingFriendsBtn.style.display = 'flex';
+    
     const floatingChatBtn = document.getElementById('floatingChatBtn');
     if (floatingChatBtn) floatingChatBtn.style.display = 'flex';
     
@@ -552,7 +552,6 @@ function switchTab(tabId) {
         if (tabId === 'dashboard') {
             renderDashboard();
         } else if (tabId === 'attendance' && typeof renderTable === 'function') {
-            // Repopulate filters before rendering attendance
             if (typeof populateFilters === 'function') populateFilters();
             if (typeof populateDateFilter === 'function') populateDateFilter();
             renderTable();
@@ -1167,7 +1166,10 @@ function saveSchoolName() {
     if (!currentUser) { showToast('Anda harus login!', 'error'); return; }
     const newSchoolName = document.getElementById('inputSchoolName').value.trim();
     if (!newSchoolName) { showToast('Nama sekolah tidak boleh kosong!', 'error'); return; }
-    if (currentUser.role !== 'admin') { showToast('Hanya Admin yang bisa mengubah nama sekolah.', 'error'); return; }
+    if (currentUser.role !== 'admin' && currentUser.role !== 'developer') {
+        showToast('⛔ Hanya Admin atau Developer yang bisa mengubah nama sekolah.', 'error');
+        return;
+    }
     const btn = event?.target;
     if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
     db.ref('system_config/schoolName').set(newSchoolName)
@@ -1188,7 +1190,7 @@ function initSystemConfig() {
     });
 }
 
-// ======================== RENDER TABEL USERS ========================
+// ======================== RENDER TABEL USERS (DENGAN DUKUNGAN DEVELOPER) ========================
 function renderUsersTable() {
     const tbody = document.getElementById('tbody-users');
     if (!tbody) return;
@@ -1208,7 +1210,10 @@ function renderUsersTable() {
         const isMe = (currentUser && currentUser.uid === u.uid);
         const avatar = u.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.nama || 'User')}&background=random&color=fff&size=32`;
         let roleHtml = '', actionsHtml = '-';
-        if (currentUser && currentUser.role === 'admin' && !isMe) {
+        const isDeveloper = (u.role === 'developer');
+        
+        // Hanya admin yang bisa mengedit role, dan tidak bisa mengedit developer
+        if (currentUser && currentUser.role === 'admin' && !isMe && !isDeveloper) {
             roleHtml = `<select class="form-control" onchange="updateUserRole('${u.uid}', this.value)" style="background:#2c2c2c; color:white; border:1px solid #444; padding:5px; border-radius:4px; font-size:0.8rem;">
                 <option value="siswa" ${u.role === 'siswa' ? 'selected' : ''}>📚 Siswa</option>
                 <option value="guru" ${u.role === 'guru' ? 'selected' : ''}>👨‍🏫 Guru</option>
@@ -1219,19 +1224,21 @@ function renderUsersTable() {
             let roleClass = 'role-siswa', roleIcon = '📚';
             if (u.role === 'admin') { roleClass = 'role-admin'; roleIcon = '👑'; }
             else if (u.role === 'guru') { roleClass = 'role-guru'; roleIcon = '👨‍🏫'; }
+            else if (u.role === 'developer') { roleClass = 'role-developer'; roleIcon = '👨‍💻'; }
             roleHtml = `<span class="role-badge ${roleClass}">${roleIcon} ${u.role.toUpperCase()}</span>`;
             if (isMe) roleHtml += ` <small style="color:#4a90e2;">(Anda)</small>`;
         }
         let detailText = '';
         if (u.role === 'siswa') detailText = `${u.kelas || '-'} / ${u.jurusan || '-'}`;
         else if (u.role === 'guru') detailText = u.subject || '-';
+        else if (u.role === 'developer') detailText = 'Developer (Paten)';
         else detailText = '-';
         tbody.innerHTML += `<tr>
             <td style="text-align:center;"><img src="${avatar}" style="width:32px; height:32px; border-radius:50%; object-fit:cover;"></td>
             <td><strong>${escapeHtmlString(u.nama)}</strong>${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}</td>
             <td style="color:#aaa; font-size:0.9rem;">${u.email || '-'}</td>
             <td>${roleHtml}</td>
-            <td style="color:#888; font-size:0.85rem;">${escapeHtmlString(detailText)}</td>
+            <td style="color:#888; font-size:0.85rem;">${escapeHtmlString(detailText)}</div></td>
             <td style="text-align:center;">${actionsHtml}</td>
         </tr>`;
     });
@@ -1311,4 +1318,4 @@ window.updateDashboardChart = updateDashboardChart;
 window.setupChartYearListener = setupChartYearListener;
 window.updateYearDropdownOptions = updateYearDropdownOptions;
 
-console.log("✅ ui.js V4.4 loaded - Added populateDateFilter and strengthened filter initialization");
+console.log("✅ ui.js V4.5 loaded - Role developer fully supported");

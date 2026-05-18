@@ -1,7 +1,5 @@
-// users.js - VERSION 3.2 (PERBAIKAN: Reset data melindungi akun tertentu)
-// Fungsi untuk mengelola user, kode registrasi, dan role management
-// PERUBAHAN: Menambahkan generate QR code (hitam putih) pada kode registrasi
-//            dan reset sistem tidak menghapus akun dengan email tertentu
+// users.js - VERSION 3.3 (DENGAN DUKUNGAN ROLE DEVELOPER)
+// Role developer (zaki5go@gmail.com) tidak bisa diubah/dihapus oleh admin
 // ============================================================================
 
 let lastCodeCount = 0;
@@ -10,17 +8,12 @@ let usersDataReadyListenerAdded = false;
 // ======================= EVENT LISTENER DATA READY ========================
 
 function setupUsersDataReadyListener() {
-    if (usersDataReadyListenerAdded) {
-        console.log("⚠️ users dataReady listener already added, skipping");
-        return;
-    }
-    
+    if (usersDataReadyListenerAdded) return;
     usersDataReadyListenerAdded = true;
     console.log("📡 Setting up dataReady event listener for users module");
     
     window.addEventListener('dataReady', (e) => {
         console.log("🔄 users.js: dataReady received, updating users UI");
-        
         if (typeof renderUsersTable === 'function') renderUsersTable();
         if (typeof renderCodesTable === 'function') renderCodesTable();
         updateCodesStatistics();
@@ -100,9 +93,7 @@ function populateStudentSelectForCode() {
     if (currentVal && availableStudents.some(s => s.id == currentVal)) {
         select.value = currentVal;
     } else if (currentSelectedText && currentVal) {
-        const match = availableStudents.find(s => 
-            s.nama === currentSelectedText.split('(')[0].trim()
-        );
+        const match = availableStudents.find(s => s.nama === currentSelectedText.split('(')[0].trim());
         if (match) select.value = match.id;
     }
 }
@@ -115,8 +106,9 @@ function generateRegistrationCode() {
         return;
     }
     
-    if (currentUser.role !== 'admin' && currentUser.role !== 'guru') {
-        showToast("⛔ Hanya Admin dan Guru yang dapat generate kode!", "error");
+    // Izinkan admin, guru, dan developer
+    if (currentUser.role !== 'admin' && currentUser.role !== 'guru' && currentUser.role !== 'developer') {
+        showToast("⛔ Hanya Admin, Guru, dan Developer yang dapat generate kode!", "error");
         return;
     }
     
@@ -148,32 +140,21 @@ function generateRegistrationCode() {
         const selectedId = document.getElementById('selectStudentForCode').value;
         if (!selectedId) {
             showToast("⚠️ Harap pilih Siswa terlebih dahulu!", "error");
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
             return;
         }
 
         const existingUser = dbData.users_auth?.find(u => u.fpId == selectedId);
         if (existingUser) {
             showToast(`❌ GAGAL: ID Siswa (${selectedId}) sudah terdaftar pada akun (${existingUser.email}).`, "error");
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
             return;
         }
 
-        const existingCode = dbData.codes?.find(c => 
-            c.linkedId == selectedId && !c.used && c.type === 'siswa'
-        );
+        const existingCode = dbData.codes?.find(c => c.linkedId == selectedId && !c.used && c.type === 'siswa');
         if (existingCode) {
             showToast(`❌ GAGAL: Siswa ini masih memiliki kode aktif (${existingCode.code}). Tunggu expired!`, "error");
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
             return;
         }
 
@@ -184,10 +165,7 @@ function generateRegistrationCode() {
         db.ref('codes/' + code).set(codeData).then(() => {
             const display = document.getElementById('generatedKeyDisplay');
             display.style.display = 'block';
-            
-            // Data untuk QR code (JSON string)
             const qrData = JSON.stringify({ code: code, studentId: selectedId });
-            // ID unik untuk container QR
             const qrContainerId = `qrcode-${code.replace(/[^a-zA-Z0-9]/g, '')}`;
             
             display.innerHTML = `
@@ -203,7 +181,6 @@ function generateRegistrationCode() {
                 </div>
             `;
             
-            // Generate QR Code (HITAM PUTIH)
             try {
                 new QRCode(document.getElementById(qrContainerId), {
                     text: qrData,
@@ -217,16 +194,12 @@ function generateRegistrationCode() {
                 console.error("QR Code generation error:", err);
                 document.getElementById(qrContainerId).innerHTML = '<span style="color:red;">Gagal generate QR</span>';
             }
-            
             showToast(`✅ Kode untuk ${studentName} berhasil dibuat!`, "success");
         }).catch(err => {
             console.error("Generate code error:", err);
             showToast("❌ Gagal membuat kode: " + err.message, "error");
         }).finally(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
         });
 
     } else {
@@ -234,7 +207,6 @@ function generateRegistrationCode() {
         db.ref('codes/' + code).set(codeData).then(() => {
             const display = document.getElementById('generatedKeyDisplay');
             display.style.display = 'block';
-            
             const qrData = JSON.stringify({ code: code });
             const qrContainerId = `qrcode-${code.replace(/[^a-zA-Z0-9]/g, '')}`;
             
@@ -263,16 +235,12 @@ function generateRegistrationCode() {
                 console.error("QR Code generation error:", err);
                 document.getElementById(qrContainerId).innerHTML = '<span style="color:red;">Gagal generate QR</span>';
             }
-            
             showToast(`✅ Kode registrasi Guru berhasil dibuat!`, "success");
         }).catch(err => {
             console.error("Generate code error:", err);
             showToast("❌ Gagal membuat kode: " + err.message, "error");
         }).finally(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
+            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
         });
     }
 }
@@ -290,17 +258,10 @@ function copyToClipboard(text) {
 function deleteCode(code) {
     const codeData = dbData.codes?.find(c => c.code === code);
     const codeInfo = codeData?.type ? `${codeData.type.toUpperCase()} - ${code}` : code;
-    
     if(!confirm(`⚠️ Yakin ingin menghapus kode: ${codeInfo}?\n\nKode yang sudah dihapus tidak dapat digunakan lagi.`)) return;
-    
     db.ref('codes/' + code).remove()
-        .then(() => {
-            showToast(`✅ Kode ${code} berhasil dihapus`, "success");
-        })
-        .catch((err) => {
-            console.error("Delete code error:", err);
-            showToast("❌ Gagal menghapus kode: " + err.message, "error");
-        });
+        .then(() => showToast(`✅ Kode ${code} berhasil dihapus`, "success"))
+        .catch((err) => showToast("❌ Gagal menghapus kode: " + err.message, "error"));
 }
 
 // ======================= RENDER CODES TABLE =======================
@@ -308,75 +269,53 @@ function deleteCode(code) {
 function renderCodesTable() {
     const tbody = document.getElementById('tbody-codes');
     if (!tbody) return;
-    
     tbody.innerHTML = '';
-    
     if (typeof dbData === 'undefined' || !dbData.codes || dbData.codes.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">
-            🔑 Belum ada kode registrasi. Generate kode di atas.
-            </td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">🔑 Belum ada kode registrasi. Generate kode di atas.</td></tr>`;
         return;
     }
-    
     const sorted = [...dbData.codes].reverse();
-    
     sorted.forEach(c => {
         const typeLabel = c.type ? c.type.toUpperCase() : 'UMUM';
         const typeIcon = c.type === 'siswa' ? '👨‍🎓' : (c.type === 'guru' ? '👨‍🏫' : '🔑');
         const linkedLabel = c.linkedId ? `<br><small style="color:#888">🔒 ID: ${c.linkedId}</small>` : '';
         const createdByName = c.createdBy ? `<br><small>👤 ${c.createdBy}</small>` : '';
         const timeRemaining = getCodeTimeRemaining(c.createdAt);
-        
         tbody.innerHTML += `
             <tr class="${!c.used && timeRemaining?.includes('menit') ? 'code-expiring-soon' : ''}">
                 <td style="font-family:monospace; font-weight:bold;">
                     <span style="color:${c.type === 'siswa' ? '#4a90e2' : '#ff9800'}">${typeIcon}</span>
                     <strong>${c.code}</strong>
-                    <br>
-                    <small style="font-weight:normal; color:#888">${typeLabel}${linkedLabel}${createdByName}</small>
-                 </td>
-                 <td>
-                    ${c.used ? 
-                        '<span style="color:#4caf50;">✅ Terpakai</span>' : 
-                        `<span style="color:#ff9800;">🟢 Aktif</span>
-                         ${timeRemaining ? `<br><small style="color:#888;">⏰ ${timeRemaining}</small>` : ''}`
-                    }
-                 </td>
+                    <br><small style="font-weight:normal; color:#888">${typeLabel}${linkedLabel}${createdByName}</small>
+                </td>
+                <td>${c.used ? '<span style="color:#4caf50;">✅ Terpakai</span>' : `<span style="color:#ff9800;">🟢 Aktif</span>${timeRemaining ? `<br><small style="color:#888;">⏰ ${timeRemaining}</small>` : ''}`}</td>
                 <td style="font-size: 12px;">${c.createdAt ? new Date(c.createdAt).toLocaleString('id-ID') : '-'}</td>
                 <td style="font-size: 12px;">${c.userId ? c.userId.substring(0, 20) + '...' : '-'}</td>
-                <td>
-                    ${!c.used ? `
-                        <button class="btn-icon" onclick="copyToClipboard('${c.code}')" title="Salin Kode" style="background:transparent; border:none; cursor:pointer; color:#4a90e2;">📋</button>
-                        <button class="btn-icon delete" onclick="deleteCode('${c.code}')" title="Hapus Kode">🗑️</button>
-                    ` : '-'}
-                 </td>
-             </tr>
+                <td>${!c.used ? `<button class="btn-icon" onclick="copyToClipboard('${c.code}')" title="Salin Kode">📋</button>
+                                <button class="btn-icon delete" onclick="deleteCode('${c.code}')" title="Hapus Kode">🗑️</button>` : '-'}</td>
+            </tr>
         `;
     });
-    
     updateCodesStatistics();
 }
 
 function getCodeTimeRemaining(createdAt) {
     if (!createdAt) return null;
-    
     const now = Date.now();
     const expiredAt = createdAt + (5 * 60 * 60 * 1000);
     const remaining = expiredAt - now;
-    
     if (remaining <= 0) return 'Expired';
-    
     const hours = Math.floor(remaining / (60 * 60 * 1000));
     const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
-    
     if (hours > 0) return `${hours} jam ${minutes} menit`;
     else if (minutes > 0) return `${minutes} menit`;
     else return '< 1 menit';
 }
 
-// ======================= UPDATE USER ROLE =======================
+// ======================= UPDATE USER ROLE (DENGAN PERLINDUNGAN DEVELOPER) =======================
 
 function updateUserRole(uid, newRole) {
+    // Hanya admin (bukan developer) yang bisa mengubah role, dan tidak bisa mengubah ke developer
     if (!currentUser || currentUser.role !== 'admin') {
         showToast("⛔ Hanya Admin yang dapat mengubah role!", "error");
         return;
@@ -388,8 +327,20 @@ function updateUserRole(uid, newRole) {
         return;
     }
     
-    const roleNames = { siswa: 'Siswa', guru: 'Guru', admin: 'Admin' };
+    // ========== PERLINDUNGAN DEVELOPER ==========
+    // 1. Tidak boleh mengubah role user yang sudah menjadi developer
+    if (user.role === 'developer') {
+        showToast("⛔ Role Developer tidak dapat diubah!", "error");
+        return;
+    }
+    // 2. Tidak boleh mengubah role menjadi developer
+    if (newRole === 'developer') {
+        showToast("⛔ Tidak dapat memberikan role Developer!", "error");
+        return;
+    }
+    // ===========================================
     
+    const roleNames = { siswa: 'Siswa', guru: 'Guru', admin: 'Admin' };
     if(!confirm(`⚠️ Yakin ingin mengubah role ${user.nama} dari ${roleNames[user.role]} menjadi ${roleNames[newRole]}?`)) return;
     
     const btn = document.querySelector(`select[onchange*="updateUserRole('${uid}']`);
@@ -400,7 +351,6 @@ function updateUserRole(uid, newRole) {
         updatedAt: firebase.database.ServerValue.TIMESTAMP
     }).then(() => {
         showToast(`✅ Role ${user.nama} berhasil diubah menjadi ${roleNames[newRole]}`, "success");
-        
         if (currentUser.uid === uid) {
             currentUser.role = newRole;
             if (typeof saveUserToLocalStorage === 'function') saveUserToLocalStorage(currentUser);
@@ -415,41 +365,27 @@ function updateUserRole(uid, newRole) {
     });
 }
 
-// ======================= RENDER USERS TABLE =======================
+// ======================= RENDER USERS TABLE (DENGAN BADGE DEVELOPER) =======================
 
 function renderUsersTable() {
     console.log("🎨 renderUsersTable dipanggil");
-    
     const tbody = document.getElementById('tbody-users');
     const searchInput = document.getElementById('searchUser');
     const search = searchInput?.value.toLowerCase() || '';
-    
     if (!tbody) {
         console.warn("⚠️ tbody-users tidak ditemukan!");
         return;
     }
-    
     tbody.innerHTML = '';
-
     if (typeof dbData === 'undefined' || !dbData.users_auth || dbData.users_auth.length === 0) {
-        console.log("📭 Tidak ada data users_auth");
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
-            👥 Belum ada pengguna terdaftar.
-         </td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">👥 Belum ada pengguna terdaftar.</td></tr>`;
         return;
     }
-
-    console.log(`📊 Memproses ${dbData.users_auth.length} user, filter: "${search}"`);
-    
     let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
-    
-    const roleOrder = { admin: 0, guru: 1, siswa: 2 };
-    data.sort((a, b) => (roleOrder[a.role] || 3) - (roleOrder[b.role] || 3));
-
+    const roleOrder = { developer: 0, admin: 1, guru: 2, siswa: 3 };
+    data.sort((a, b) => (roleOrder[a.role] || 4) - (roleOrder[b.role] || 4));
     if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">
-            🔍 Tidak ada pengguna yang cocok dengan pencarian.
-         </td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">🔍 Tidak ada pengguna yang cocok dengan pencarian.</td></tr>`;
         return;
     }
 
@@ -459,8 +395,12 @@ function renderUsersTable() {
         
         let roleHtml = '';
         let actionsHtml = '-';
-
-        if (currentUser && currentUser.role === 'admin' && !isMe) {
+        
+        // Tentukan apakah user ini adalah developer
+        const isDeveloper = (u.role === 'developer');
+        
+        // Jika current user adalah admin dan user yang ditampilkan BUKAN developer, maka tampilkan dropdown role
+        if (currentUser && currentUser.role === 'admin' && !isMe && !isDeveloper) {
             roleHtml = `
                 <select class="form-control" onchange="updateUserRole('${u.uid}', this.value)" 
                         style="background:#2c2c2c; color:white; border:1px solid #444; padding:5px; border-radius:4px; font-size:0.8rem;">
@@ -471,13 +411,9 @@ function renderUsersTable() {
             `;
             actionsHtml = `
                 <button class="btn-icon delete" onclick="deleteUser('${u.uid}', '${escapeHtmlString(u.nama)}')" 
-                        title="Hapus User" style="background:transparent; border:none; cursor:pointer; color:#f44336; font-size:18px;">
-                    🗑️
-                </button>
+                        title="Hapus User" style="background:transparent; border:none; cursor:pointer; color:#f44336; font-size:18px;">🗑️</button>
                 <button class="btn-icon" onclick="resetUserPassword('${u.email}')" 
-                        title="Reset Password" style="background:transparent; border:none; cursor:pointer; color:#ff9800; font-size:18px;">
-                    🔑
-                </button>
+                        title="Reset Password" style="background:transparent; border:none; cursor:pointer; color:#ff9800; font-size:18px;">🔑</button>
             `;
         } else {
             let roleIcon = '👨‍🎓';
@@ -488,8 +424,10 @@ function renderUsersTable() {
             } else if (u.role === 'guru') {
                 roleIcon = '👨‍🏫';
                 roleClass = 'role-guru';
+            } else if (u.role === 'developer') {
+                roleIcon = '👨‍💻';
+                roleClass = 'role-developer';
             }
-            
             roleHtml = `<span class="role-badge ${roleClass}">${roleIcon} ${u.role.toUpperCase()}</span>`;
             if (isMe) roleHtml += ` <small style="color:#4a90e2;">(Anda)</small>`;
         }
@@ -502,66 +440,56 @@ function renderUsersTable() {
         } else if (u.role === 'guru') {
             detailIcon = '📖';
             detailText = u.subject || '-';
+        } else if (u.role === 'developer') {
+            detailIcon = '⚡';
+            detailText = 'Developer (Paten)';
         } else {
             detailIcon = '⚙️';
             detailText = 'Administrator';
         }
-
         const registeredDate = u.registeredAt ? new Date(u.registeredAt).toLocaleDateString('id-ID') : '-';
 
         tbody.innerHTML += `
             <tr class="${isMe ? 'current-user-row' : ''}">
-                <td style="text-align:center;">
-                    <img src="${avatar}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
-                 </td>
-                 <td>
-                    <strong>${escapeHtmlString(u.nama)}</strong>
-                    ${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}
-                 </td>
+                <td style="text-align:center;"><img src="${avatar}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;"></td>
+                <td><strong>${escapeHtmlString(u.nama)}</strong>${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}</td>
                 <td style="color:#aaa; font-size:0.85rem;">${u.email || '-'}</td>
                 <td>${roleHtml}</td>
-                <td style="color:#888; font-size:0.8rem;">
-                    ${detailIcon} ${escapeHtmlString(detailText)}<br>
-                    <small>📅 ${registeredDate}</small>
-                 </td>
+                <td style="color:#888; font-size:0.8rem;">${detailIcon} ${escapeHtmlString(detailText)}<br><small>📅 ${registeredDate}</small></td>
                 <td style="text-align:center;">${actionsHtml}</td>
-             </tr>
+            </tr>
         `;
     });
-    
     console.log(`✅ renderUsersTable: ${data.length} users ditampilkan`);
 }
 
 function resetUserPassword(email) {
-    if (!email) {
-        showToast("❌ Email tidak valid!", "error");
-        return;
-    }
-    
+    if (!email) { showToast("❌ Email tidak valid!", "error"); return; }
     if (!confirm(`⚠️ Kirim link reset password ke ${email}?`)) return;
-    
     auth.sendPasswordResetEmail(email)
-        .then(() => {
-            showToast(`✅ Link reset password telah dikirim ke ${email}`, "success");
-        })
+        .then(() => showToast(`✅ Link reset password telah dikirim ke ${email}`, "success"))
         .catch((err) => {
-            console.error("Reset password error:", err);
-            if (err.code === 'auth/user-not-found') {
-                showToast("❌ Email tersebut tidak terdaftar di Firebase Auth!", "error");
-            } else {
-                showToast("❌ Gagal mengirim: " + err.message, "error");
-            }
+            if (err.code === 'auth/user-not-found') showToast("❌ Email tersebut tidak terdaftar di Firebase Auth!", "error");
+            else showToast("❌ Gagal mengirim: " + err.message, "error");
         });
 }
+
+// ======================= DELETE USER (DENGAN PERLINDUNGAN DEVELOPER) =======================
 
 function deleteUser(uid, nama) {
     if (!currentUser || currentUser.role !== 'admin') {
         showToast("⛔ Hanya Admin yang dapat menghapus user!", "error");
         return;
     }
-    
     if (currentUser.uid === uid) {
         showToast("❌ Anda tidak dapat menghapus akun sendiri!", "error");
+        return;
+    }
+    
+    // Cari user yang akan dihapus
+    const targetUser = dbData.users_auth?.find(u => u.uid === uid);
+    if (targetUser && targetUser.role === 'developer') {
+        showToast("⛔ Akun Developer tidak dapat dihapus!", "error");
         return;
     }
     
@@ -571,26 +499,20 @@ function deleteUser(uid, nama) {
     if (btn) btn.disabled = true;
     
     db.ref('users_auth/' + uid).remove()
-        .then(() => {
-            showToast(`✅ User "${nama}" berhasil dihapus dari Database.`, "success");
-        })
-        .catch((err) => {
-            console.error("Delete user error:", err);
-            showToast("❌ Gagal menghapus: " + err.message, "error");
-        })
-        .finally(() => {
-            if (btn) btn.disabled = false;
-        });
+        .then(() => showToast(`✅ User "${nama}" berhasil dihapus dari Database.`, "success"))
+        .catch((err) => showToast("❌ Gagal menghapus: " + err.message, "error"))
+        .finally(() => { if (btn) btn.disabled = false; });
 }
 
-// ======================= RESET SYSTEM DATA (DENGAN PERLINDUNGAN AKUN) =======================
+// ======================= RESET SYSTEM DATA (SUDAH MELINDUNGI AKUN DEVELOPER) =======================
+
 function resetSystemData() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast("⛔ Hanya Admin yang dapat mereset sistem!", "error");
+    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
+        showToast("⛔ Hanya Admin atau Developer yang dapat mereset sistem!", "error");
         return;
     }
     
-    if(!confirm("🚨 PERINGATAN BERAT! 🚨\n\nSemua data akan dihapus:\n- Data siswa (users)\n- Data absensi\n- Kode registrasi\n- Data pengguna (users_auth) KECUALI akun zaki5go@gmail.com\n\nTINDAKAN INI TIDAK DAPAT DIBATALKAN!\n\nKetik 'RESET' untuk konfirmasi:")) return;
+    if(!confirm("🚨 PERINGATAN BERAT! 🚨\n\nSemua data akan dihapus:\n- Data siswa (users)\n- Data absensi\n- Kode registrasi\n- Data pengguna (users_auth) KECUALI akun developer (zaki5go@gmail.com)\n\nTINDAKAN INI TIDAK DAPAT DIBATALKAN!\n\nKetik 'RESET' untuk konfirmasi:")) return;
     
     const confirmation = prompt("Ketik 'RESET' untuk konfirmasi:");
     if (confirmation !== "RESET") {
@@ -602,14 +524,12 @@ function resetSystemData() {
     
     const protectedEmail = "zaki5go@gmail.com";
     
-    // Hapus node yang tidak perlu dilindungi
     const promises = [
         db.ref('users').remove(),
         db.ref('absensi').remove(),
         db.ref('codes').remove()
     ];
     
-    // Hapus semua user di users_auth KECUALI yang emailnya = protectedEmail
     const deleteUsersPromise = db.ref('users_auth').once('value').then(snapshot => {
         const users = snapshot.val();
         if (users) {
@@ -628,16 +548,9 @@ function resetSystemData() {
     Promise.all(promises)
         .then(() => {
             showToast("✅ Reset berhasil! Akun " + protectedEmail + " tetap aman.", "success");
-            setTimeout(() => {
-                auth.signOut().then(() => {
-                    location.reload();
-                });
-            }, 2000);
+            setTimeout(() => { auth.signOut().then(() => location.reload()); }, 2000);
         })
-        .catch((err) => {
-            console.error("Reset error:", err);
-            showToast("❌ Gagal mereset: " + err.message, "error");
-        });
+        .catch((err) => showToast("❌ Gagal mereset: " + err.message, "error"));
 }
 
 // ======================= CLEANUP =======================
@@ -647,23 +560,15 @@ function cleanupUsersSystem() {
     console.log("🧹 Users system cleaned up");
 }
 
-// ======================= UTILITY =======================
-
 function escapeHtmlString(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
 
 // ======================= INISIALISASI ========================
 setupUsersDataReadyListener();
 
 if (typeof window !== 'undefined' && window.dbData && window.dbData.users_auth) {
-    console.log("👥 users.js: Data already available, rendering immediately");
     setTimeout(() => {
         if (typeof renderUsersTable === 'function') renderUsersTable();
         if (typeof renderCodesTable === 'function') renderCodesTable();
@@ -671,7 +576,6 @@ if (typeof window !== 'undefined' && window.dbData && window.dbData.users_auth) 
     }, 100);
 }
 
-// ======================= EXPORT KE GLOBAL =======================
 window.populateStudentSelectForCode = populateStudentSelectForCode;
 window.generateRegistrationCode = generateRegistrationCode;
 window.deleteCode = deleteCode;
@@ -684,4 +588,4 @@ window.copyToClipboard = copyToClipboard;
 window.resetUserPassword = resetUserPassword;
 window.cleanupUsersSystem = cleanupUsersSystem;
 
-console.log("✅ users.js V3.2 loaded - Reset system protects specific email");
+console.log("✅ users.js V3.3 loaded - Role developer protected");

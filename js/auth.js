@@ -1,4 +1,5 @@
 // auth.js - VERSI REGISTRASI LANGSUNG (QR SCANNER IMPROVED v2)
+// DENGAN DUKUNGAN ROLE DEVELOPER UNTUK zaki5go@gmail.com
 
 let lastRegisterAttempt = 0;
 const REGISTER_COOLDOWN = 30000;
@@ -31,19 +32,16 @@ function openQrScanner() {
         return;
     }
     
-    // Pastikan elemen memiliki ukuran yang cukup
     qrReader.style.width = '100%';
     qrReader.style.minHeight = '300px';
     qrReader.style.backgroundColor = '#000';
     
-    // Bersihkan area reader
     qrReader.innerHTML = '';
     if (resultsDiv) {
         resultsDiv.innerHTML = '<span style="color:#ff9800;">⏳ Mengaktifkan kamera...</span>';
         resultsDiv.style.padding = '8px';
     }
     
-    // Hentikan scanner sebelumnya jika ada
     if (html5QrCode && isScanning) {
         html5QrCode.stop().then(() => {
             html5QrCode.clear();
@@ -59,31 +57,27 @@ function openQrScanner() {
 }
 
 function startScanner(qrReader, resultsDiv) {
-    // Bersihkan lagi untuk memastikan
     qrReader.innerHTML = '';
     
     html5QrCode = new Html5Qrcode("qr-reader");
     const config = {
-        fps: 10,                     // Turunkan untuk stabilitas
+        fps: 10,
         qrbox: { width: 250, height: 250 },
         aspectRatio: 1.0,
         disableFlip: false,
-        // Hanya scan QR Code
         formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
     };
     
     html5QrCode.start(
-        { facingMode: "environment" },  // Kamera belakang
+        { facingMode: "environment" },
         config,
         (decodedText, decodedResult) => {
-            // QR berhasil terbaca
             console.log("✅ QR Code terbaca:", decodedText);
             if (resultsDiv) {
                 resultsDiv.innerHTML = '<span style="color:#4caf50; font-weight:bold;">✅ QR terbaca! Memproses...</span>';
             }
             handleQrScan(decodedText);
             
-            // Hentikan scanner setelah berhasil
             if (html5QrCode && isScanning) {
                 html5QrCode.stop().then(() => {
                     html5QrCode.clear();
@@ -93,8 +87,6 @@ function startScanner(qrReader, resultsDiv) {
             }
         },
         (errorMessage) => {
-            // Error scanning (biasanya karena tidak ada QR)
-            // Tampilkan pesan hanya sekali, jangan spam
             if (resultsDiv && !resultsDiv.innerHTML.includes('✅') && !resultsDiv.innerHTML.includes('📷')) {
                 resultsDiv.innerHTML = '<small style="color:#aaa;">🔍 Arahkan kamera ke QR Code...</small>';
             }
@@ -139,12 +131,10 @@ function closeQrScanner() {
 function handleQrScan(data) {
     console.log("Data QR mentah:", data);
     try {
-        // Coba parse sebagai JSON
         const parsed = JSON.parse(data);
         if (parsed.code) {
             document.getElementById('regCode').value = parsed.code;
             if (parsed.studentId) {
-                // QR untuk siswa: isi ID dan pilih role siswa
                 const idField = document.getElementById('regGeneratedId');
                 if (idField) idField.value = parsed.studentId;
                 const radioSiswa = document.querySelector('input[name="regRoleType"][value="siswa"]');
@@ -152,7 +142,6 @@ function handleQrScan(data) {
                 if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
                 showToast("✅ Data QR terisi! Silakan lengkapi email & password.", "success");
             } else {
-                // QR untuk guru: pilih role guru
                 const radioGuru = document.querySelector('input[name="regRoleType"][value="guru"]');
                 if (radioGuru) radioGuru.checked = true;
                 if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
@@ -162,7 +151,6 @@ function handleQrScan(data) {
             showToast("❌ QR tidak valid: tidak mengandung kode registrasi.", "error");
         }
     } catch (e) {
-        // Mungkin QR hanya berisi teks kode biasa (bukan JSON)
         const maybeCode = data.trim();
         if (maybeCode.length > 5) {
             document.getElementById('regCode').value = maybeCode;
@@ -173,7 +161,6 @@ function handleQrScan(data) {
     }
 }
 
-// Override closeModal global untuk membersihkan scanner saat modal ditutup
 const originalCloseModal = window.closeModal;
 window.closeModal = function(id) {
     if (id === 'modal-qr-scanner') {
@@ -182,7 +169,7 @@ window.closeModal = function(id) {
     if (originalCloseModal) originalCloseModal(id);
 };
 
-// ======================= FUNGSI LOGIN =======================
+// ======================= FUNGSI LOGIN (DENGAN DETEKSI DEVELOPER) =======================
 
 function handleLogin(e) {
     e.preventDefault();
@@ -199,9 +186,21 @@ function handleLogin(e) {
         .then((userCredential) => {
             const user = userCredential.user;
             return db.ref('users_auth/' + user.uid).once('value').then((snapshot) => {
-                const userData = snapshot.val();
+                let userData = snapshot.val();
                 if (userData) {
                     if (userData.kelas) userData.kelas = userData.kelas.toUpperCase();
+                    
+                    // ============ ROLE DEVELOPER ============
+                    // Jika email adalah zaki5go@gmail.com, role dipaksa menjadi 'developer'
+                    if (user.email === 'zaki5go@gmail.com') {
+                        userData.role = 'developer';
+                        // Pastikan juga tersimpan di Firebase (jika belum)
+                        if (snapshot.val().role !== 'developer') {
+                            db.ref('users_auth/' + user.uid + '/role').set('developer');
+                        }
+                    }
+                    // ========================================
+                    
                     currentUser = { uid: user.uid, email: user.email, ...userData };
                     initApp();
                     showToast(`Selamat datang, ${userData.nama}`);
@@ -224,7 +223,7 @@ function handleLogin(e) {
         });
 }
 
-// ======================= FUNGSI REGISTRASI =======================
+// ======================= FUNGSI REGISTRASI (TIDAK DAPAT MEMBUAT DEVELOPER) =======================
 
 async function handleRegister(e) {
     e.preventDefault();
@@ -253,6 +252,12 @@ async function handleRegister(e) {
         showToast("Password minimal 6 karakter!", "error");
         return;
     }
+    
+    // Cegah registrasi dengan email developer
+    if (email === 'zaki5go@gmail.com') {
+        showToast("❌ Email ini tidak dapat didaftarkan melalui kode registrasi.", "error");
+        return;
+    }
 
     let extraData = {};
     if (regType === 'siswa') {
@@ -271,21 +276,17 @@ async function handleRegister(e) {
     btn.disabled = true;
 
     try {
-        // Verifikasi kode di database
         const codeSnapshot = await db.ref(`codes/${codeInput}`).once('value');
         const codeData = codeSnapshot.val();
         if (!codeData || codeData.used === true) throw new Error('Kode tidak valid atau sudah digunakan');
         if (codeData.type !== regType) throw new Error(`Kode ini untuk ${codeData.type}, bukan ${regType}`);
 
-        // Cek email sudah terdaftar
         const methods = await auth.fetchSignInMethodsForEmail(email);
         if (methods.length > 0) throw new Error('Email sudah terdaftar');
 
-        // Buat akun
         const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
         const user = userCredential.user;
 
-        // Siapkan data user
         let userData = { uid: user.uid, email, role: regType, registeredAt: firebase.database.ServerValue.TIMESTAMP };
         if (regType === 'siswa') {
             const fpId = extraData.fpId;
@@ -394,12 +395,9 @@ function togglePassword(id, icon) {
     if (icon) icon.style.color = input.type === "text" ? "var(--primary)" : "#aaa";
 }
 
-// Ekspor fungsi QR scanner ke global
 window.openQrScanner = openQrScanner;
 window.closeQrScanner = closeQrScanner;
 window.handleQrScan = handleQrScan;
-
-// Ekspor fungsi lain
 window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.handleLogout = handleLogout;
@@ -408,4 +406,4 @@ window.togglePassword = togglePassword;
 window.processForgot = processForgot;
 window.handleChangePassword = handleChangePassword;
 
-console.log("✅ auth.js (QR scanner improved v2) loaded");
+console.log("✅ auth.js (dengan role developer untuk zaki5go@gmail.com) loaded");
