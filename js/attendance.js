@@ -1,12 +1,17 @@
-// attendance.js - VERSION 3.4 (DEVELOPER ACCESS ADDED)
+// attendance.js - VERSION 3.5 (PERBAIKAN: WAIT FOR DOM ELEMENTS)
 // Mengelola data absensi, filter, validasi delay pulang,
 // serta manual status (sakit, izin, alpha) untuk siswa yang tidak hadir.
-// PERUBAHAN: Menambahkan akses untuk role developer (sama seperti admin & guru)
+// PERUBAHAN: 
+//   - Menambahkan mekanisme retry untuk mencari elemen DOM
+//   - Menambahkan akses untuk role developer (sama seperti admin & guru)
+//   - Memperbaiki error "tbody-attendance not found"
 // ============================================================================
 
 // ======================== GLOBAL VARIABLES ========================
 let attendanceDonutChart = null;
 let attendanceDataReadyListenerAdded = false;
+let attendanceRetryCount = 0;
+const MAX_ATTENDANCE_RETRY = 15;
 
 // ======================== EVENT LISTENER ========================
 
@@ -17,10 +22,17 @@ function setupAttendanceDataReadyListener() {
 
     window.addEventListener('dataReady', (e) => {
         console.log("📋 attendance.js: dataReady received, updating attendance UI");
-        if (typeof populateFilters === 'function') populateFilters();
-        if (typeof populateDateFilter === 'function') populateDateFilter();
-        if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
-        if (typeof renderTable === 'function') renderTable();
+        
+        // Reset retry counter
+        attendanceRetryCount = 0;
+        
+        // Tunggu DOM siap
+        waitForAttendanceElements(() => {
+            if (typeof populateFilters === 'function') populateFilters();
+            if (typeof populateDateFilter === 'function') populateDateFilter();
+            if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
+            if (typeof renderTable === 'function') renderTable();
+        });
     });
 
     const originalSwitchTab = window.switchTab;
@@ -29,13 +41,88 @@ function setupAttendanceDataReadyListener() {
             originalSwitchTab(tabId);
             if (tabId === 'attendance') {
                 setTimeout(() => {
-                    if (typeof populateFilters === 'function') populateFilters();
-                    if (typeof populateDateFilter === 'function') populateDateFilter();
-                    if (typeof renderTable === 'function') renderTable();
-                    if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
-                }, 100);
+                    waitForAttendanceElements(() => {
+                        if (typeof populateFilters === 'function') populateFilters();
+                        if (typeof populateDateFilter === 'function') populateDateFilter();
+                        if (typeof renderTable === 'function') renderTable();
+                        if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
+                    });
+                }, 150);
             }
         };
+    }
+}
+
+// Fungsi untuk menunggu elemen DOM attendance tersedia
+function waitForAttendanceElements(callback) {
+    const tbody = document.getElementById('tbody-attendance');
+    const filterKelas = document.getElementById('filterKelas');
+    const filterJurusan = document.getElementById('filterJurusan');
+    const filterDate = document.getElementById('filterDate');
+    
+    if (tbody && filterKelas && filterJurusan && filterDate) {
+        console.log("✅ Attendance DOM elements found, executing callback");
+        attendanceRetryCount = 0;
+        if (callback) callback();
+        return true;
+    }
+    
+    if (attendanceRetryCount < MAX_ATTENDANCE_RETRY) {
+        attendanceRetryCount++;
+        console.log(`⏳ Waiting for attendance DOM elements, retry ${attendanceRetryCount}/${MAX_ATTENDANCE_RETRY}...`);
+        setTimeout(() => waitForAttendanceElements(callback), 300);
+        return false;
+    }
+    
+    console.error("❌ Attendance DOM elements not found after max retries!");
+    
+    // Coba buat elemen secara dinamis jika masih belum ditemukan
+    const tabAttendance = document.getElementById('tab-attendance');
+    if (tabAttendance) {
+        console.log("🔧 Attempting to create attendance table dynamically...");
+        createAttendanceTableDynamic();
+        if (callback) setTimeout(callback, 100);
+    }
+    
+    return false;
+}
+
+// Fungsi untuk membuat tabel attendance secara dinamis
+function createAttendanceTableDynamic() {
+    const tabAttendance = document.getElementById('tab-attendance');
+    if (!tabAttendance) return;
+    
+    // Cek apakah sudah ada table-container
+    let tableContainer = tabAttendance.querySelector('.table-container');
+    if (!tableContainer) {
+        tableContainer = document.createElement('div');
+        tableContainer.className = 'table-container';
+        tabAttendance.appendChild(tableContainer);
+        console.log("✅ Created table-container dynamically");
+    }
+    
+    // Cek apakah sudah ada table
+    let table = tableContainer.querySelector('table');
+    if (!table) {
+        table = document.createElement('table');
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Waktu</th>
+                    <th>ID FP</th>
+                    <th>Nama</th>
+                    <th>Kelas</th>
+                    <th>Jurusan</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-attendance">
+                <tr><td colspan="7" style="text-align:center; padding:20px;">Memuat data...</td></tr>
+            </tbody>
+        `;
+        tableContainer.appendChild(table);
+        console.log("✅ Created attendance table dynamically");
     }
 }
 
@@ -140,14 +227,19 @@ function initAttendanceUI() {
     if (typeof Audio !== 'undefined') {
         new Audio();
     }
-    populateFilters();
-    populateDateFilter();
-    setTimeout(() => updateAttendanceDonutChart(), 100);
+    waitForAttendanceElements(() => {
+        populateFilters();
+        populateDateFilter();
+        setTimeout(() => updateAttendanceDonutChart(), 100);
+    });
 }
 
 function updateAttendanceDonutChart() {
     const canvas = document.getElementById('attendanceDonutChart');
-    if (!canvas) return;
+    if (!canvas) {
+        console.warn("attendanceDonutChart canvas not found");
+        return;
+    }
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -200,10 +292,15 @@ function updateAttendanceDonutChart() {
 async function renderTable() {
     console.log("📊 renderTable dipanggil - Total attendance:", dbData.attendance?.length || 0);
     
-    const tbody = document.getElementById('tbody-attendance');
+    let tbody = document.getElementById('tbody-attendance');
     if (!tbody) {
-        console.warn("tbody-attendance not found");
-        return;
+        console.warn("tbody-attendance not found, attempting to create...");
+        createAttendanceTableDynamic();
+        tbody = document.getElementById('tbody-attendance');
+        if (!tbody) {
+            console.error("❌ Still cannot find tbody-attendance after creation!");
+            return;
+        }
     }
     
     const fDate = document.getElementById('filterDate') ? document.getElementById('filterDate').value : 'all';
@@ -237,7 +334,7 @@ async function renderTable() {
     tbody.innerHTML = '';
     
     if (data.length === 0) {
-        tbody.innerHTML = `<td><td colspan="7" style="text-align:center; padding:20px; color:#888;">
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">
             📭 Data absensi tidak ditemukan.
             ${currentUser?.role === 'siswa' ? '<br><small>Hubungi guru untuk informasi lebih lanjut.</small>' : ''}
             </td></tr>`;
@@ -249,8 +346,12 @@ async function renderTable() {
     let manualStatusMap = {};
     const targetDate = (fDate === 'today' || fDate === 'all') ? new Date().toISOString().split('T')[0] : fDate;
     if (targetDate !== 'all') {
-        const statusSnapshot = await db.ref(`attendance_status/${targetDate}`).once('value');
-        manualStatusMap = statusSnapshot.val() || {};
+        try {
+            const statusSnapshot = await db.ref(`attendance_status/${targetDate}`).once('value');
+            manualStatusMap = statusSnapshot.val() || {};
+        } catch(e) {
+            console.warn("Error fetching manual status:", e);
+        }
     }
     
     let rows = [];
@@ -277,13 +378,13 @@ async function renderTable() {
             <tr class="${isNew ? 'attendance-new-row' : ''}">
                 <td>⏰ ${timeDisplay}<br><span class="text-small">📅 ${row.date}</span>${outDisplay}</td>
                 <td><strong>#${row.studentId}</strong></td>
-                <td>${escapeHtml(row.nama)}</td>
-                <td>${row.kelas || '-'}</td>
-                <td>${row.jurusan || '-'}</td>
-                <td>${statusHtml}</td>
+                <td>${escapeHtml(row.nama)}</div></td>
+                <td>${row.kelas || '-'}</div></td>
+                <td>${row.jurusan || '-'}</div></td>
+                <td>${statusHtml}</div></td>
                 <td class="role-guru role-admin role-developer">
                     <button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button>
-                </td>
+                </div>
             </tr>
         `);
     });
@@ -301,6 +402,9 @@ function updateAttendanceStatistics(data) {
             statsContainer = document.createElement('div');
             statsContainer.id = 'attendanceStats';
             statsContainer.style.marginBottom = '10px';
+            statsContainer.style.padding = '10px';
+            statsContainer.style.background = 'var(--bg-card)';
+            statsContainer.style.borderRadius = '8px';
             controlsBar.insertAdjacentElement('afterend', statsContainer);
         } else return;
     }
@@ -312,7 +416,7 @@ function updateAttendanceStatistics(data) {
     const totalUnique = [...new Set(data.map(r => r.studentId))].length;
     
     statsContainer.innerHTML = `
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px; padding: 10px; background: #1e1e1e; border-radius: 8px;">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
             <div><span style="color: #4a90e2;">📅 Hari Ini:</span> <strong>${hadirToday}</strong> Hadir, <strong>${pulangToday}</strong> Pulang</div>
             <div><span style="color: #4a90e2;">👥 Total Hari Ini:</span> <strong>${todayData.length}</strong> Transaksi</div>
             <div><span style="color: #4a90e2;">📊 Total Unik:</span> <strong>${totalUnique}</strong> Siswa</div>
@@ -653,7 +757,7 @@ function renderFilteredTable(filteredData) {
     
     tbody.innerHTML = '';
     if (filteredData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada data dalam rentang tanggal tersebut.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada data dalam rentang tanggal tersebut.</div></div></div></td></tr>`;
         return;
     }
     let rows = [];
@@ -663,11 +767,11 @@ function renderFilteredTable(filteredData) {
             <tr>
                 <td>⏰ ${row.timeIn || '-'}<br><span class="text-small">📅 ${row.date}</span>${outDisplay}</td>
                 <td><strong>#${row.studentId}</strong></td>
-                <td>${escapeHtml(row.nama)}</td>
-                <td>${row.kelas || '-'}</td>
-                <td>${row.jurusan || '-'}</td>
-                <td><span style="color:${row.status === 'Pulang' ? 'var(--danger)' : 'var(--success)'}">${row.status === 'Pulang' ? '🏠' : '✅'} ${row.status}</span></td>
-                <td class="role-guru role-admin role-developer"><button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button></td>
+                <td>${escapeHtml(row.nama)}</div></td>
+                <td>${row.kelas || '-'}</div></td>
+                <td>${row.jurusan || '-'}</div></td>
+                <td><span style="color:${row.status === 'Pulang' ? 'var(--danger)' : 'var(--success)'}">${row.status === 'Pulang' ? '🏠' : '✅'} ${row.status}</span></div></td>
+                <td class="role-guru role-admin role-developer"><button class="btn-icon delete" onclick="deleteAttendance('${row.id}')" title="Hapus Data">🗑️</button></div></td>
             </tr>
         `);
     });
@@ -842,30 +946,39 @@ function getTodayAttendanceStats() {
 function cleanupAttendanceUI() {
     if (attendanceDonutChart) { attendanceDonutChart.destroy(); attendanceDonutChart = null; }
     attendanceDataReadyListenerAdded = false;
+    attendanceRetryCount = 0;
     console.log("🧹 Attendance UI cleaned up");
 }
 
 // ======================== INISIALISASI ========================
 setupAttendanceDataReadyListener();
 
+// Inisialisasi saat DOM siap
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
-            populateFilters();
-            populateDateFilter();
+            waitForAttendanceElements(() => {
+                populateFilters();
+                populateDateFilter();
+            });
         }, 100);
     });
 } else {
     setTimeout(() => {
-        populateFilters();
-        populateDateFilter();
+        waitForAttendanceElements(() => {
+            populateFilters();
+            populateDateFilter();
+        });
     }, 100);
 }
 
+// Jika data sudah tersedia
 if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance) {
     setTimeout(() => {
-        if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
-        if (typeof renderTable === 'function') renderTable();
+        waitForAttendanceElements(() => {
+            if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
+            if (typeof renderTable === 'function') renderTable();
+        });
     }, 100);
 }
 
@@ -888,5 +1001,6 @@ window.saveAllAbsenceStatus = saveAllAbsenceStatus;
 window.updateAttendanceDonutChart = updateAttendanceDonutChart;
 window.populateFilters = populateFilters;
 window.populateDateFilter = populateDateFilter;
+window.waitForAttendanceElements = waitForAttendanceElements;
 
-console.log("✅ attendance.js V3.4 loaded - Developer role fully supported");
+console.log("✅ attendance.js V3.5 loaded - Fixed DOM element waiting");

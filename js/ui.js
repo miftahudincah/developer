@@ -1,10 +1,12 @@
-// ui.js - VERSION 4.5 (DENGAN DUKUNGAN ROLE DEVELOPER)
+// ui.js - VERSION 5.2 (ADDED: CLASS ICON IN HEADER)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
-// PERUBAHAN: 
+// PERUBAHAN:
+//   - Menambahkan fungsi sidebar (toggleSidebar, closeSidebar, initSidebar)
+//   - Menambahkan icon kelas di header untuk role siswa
+//   - Memperbaiki mekanisme retry untuk populate functions
+//   - Menambahkan event listener untuk menunggu module lain siap
 //   - uploadProfilePhoto aman jika modal belum terbuka
 //   - updateDashboardChart menampilkan data per minggu dalam BULAN BERJALAN
-//   - Menambahkan populateDateFilter saat initApp
-//   - Memperkuat pemanggilan populate functions
 //   - TAMBAHAN: Role developer (zaki5go@gmail.com) mendapat akses penuh seperti admin
 // ============================================================================
 
@@ -13,6 +15,189 @@ let clockInterval = null;
 let uiInitialized = false;
 let dashboardChart = null;
 let dashboardChartRetryTimeout = null;
+let populateRetryCount = 0;
+const MAX_POPULATE_RETRY = 15;
+
+// ======================== HELPER FUNCTIONS ========================
+
+// Fungsi untuk mendapatkan icon kelas berdasarkan nama kelas dari konfigurasi sekolah
+function getClassIconForHeader(className) {
+    if (!className) return '🏫';
+    const classes = window.currentSchoolConfig?.classes || [];
+    const classData = classes.find(c => {
+        if (typeof c === 'object') return c.name === className;
+        return c === className;
+    });
+    if (classData && typeof classData === 'object' && classData.icon) {
+        return classData.icon;
+    }
+    // Default icon berdasarkan nama kelas
+    if (className.includes('VII')) return '📚';
+    if (className.includes('VIII')) return '📖';
+    if (className.includes('IX')) return '🎓';
+    if (className.includes('X')) return '💻';
+    if (className.includes('XI')) return '🔧';
+    if (className.includes('XII')) return '🚀';
+    return '🏫';
+}
+
+// ======================== SIDEBAR FUNCTIONS ========================
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebarMenu');
+    const overlay = document.getElementById('sidebarOverlay');
+    const hamburgerIcon = document.querySelector('.hamburger-icon');
+    const closeIcon = document.querySelector('.hamburger-close');
+    
+    if (sidebar && overlay) {
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('open');
+        
+        if (sidebar.classList.contains('open')) {
+            if (hamburgerIcon) hamburgerIcon.style.display = 'none';
+            if (closeIcon) closeIcon.style.display = 'inline';
+            document.body.style.overflow = 'hidden';
+        } else {
+            if (hamburgerIcon) hamburgerIcon.style.display = 'inline';
+            if (closeIcon) closeIcon.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+    }
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebarMenu');
+    const overlay = document.getElementById('sidebarOverlay');
+    const hamburgerIcon = document.querySelector('.hamburger-icon');
+    const closeIcon = document.querySelector('.hamburger-close');
+    
+    if (sidebar && overlay) {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('open');
+        if (hamburgerIcon) hamburgerIcon.style.display = 'inline';
+        if (closeIcon) closeIcon.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+function initSidebar() {
+    console.log("📱 Initializing sidebar...");
+    
+    const sidebarBtns = document.querySelectorAll('.sidebar-btn');
+    sidebarBtns.forEach(btn => {
+        btn.removeEventListener('click', handleSidebarClick);
+        btn.addEventListener('click', handleSidebarClick);
+    });
+    
+    updateSidebarActiveState();
+    updateSidebarUserInfo();
+    applySidebarRolePermissions();
+    
+    console.log("✅ Sidebar initialized");
+}
+
+function handleSidebarClick(e) {
+    const btn = e.currentTarget;
+    const tabId = btn.getAttribute('data-tab');
+    if (tabId) {
+        switchTab(tabId);
+        closeSidebar();
+        updateSidebarActiveState();
+        updateMobileNavTitle(tabId);
+    }
+}
+
+function updateSidebarActiveState() {
+    const activeTab = document.querySelector('.tab-content.active')?.id;
+    if (!activeTab) return;
+    
+    const tabId = activeTab.replace('tab-', '');
+    const sidebarBtns = document.querySelectorAll('.sidebar-btn');
+    
+    sidebarBtns.forEach(btn => {
+        const btnTab = btn.getAttribute('data-tab');
+        if (btnTab === tabId) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function updateSidebarUserInfo() {
+    if (!currentUser) return;
+    
+    const sidebarAvatar = document.getElementById('sidebarAvatar');
+    const sidebarUserName = document.getElementById('sidebarUserName');
+    const sidebarUserRole = document.getElementById('sidebarUserRole');
+    const sidebarClassInfo = document.getElementById('sidebarClassInfo');
+    
+    if (sidebarAvatar) {
+        sidebarAvatar.src = currentUser.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.nama || 'User')}&background=00bcd4&color=fff&size=100`;
+    }
+    if (sidebarUserName) {
+        sidebarUserName.textContent = currentUser.nama || currentUser.email;
+    }
+    if (sidebarUserRole) {
+        let roleText = currentUser.role?.toUpperCase() || 'SISWA';
+        if (currentUser.role === 'developer') roleText = 'DEVELOPER';
+        sidebarUserRole.textContent = roleText;
+    }
+    
+    // Tampilkan kelas dengan icon di sidebar untuk siswa
+    if (sidebarClassInfo) {
+        if (currentUser.role === 'siswa' && currentUser.kelas) {
+            const classIcon = getClassIconForHeader(currentUser.kelas);
+            sidebarClassInfo.innerHTML = `${classIcon} ${currentUser.kelas}`;
+            sidebarClassInfo.style.display = 'block';
+        } else if (currentUser.role === 'guru' && currentUser.subject) {
+            sidebarClassInfo.innerHTML = `📖 ${currentUser.subject}`;
+            sidebarClassInfo.style.display = 'block';
+        } else {
+            sidebarClassInfo.style.display = 'none';
+        }
+    }
+}
+
+function updateMobileNavTitle(tabId) {
+    const titleMap = {
+        'dashboard': '📊 Dashboard',
+        'attendance': '📋 Absensi',
+        'students': '👨‍🎓 Data Siswa',
+        'users': '👥 Manajemen User',
+        'rekap': '📊 Rekap Absensi',
+        'friends': '👥 Teman',
+        'chat': '💬 Chat',
+        'config': '⚙️ Pengaturan',
+        'guide': '📘 Panduan'
+    };
+    const navTitle = document.getElementById('mobileNavTitle');
+    if (navTitle && titleMap[tabId]) {
+        navTitle.textContent = titleMap[tabId];
+    }
+}
+
+function applySidebarRolePermissions() {
+    if (!currentUser) return;
+    
+    const role = currentUser.role;
+    const isAdminOrDev = (role === 'admin' || role === 'developer');
+    const isGuruOrDev = (role === 'admin' || role === 'guru' || role === 'developer');
+    
+    const sidebarBtns = document.querySelectorAll('.sidebar-btn');
+    sidebarBtns.forEach(btn => {
+        const hasRoleAdmin = btn.classList.contains('role-admin');
+        const hasRoleGuru = btn.classList.contains('role-guru');
+        
+        if (hasRoleAdmin && !isAdminOrDev) {
+            btn.style.display = 'none';
+        } else if (hasRoleGuru && !isGuruOrDev) {
+            btn.style.display = 'none';
+        } else {
+            btn.style.display = 'flex';
+        }
+    });
+}
 
 // ======================== INISIALISASI DASHBOARD ========================
 
@@ -40,6 +225,10 @@ function initApp() {
     // Apply role permissions
     applyRolePermissions();
     
+    // Init sidebar
+    initSidebar();
+    updateSidebarUserInfo();
+    
     // Load logo sekolah (listener tetap karena hanya sekali)
     loadSchoolLogo();
     updateSchoolLogoUI();
@@ -47,43 +236,9 @@ function initApp() {
     // Setup chart year listener - TIDAK DIPERLUKAN LAGI
     setupChartYearListener();
     
-    // ========== POPULATE ALL FILTERS ==========
-    console.log("🔧 Populating all filters in initApp...");
-    
-    // Populate filters dengan guard dan retry
-    const populateAllFilters = () => {
-        if (typeof populateFilters === 'function') {
-            try { populateFilters(); } catch(e) { console.warn("populateFilters error:", e); }
-        } else {
-            console.warn("populateFilters not available yet, will retry");
-            setTimeout(populateAllFilters, 300);
-            return;
-        }
-        
-        if (typeof populateDateFilter === 'function') {
-            try { populateDateFilter(); } catch(e) { console.warn("populateDateFilter error:", e); }
-        } else {
-            console.warn("populateDateFilter not available yet, will retry");
-            setTimeout(populateAllFilters, 300);
-            return;
-        }
-        
-        if (typeof populateStudentFilters === 'function') {
-            try { populateStudentFilters(); } catch(e) { console.warn("populateStudentFilters error:", e); }
-        }
-        
-        if (typeof populateKelasOptions === 'function') {
-            try { populateKelasOptions(); } catch(e) { console.warn("populateKelasOptions error:", e); }
-        }
-        
-        if (typeof populateJurusanOptions === 'function') {
-            try { populateJurusanOptions(); } catch(e) { console.warn("populateJurusanOptions error:", e); }
-        }
-        
-        console.log("✅ All filters populated in initApp");
-    };
-    
-    setTimeout(populateAllFilters, 100);
+    // ========== POPULATE ALL FILTERS DENGAN RETRY ==========
+    console.log("🔧 Starting to populate all filters (with retry)...");
+    populateAllFiltersWithRetry();
     
     // Start clock
     try {
@@ -99,10 +254,18 @@ function initApp() {
     window.dispatchEvent(new CustomEvent('uiReady', { detail: { currentUser } }));
     
     const renderTables = () => {
-        if (typeof renderTable === 'function') renderTable();
-        if (typeof renderStudentsTable === 'function') renderStudentsTable();
-        if (typeof renderCodesTable === 'function') renderCodesTable();
-        if (typeof renderUsersTable === 'function') renderUsersTable();
+        if (typeof renderTable === 'function') {
+            try { renderTable(); } catch(e) { console.warn("renderTable error:", e); }
+        }
+        if (typeof renderStudentsTable === 'function') {
+            try { renderStudentsTable(); } catch(e) { console.warn("renderStudentsTable error:", e); }
+        }
+        if (typeof renderCodesTable === 'function') {
+            try { renderCodesTable(); } catch(e) { console.warn("renderCodesTable error:", e); }
+        }
+        if (typeof renderUsersTable === 'function') {
+            try { renderUsersTable(); } catch(e) { console.warn("renderUsersTable error:", e); }
+        }
     };
     
     if (window.dbData && window.dbData.attendance && window.dbData.users) {
@@ -111,14 +274,15 @@ function initApp() {
         window.addEventListener('dataReady', function onDataReady() {
             window.removeEventListener('dataReady', onDataReady);
             renderTables();
-            setTimeout(populateAllFilters, 200);
+            setTimeout(() => populateAllFiltersWithRetry(), 200);
         });
     }
     
+    // Set dashboard sebagai tab aktif
     switchTab('dashboard');
     
+    // Tampilkan floating buttons
     setTimeout(() => {
-        // Tampilkan floating button untuk admin, guru, dan developer
         if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru' || currentUser.role === 'developer')) {
             const floatingBtn = document.getElementById('floatingAnnouncementBtn');
             if (floatingBtn) floatingBtn.style.display = 'flex';
@@ -129,6 +293,7 @@ function initApp() {
         if (floatingChatBtn) floatingChatBtn.style.display = 'flex';
     }, 1000);
     
+    // Inisialisasi modul lain
     if (typeof initAnnouncementSystem === 'function') {
         setTimeout(() => initAnnouncementSystem(), 500);
     }
@@ -152,6 +317,58 @@ function initApp() {
     console.log("✅ initApp completed - event 'uiReady' dispatched");
 }
 
+// ======================== POPULATE FILTERS DENGAN RETRY ========================
+
+function populateAllFiltersWithRetry() {
+    // Reset retry counter
+    populateRetryCount = 0;
+    
+    function attemptPopulate() {
+        // Cek apakah fungsi populateFilters sudah tersedia
+        if (typeof populateFilters === 'function') {
+            console.log("✅ populateFilters found, executing...");
+            try {
+                populateFilters();
+            } catch(e) {
+                console.warn("populateFilters execution error:", e);
+            }
+        } else {
+            console.warn(`⏳ populateFilters not available yet, retry ${populateRetryCount + 1}/${MAX_POPULATE_RETRY}...`);
+            populateRetryCount++;
+            if (populateRetryCount < MAX_POPULATE_RETRY) {
+                setTimeout(attemptPopulate, 500);
+            } else {
+                console.error("❌ populateFilters still not available after max retries!");
+            }
+            return;
+        }
+        
+        // Lanjutkan ke fungsi lainnya
+        if (typeof populateDateFilter === 'function') {
+            try { populateDateFilter(); } catch(e) { console.warn("populateDateFilter error:", e); }
+        } else {
+            console.warn("populateDateFilter not available");
+        }
+        
+        if (typeof populateStudentFilters === 'function') {
+            try { populateStudentFilters(); } catch(e) { console.warn("populateStudentFilters error:", e); }
+        }
+        
+        if (typeof populateKelasOptions === 'function') {
+            try { populateKelasOptions(); } catch(e) { console.warn("populateKelasOptions error:", e); }
+        }
+        
+        if (typeof populateJurusanOptions === 'function') {
+            try { populateJurusanOptions(); } catch(e) { console.warn("populateJurusanOptions error:", e); }
+        }
+        
+        console.log("✅ All filters populated successfully");
+    }
+    
+    // Tunggu 300ms sebelum mulai retry
+    setTimeout(attemptPopulate, 300);
+}
+
 // ======================== EVENT LISTENER UNTUK MODUL LAIN ========================
 if (typeof window !== 'undefined') {
     window.addEventListener('dataReady', () => {
@@ -161,9 +378,15 @@ if (typeof window !== 'undefined') {
             initRekap();
         }
         setTimeout(() => {
-            if (typeof populateFilters === 'function') populateFilters();
-            if (typeof populateDateFilter === 'function') populateDateFilter();
-            if (typeof populateStudentFilters === 'function') populateStudentFilters();
+            if (typeof populateFilters === 'function') {
+                try { populateFilters(); } catch(e) {}
+            }
+            if (typeof populateDateFilter === 'function') {
+                try { populateDateFilter(); } catch(e) {}
+            }
+            if (typeof populateStudentFilters === 'function') {
+                try { populateStudentFilters(); } catch(e) {}
+            }
         }, 200);
     });
 }
@@ -225,6 +448,21 @@ function updateUserInterface() {
         if (currentUser.role === 'developer') roleText = '👨‍💻 DEVELOPER';
         userRoleDisplay.textContent = roleText;
         userRoleDisplay.className = `role-badge role-${currentUser.role}`;
+    }
+    
+    // TAMBAHKAN: Tampilkan kelas dengan icon di header untuk siswa
+    const userClassDisplay = document.getElementById('userClassDisplay');
+    if (userClassDisplay) {
+        if (currentUser.role === 'siswa' && currentUser.kelas) {
+            const classIcon = getClassIconForHeader(currentUser.kelas);
+            userClassDisplay.innerHTML = `${classIcon} ${currentUser.kelas}`;
+            userClassDisplay.style.display = 'inline-flex';
+        } else if (currentUser.role === 'guru' && currentUser.subject) {
+            userClassDisplay.innerHTML = `📖 ${currentUser.subject}`;
+            userClassDisplay.style.display = 'inline-flex';
+        } else {
+            userClassDisplay.style.display = 'none';
+        }
     }
     
     const photo = currentUser.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.nama || 'User')}&background=random`;
@@ -526,6 +764,7 @@ function applyRolePermissions() {
         document.querySelectorAll('.tab-btn').forEach(btn => btn.style.display = '');
     }
     updateSchoolLogoUI();
+    updateUserInterface();
 }
 
 function updateClock() {
@@ -548,15 +787,25 @@ function switchTab(tabId) {
     const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
     if (activeBtn) activeBtn.classList.add('active');
     
+    // Update sidebar active state dan mobile title
+    updateSidebarActiveState();
+    updateMobileNavTitle(tabId);
+    
     setTimeout(() => {
         if (tabId === 'dashboard') {
             renderDashboard();
         } else if (tabId === 'attendance' && typeof renderTable === 'function') {
-            if (typeof populateFilters === 'function') populateFilters();
-            if (typeof populateDateFilter === 'function') populateDateFilter();
+            if (typeof populateFilters === 'function') {
+                try { populateFilters(); } catch(e) {}
+            }
+            if (typeof populateDateFilter === 'function') {
+                try { populateDateFilter(); } catch(e) {}
+            }
             renderTable();
         } else if (tabId === 'students' && typeof renderStudentsTable === 'function') {
-            if (typeof populateStudentFilters === 'function') populateStudentFilters();
+            if (typeof populateStudentFilters === 'function') {
+                try { populateStudentFilters(); } catch(e) {}
+            }
             renderStudentsTable();
         } else if (tabId === 'users' && typeof renderUsersTable === 'function') {
             renderUsersTable();
@@ -1006,9 +1255,15 @@ function handleUpdateProfileInfo() {
                 db.ref(`users/${currentUser.fpId}`).update({ nama: newNama, kelas: newKelas, jurusan: newJurusan });
             }
             closeModal('modal-profile');
-            if (typeof populateFilters === 'function') populateFilters();
-            if (typeof renderStudentsTable === 'function') renderStudentsTable();
-            if (typeof renderUsersTable === 'function') renderUsersTable();
+            if (typeof populateFilters === 'function') {
+                try { populateFilters(); } catch(e) {}
+            }
+            if (typeof renderStudentsTable === 'function') {
+                try { renderStudentsTable(); } catch(e) {}
+            }
+            if (typeof renderUsersTable === 'function') {
+                try { renderUsersTable(); } catch(e) {}
+            }
         })
         .catch(err => { console.error('Update profile error:', err); showToast('❌ Gagal update: ' + err.message, 'error'); })
         .finally(() => { btn.innerText = originalText; btn.disabled = false; });
@@ -1198,7 +1453,7 @@ function renderUsersTable() {
     const search = searchInput ? searchInput.value.toLowerCase() : '';
     tbody.innerHTML = '';
     if (!dbData.users_auth || dbData.users_auth.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.${search ? '<br><small>Coba kata kunci lain</small>' : ''}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.${search ? '<br><small>Coba kata kunci lain</small>' : ''}</tr></tr>`;
         return;
     }
     let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
@@ -1212,8 +1467,8 @@ function renderUsersTable() {
         let roleHtml = '', actionsHtml = '-';
         const isDeveloper = (u.role === 'developer');
         
-        // Hanya admin yang bisa mengedit role, dan tidak bisa mengedit developer
-        if (currentUser && currentUser.role === 'admin' && !isMe && !isDeveloper) {
+        // Hanya admin atau developer yang bisa mengedit role, dan tidak bisa mengedit developer lain
+        if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'developer') && !isMe && !isDeveloper) {
             roleHtml = `<select class="form-control" onchange="updateUserRole('${u.uid}', this.value)" style="background:#2c2c2c; color:white; border:1px solid #444; padding:5px; border-radius:4px; font-size:0.8rem;">
                 <option value="siswa" ${u.role === 'siswa' ? 'selected' : ''}>📚 Siswa</option>
                 <option value="guru" ${u.role === 'guru' ? 'selected' : ''}>👨‍🏫 Guru</option>
@@ -1317,5 +1572,14 @@ window.renderDashboard = renderDashboard;
 window.updateDashboardChart = updateDashboardChart;
 window.setupChartYearListener = setupChartYearListener;
 window.updateYearDropdownOptions = updateYearDropdownOptions;
+window.getClassIconForHeader = getClassIconForHeader;
 
-console.log("✅ ui.js V4.5 loaded - Role developer fully supported");
+// ======================== SIDEBAR EXPORTS ========================
+window.toggleSidebar = toggleSidebar;
+window.closeSidebar = closeSidebar;
+window.initSidebar = initSidebar;
+window.updateSidebarUserInfo = updateSidebarUserInfo;
+window.updateMobileNavTitle = updateMobileNavTitle;
+window.applySidebarRolePermissions = applySidebarRolePermissions;
+
+console.log("✅ ui.js V5.2 loaded - Added class icon in header for siswa role");
