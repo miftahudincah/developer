@@ -98,24 +98,120 @@
 
     <!-- DASHBOARD -->
     <div id="dashboard-section" style="display:none;">
+        
+        <!-- HAMBURGER MENU NAVBAR -->
+        <div class="mobile-navbar">
+            <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+                <span class="hamburger-icon">☰</span>
+                <span class="hamburger-close" style="display: none;">✕</span>
+            </button>
+            <div class="mobile-nav-title" id="mobileNavTitle">📊 Dashboard</div>
+            <div class="mobile-nav-placeholder"></div>
+        </div>
+
+        <!-- SIDEBAR MENU -->
+        <div class="sidebar-menu" id="sidebarMenu">
+            <div class="sidebar-header">
+                <div class="sidebar-user-info">
+                    <img id="sidebarAvatar" class="sidebar-avatar" src="" alt="Avatar">
+                    <div class="sidebar-user-details">
+                        <span id="sidebarUserName">User</span>
+                        <span id="sidebarUserRole" class="sidebar-role-badge">SISWA</span>
+                        <!-- Tambahan untuk kelas di sidebar -->
+                        <div id="sidebarClassInfo" class="sidebar-class-info" style="font-size: 0.7rem; margin-top: 4px; display: none;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-nav" id="sidebarNav">
+                <button class="sidebar-btn active" data-tab="dashboard">
+                    <span class="sidebar-icon">📊</span>
+                    <span class="sidebar-text">Dashboard</span>
+                </button>
+                <button class="sidebar-btn" data-tab="attendance">
+                    <span class="sidebar-icon">📋</span>
+                    <span class="sidebar-text">Absensi</span>
+                </button>
+                <button class="sidebar-btn" data-tab="students">
+                    <span class="sidebar-icon">👨‍🎓</span>
+                    <span class="sidebar-text">Data Siswa</span>
+                </button>
+                <button class="sidebar-btn role-admin role-guru" data-tab="users">
+                    <span class="sidebar-icon">👥</span>
+                    <span class="sidebar-text">Manajemen User</span>
+                </button>
+                <button class="sidebar-btn" data-tab="rekap">
+                    <span class="sidebar-icon">📊</span>
+                    <span class="sidebar-text">Rekap Absensi</span>
+                </button>
+                <button class="sidebar-btn" data-tab="friends">
+                    <span class="sidebar-icon">👥</span>
+                    <span class="sidebar-text">Teman</span>
+                </button>
+                <button class="sidebar-btn" data-tab="chat">
+                    <span class="sidebar-icon">💬</span>
+                    <span class="sidebar-text">Chat</span>
+                </button>
+                <button class="sidebar-btn" data-tab="config">
+                    <span class="sidebar-icon">⚙️</span>
+                    <span class="sidebar-text">Pengaturan</span>
+                </button>
+                <button class="sidebar-btn" data-tab="guide">
+                    <span class="sidebar-icon">📘</span>
+                    <span class="sidebar-text">Panduan</span>
+                </button>
+                <!-- MENU PROFIL DI SIDEBAR -->
+                <button class="sidebar-btn" id="sidebarProfileBtn" onclick="openProfileModal(); closeSidebar();">
+                    <span class="sidebar-icon">👤</span>
+                    <span class="sidebar-text">Profil Saya</span>
+                </button>
+                <!-- MENU GANTI PASSWORD DI SIDEBAR -->
+                <button class="sidebar-btn" id="sidebarChangePasswordBtn" onclick="openChangePasswordModal(); closeSidebar();">
+                    <span class="sidebar-icon">🔑</span>
+                    <span class="sidebar-text">Ganti Password</span>
+                </button>
+            </div>
+            <div class="sidebar-footer">
+                <button class="sidebar-logout-btn" onclick="handleLogout()">
+                    <span class="sidebar-icon">🚪</span>
+                    <span class="sidebar-text">Keluar</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Overlay untuk menutup sidebar -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+        <!-- HEADER BAR (Desktop & Mobile) - DIPERBAIKI DENGAN userClassDisplay -->
         <div class="header-bar">
             <div class="header-left">
                 <img id="headerSchoolLogo" class="school-logo" src="" alt="Logo" style="display: none;">
                 <div>
                     <h2 id="schoolNameDisplay" style="margin:0;">Sistem Absensi</h2>
-                    <div style="display:flex; align-items:center;">
+                    <div style="display:flex; align-items:center; gap: 8px; flex-wrap: wrap;">
                         <span id="userProfileDisplay">User</span>
                         <span id="userRoleDisplay" class="role-badge">SISWA</span>
+                        <!-- TAMBAHAN: Badge untuk menampilkan kelas dengan icon -->
+                        <span id="userClassDisplay" class="class-badge" style="display: none;"></span>
                     </div>
                 </div>
             </div>
             <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                 <div id="clock" class="clock-display">--:--:--</div>
-                <!-- TOMBOL TOGGLE LIGHT/DARK MODE -->
                 <button id="themeToggleBtn" class="btn-icon" style="background: transparent; font-size: 1.4rem;">🌙</button>
-                <button class="btn-auth btn-primary" onclick="openProfileModal()">Profil Saya</button>
-                <button class="btn-auth btn-danger" onclick="handleLogout()">Keluar</button>
             </div>
+        </div>
+
+        <!-- NAV TABS (Desktop) -->
+        <div class="nav-tabs" id="nav-tabs-container">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+            <button class="tab-btn" onclick="switchTab('attendance')">📋 Absensi</button>
+            <button class="tab-btn" onclick="switchTab('students')">👨‍🎓 Data Siswa</button>
+            <button class="tab-btn role-admin role-guru" onclick="switchTab('users')">👥 Manajemen User</button>
+            <button class="tab-btn" onclick="switchTab('rekap')">📊 Rekap Absensi</button>
+            <button class="tab-btn" onclick="switchTab('friends')">👥 Teman</button>
+            <button class="tab-btn" onclick="switchTab('chat')">💬 Chat</button>
+            <button class="tab-btn" onclick="switchTab('config')">⚙️ Pengaturan</button>
+            <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
         </div>
 
         <!-- ANNOUNCEMENT SECTION -->
@@ -134,19 +230,6 @@
                 <small class="text-small">Status akan hilang setelah 24 jam</small>
             </div>
             <div id="statusBar" class="status-bar-scroll"></div>
-        </div>
-
-        <!-- NAV TABS -->
-        <div class="nav-tabs" id="nav-tabs-container">
-            <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
-            <button class="tab-btn" onclick="switchTab('attendance')">📋 Absensi</button>
-            <button class="tab-btn" onclick="switchTab('students')">👨‍🎓 Data Siswa</button>
-            <button class="tab-btn role-admin role-guru" onclick="switchTab('users')">👥 Manajemen User</button>
-            <button class="tab-btn" onclick="switchTab('rekap')">📊 Rekap Absensi</button>
-            <button class="tab-btn" onclick="switchTab('friends')">👥 Teman</button>
-            <button class="tab-btn" onclick="switchTab('chat')">💬 Chat</button>
-            <button class="tab-btn" onclick="switchTab('config')">⚙️ Pengaturan</button>
-            <button class="tab-btn" onclick="switchTab('guide')">📘 Panduan</button>
         </div>
 
         <!-- TAB DASHBOARD -->
@@ -234,8 +317,9 @@
             <div class="table-container">
                 <table>
                     <thead><tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr></thead>
-                    <tbody id="tbody-attendance"><tr><td colspan="7">Memuat data...</td></tr></tbody>
-                </table>
+                    <tbody id="tbody-attendance"><tr><td colspan="7">Memuat data...</td></tr>
+                </tbody>
+            </table>
             </div>
         </div>
 
@@ -264,8 +348,9 @@
             <div class="table-container">
                 <table>
                     <thead><tr><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Delay</th><th>Aksi</th></tr></thead>
-                    <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr></tbody>
-                </table>
+                    <tbody id="tbody-students"><tr><td colspan="6">Memuat data...</td></tr>
+                </tbody>
+            </table>
             </div>
         </div>
 
@@ -316,8 +401,9 @@
             <div class="table-container">
                 <table>
                     <thead><tr><th>No</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th><th>Persentase</th><th>Status</th></tr></thead>
-                    <tbody id="rekapTbody"><tr><td colspan="12">Memuat data...</td></tr></tbody>
-                </table>
+                    <tbody id="rekapTbody"><tr><td colspan="12">Memuat data...</td></tr>
+                </tbody>
+            </table>
             </div>
         </div>
 
@@ -532,7 +618,6 @@
                     if (toggleBtn) toggleBtn.innerHTML = '🌙';
                 }
                 localStorage.setItem('theme', theme);
-                // Refresh chart jika ada
                 if (typeof updateDashboardChart === 'function') setTimeout(updateDashboardChart, 100);
                 if (typeof updateAttendanceDonutChart === 'function') updateAttendanceDonutChart();
                 if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) loadRekap();
@@ -551,6 +636,13 @@
                 }
             }
             initTheme();
+            
+            // ==================== SIDEBAR INIT ====================
+            setTimeout(function() {
+                if (typeof initSidebar === 'function') {
+                    initSidebar();
+                }
+            }, 500);
         });
         
         function showToast(msg,type){ 
