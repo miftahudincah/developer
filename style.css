@@ -1214,7 +1214,8 @@ tr:hover {
 /* ==================== FLOATING BUTTONS - VERSI MOBILE AMAN ==================== */
 .floating-announcement-btn,
 .floating-chat-btn,
-.floating-friends-btn {
+.floating-friends-btn,
+.floating-status-btn {
     position: fixed;
     width: 52px;
     height: 52px;
@@ -1248,11 +1249,18 @@ tr:hover {
     left: 20px;
 }
 
+.floating-status-btn {
+    background: linear-gradient(135deg, #9c27b0, #6a1b9a);
+    bottom: 20px;
+    right: 160px;
+}
+
 /* Hover effect untuk desktop */
 @media (min-width: 769px) {
     .floating-announcement-btn:hover,
     .floating-chat-btn:hover,
-    .floating-friends-btn:hover {
+    .floating-friends-btn:hover,
+    .floating-status-btn:hover {
         transform: scale(1.1);
         box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     }
@@ -1262,7 +1270,8 @@ tr:hover {
 @media (max-width: 768px) {
     .floating-announcement-btn,
     .floating-chat-btn,
-    .floating-friends-btn {
+    .floating-friends-btn,
+    .floating-status-btn {
         width: 44px;
         height: 44px;
         font-size: 20px;
@@ -1279,6 +1288,11 @@ tr:hover {
         bottom: 130px;
     }
     
+    .floating-status-btn {
+        right: 15px;
+        bottom: 190px;
+    }
+    
     .floating-friends-btn {
         left: 15px;
         bottom: 70px;
@@ -1288,7 +1302,8 @@ tr:hover {
 @media (max-width: 480px) {
     .floating-announcement-btn,
     .floating-chat-btn,
-    .floating-friends-btn {
+    .floating-friends-btn,
+    .floating-status-btn {
         width: 40px;
         height: 40px;
         font-size: 18px;
@@ -1297,6 +1312,10 @@ tr:hover {
     
     .floating-chat-btn {
         bottom: 120px;
+    }
+    
+    .floating-status-btn {
+        bottom: 175px;
     }
 }
 
@@ -2261,6 +2280,38 @@ canvas#weeklyBarChart {
     padding: 20px;
 }
 
+/* Tombol hapus status (seperti WhatsApp) */
+.status-delete-btn {
+    background: rgba(0, 0, 0, 0.6);
+    border: none;
+    color: white;
+    font-size: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 30;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.status-delete-btn:hover {
+    background: rgba(244, 67, 54, 0.9);
+    transform: scale(1.05);
+}
+
+/* Pastikan modal status viewer memiliki posisi relatif untuk penempatan tombol */
+#modal-status-viewer .modal-status-box {
+    position: relative;
+}
+
 /* ==================== REKAP ABSENSI STYLES ==================== */
 .rekap-percentage {
     font-weight: bold;
@@ -3005,5 +3056,16 @@ hr {
     #generatedKeyDisplay div div {
         font-size: 0.9rem;
         word-break: break-all;
+    }
+}
+
+/* ==================== DESKTOP ONLY ELEMENTS ==================== */
+.desktop-only {
+    display: inline-flex;
+}
+
+@media (max-width: 768px) {
+    .desktop-only {
+        display: none !important;
     }
 }
