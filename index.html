@@ -36,6 +36,8 @@
     <button id="floatingAnnouncementBtn" class="floating-announcement-btn" onclick="openAnnouncementModal()" style="display: none;">✏️</button>
     <button id="floatingChatBtn" class="floating-chat-btn" onclick="openChatModal()" style="display: none;">💬</button>
     <button id="floatingFriendsBtn" class="floating-friends-btn" onclick="toggleFriendsModal()" style="display: none;">👥</button>
+    <!-- FLOATING STATUS BUTTON (BARU) -->
+    <button id="floatingStatusBtn" class="floating-status-btn" onclick="openCreateStatusModal()" style="display: none;">📸</button>
 
     <!-- AUTH SECTION -->
     <div id="auth-section">
@@ -223,11 +225,12 @@
             <div id="announcementList"></div>
         </div>
 
-        <!-- STATUS BAR -->
+        <!-- STATUS BAR (DENGAN TOMBOL BUAT STATUS) -->
         <div class="status-bar-container" id="statusBarContainer" style="margin-bottom: 20px;">
             <div class="status-header">
                 <h4>📸 Status Update</h4>
                 <small class="text-small">Status akan hilang setelah 24 jam</small>
+                <button class="btn-action btn-primary" onclick="openCreateStatusModal()" style="margin-left: auto; padding: 6px 14px; font-size: 0.75rem;">➕ Buat Status</button>
             </div>
             <div id="statusBar" class="status-bar-scroll"></div>
         </div>
@@ -317,7 +320,7 @@
             <div class="table-container">
                 <table>
                     <thead><tr><th>Waktu</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th><th>Status</th><th>Aksi</th></tr></thead>
-                    <tbody id="tbody-attendance"><tr><td colspan="7">Memuat data...</td></tr>
+                    <tbody id="tbody-attendance"><td><td colspan="7">Memuat data...</td></tr>
                 </tbody>
             </table>
             </div>
@@ -500,7 +503,7 @@
     <div id="modal-announcement" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📢 Pengumuman</span><span onclick="closeModal('modal-announcement')">✖</span></div><input type="hidden" id="announcementId"><div class="form-group"><input type="text" id="annTitle" placeholder="Judul"></div><div class="form-group"><textarea id="annMessage" rows="3" placeholder="Isi"></textarea></div><div class="form-group"><select id="annPriority"><option value="low">🔵 Rendah</option><option value="normal" selected>🟢 Normal</option><option value="high">🔴 Penting</option></select></div><div class="form-group"><select id="annExpiryType" onchange="toggleExpiryInput()"><option value="none">Tanpa Batas</option><option value="time">Jam</option><option value="date">Tanggal</option><option value="both">Tanggal & Jam</option></select></div><div id="annExpiryDateGroup" class="form-group" style="display:none;"><input type="date" id="annExpiryDate"></div><div id="annExpiryTimeGroup" class="form-group" style="display:none;"><input type="time" id="annExpiryTime"></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-announcement')">Batal</button><button class="btn-save" onclick="saveAnnouncement()">Simpan</button></div></div></div>
     <div id="modal-friends" class="modal-overlay"><div class="modal-box" style="max-width:500px;"><div class="modal-title"><span>👥 Teman</span><span onclick="closeModal('modal-friends')">✖</span></div><div id="friendsPanel"></div></div></div>
     <div id="modal-chat" class="modal-overlay"><div class="modal-box" style="max-width:800px; height:80vh;"><div class="modal-title"><span>💬 Pesan</span><span onclick="closeModal('modal-chat')">✖</span></div><div id="chatModalPanel" style="height:calc(100% - 60px); overflow: hidden;"><div class="chat-loading" style="text-align: center; padding: 40px; color: var(--text-muted);">⏳ Memuat chat...</div></div></div></div>
-    <div id="modal-create-status" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📸 Buat Status</span><span onclick="closeModal('modal-create-status')">✖</span></div><div class="form-group"><label>Teks</label><textarea id="statusText" rows="3"></textarea></div><div class="form-group"><label>Gambar</label><input type="file" id="statusImageInput" accept="image/*"><div id="statusImagePreviewContainer" style="display:none;"><img id="statusImagePreview" style="max-width:100%;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-create-status')">Batal</button><button class="btn-save" onclick="createStatus()">Upload</button></div></div></div>
+    <div id="modal-create-status" class="modal-overlay"><div class="modal-box"><div class="modal-title"><span>📸 Buat Status</span><span onclick="closeModal('modal-create-status')">✖</span></div><div class="form-group"><label>Teks</label><textarea id="statusText" rows="3" placeholder="Apa yang sedang terjadi?"></textarea></div><div class="form-group"><label>Gambar</label><input type="file" id="statusImageInput" accept="image/*" onchange="previewStatusImage(this)"><div id="statusImagePreviewContainer" style="display:none; margin-top:10px;"><img id="statusImagePreview" style="max-width:100%; border-radius:12px;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-create-status')">Batal</button><button class="btn-save" onclick="createStatus()">Upload Status</button></div></div></div>
     <div id="modal-status-viewer" class="modal-overlay"><div class="modal-box" style="background:#000;"><div id="statusViewerContent"></div></div></div>
     <div id="modal-absence" class="modal-overlay"><div class="modal-box" style="max-width:700px;"><div class="modal-title"><span>📋 Atur Ketidakhadiran</span><span onclick="closeModal('modal-absence')">✖</span></div><div class="modal-body"><div style="display:flex; gap:10px; flex-wrap:wrap;"><input type="date" id="absenceDate"><select id="absenceKelas"><option value="all">Semua Kelas</option></select><select id="absenceJurusan"><option value="all">Semua Jurusan</option></select><button class="btn-action" onclick="loadAbsenceList()">Tampilkan</button></div><div id="absenceListContainer" style="max-height:55vh; overflow-y:auto;"></div></div><div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-absence')">Tutup</button><button class="btn-save" onclick="saveAllAbsenceStatus()">Simpan</button></div></div></div>
 
