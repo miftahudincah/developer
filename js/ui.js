@@ -1586,6 +1586,9 @@ function cleanupUI() {
     }
     console.log("🧹 UI cleanup completed");
 }
+// Tampilkan tombol floating status untuk semua user yang login
+const floatingStatusBtn = document.getElementById('floatingStatusBtn');
+if (floatingStatusBtn) floatingStatusBtn.style.display = 'flex';
 
 // Export fungsi debug ke window
 window.debugAttendanceData = debugAttendanceData;
