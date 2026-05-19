@@ -1,13 +1,14 @@
-// ui.js - VERSION 5.2 (ADDED: CLASS ICON IN HEADER)
+// ui.js - VERSION 5.4 (FIXED: SCHOOL LOGO DIRECT URL + VALIDATION)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
 // PERUBAHAN:
 //   - Menambahkan fungsi sidebar (toggleSidebar, closeSidebar, initSidebar)
 //   - Menambahkan icon kelas di header untuk role siswa
-//   - Memperbaiki mekanisme retry untuk populate functions
+//   - Memperbaiki mekanisme retry untuk populate functions (menggunakan window scope)
 //   - Menambahkan event listener untuk menunggu module lain siap
 //   - uploadProfilePhoto aman jika modal belum terbuka
 //   - updateDashboardChart menampilkan data per minggu dalam BULAN BERJALAN
 //   - TAMBAHAN: Role developer (zaki5go@gmail.com) mendapat akses penuh seperti admin
+//   - PERBAIKAN: Logo sekolah menggunakan URL langsung dari ImgBB (tanpa proxy) + validasi gambar
 // ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
@@ -16,7 +17,7 @@ let uiInitialized = false;
 let dashboardChart = null;
 let dashboardChartRetryTimeout = null;
 let populateRetryCount = 0;
-const MAX_POPULATE_RETRY = 15;
+const MAX_POPULATE_RETRY = 20;
 
 // ======================== HELPER FUNCTIONS ========================
 
@@ -236,8 +237,8 @@ function initApp() {
     // Setup chart year listener - TIDAK DIPERLUKAN LAGI
     setupChartYearListener();
     
-    // ========== POPULATE ALL FILTERS DENGAN RETRY ==========
-    console.log("🔧 Starting to populate all filters (with retry)...");
+    // ========== POPULATE ALL FILTERS DENGAN RETRY (DIPERBAIKI) ==========
+    console.log("🔧 Starting to populate all filters (with improved retry)...");
     populateAllFiltersWithRetry();
     
     // Start clock
@@ -317,56 +318,81 @@ function initApp() {
     console.log("✅ initApp completed - event 'uiReady' dispatched");
 }
 
-// ======================== POPULATE FILTERS DENGAN RETRY ========================
+// ======================== POPULATE FILTERS DENGAN RETRY (DIPERBAIKI) ========================
 
 function populateAllFiltersWithRetry() {
     // Reset retry counter
     populateRetryCount = 0;
     
     function attemptPopulate() {
-        // Cek apakah fungsi populateFilters sudah tersedia
-        if (typeof populateFilters === 'function') {
-            console.log("✅ populateFilters found, executing...");
-            try {
-                populateFilters();
-            } catch(e) {
-                console.warn("populateFilters execution error:", e);
-            }
-        } else {
-            console.warn(`⏳ populateFilters not available yet, retry ${populateRetryCount + 1}/${MAX_POPULATE_RETRY}...`);
-            populateRetryCount++;
+        // Cek apakah fungsi populateFilters sudah tersedia di WINDOW scope
+        const hasPopulateFilters = typeof window.populateFilters === 'function';
+        const hasPopulateDateFilter = typeof window.populateDateFilter === 'function';
+        const hasPopulateStudentFilters = typeof window.populateStudentFilters === 'function';
+        const hasPopulateKelasOptions = typeof window.populateKelasOptions === 'function';
+        const hasPopulateJurusanOptions = typeof window.populateJurusanOptions === 'function';
+        
+        console.log(`🔍 Checking functions: populateFilters=${hasPopulateFilters}, populateDateFilter=${hasPopulateDateFilter}`);
+        
+        // Jika populateFilters belum tersedia, tunggu dan coba lagi
+        if (!hasPopulateFilters) {
             if (populateRetryCount < MAX_POPULATE_RETRY) {
-                setTimeout(attemptPopulate, 500);
+                populateRetryCount++;
+                console.log(`⏳ populateFilters not available yet, retry ${populateRetryCount}/${MAX_POPULATE_RETRY}...`);
+                setTimeout(attemptPopulate, 1000); // Delay 1 detik
             } else {
                 console.error("❌ populateFilters still not available after max retries!");
+                // Coba panggil renderTable sebagai fallback
+                if (typeof window.renderTable === 'function') {
+                    console.log("🔄 Attempting to call renderTable as fallback...");
+                    try {
+                        window.renderTable();
+                    } catch(e) { console.warn("renderTable fallback error:", e); }
+                }
             }
             return;
         }
         
-        // Lanjutkan ke fungsi lainnya
-        if (typeof populateDateFilter === 'function') {
-            try { populateDateFilter(); } catch(e) { console.warn("populateDateFilter error:", e); }
-        } else {
-            console.warn("populateDateFilter not available");
-        }
+        console.log("✅ populateFilters found, executing all populate functions...");
         
-        if (typeof populateStudentFilters === 'function') {
-            try { populateStudentFilters(); } catch(e) { console.warn("populateStudentFilters error:", e); }
-        }
+        // Eksekusi semua populate functions
+        try {
+            window.populateFilters();
+            console.log("✅ populateFilters executed");
+        } catch(e) { console.warn("populateFilters execution error:", e); }
         
-        if (typeof populateKelasOptions === 'function') {
-            try { populateKelasOptions(); } catch(e) { console.warn("populateKelasOptions error:", e); }
-        }
+        try {
+            if (window.populateDateFilter) window.populateDateFilter();
+            console.log("✅ populateDateFilter executed");
+        } catch(e) { console.warn("populateDateFilter error:", e); }
         
-        if (typeof populateJurusanOptions === 'function') {
-            try { populateJurusanOptions(); } catch(e) { console.warn("populateJurusanOptions error:", e); }
-        }
+        try {
+            if (window.populateStudentFilters) window.populateStudentFilters();
+            console.log("✅ populateStudentFilters executed");
+        } catch(e) { console.warn("populateStudentFilters error:", e); }
+        
+        try {
+            if (window.populateKelasOptions) window.populateKelasOptions();
+            console.log("✅ populateKelasOptions executed");
+        } catch(e) { console.warn("populateKelasOptions error:", e); }
+        
+        try {
+            if (window.populateJurusanOptions) window.populateJurusanOptions();
+            console.log("✅ populateJurusanOptions executed");
+        } catch(e) { console.warn("populateJurusanOptions error:", e); }
         
         console.log("✅ All filters populated successfully");
+        
+        // Trigger render table setelah populate
+        setTimeout(() => {
+            if (typeof window.renderTable === 'function') {
+                try { window.renderTable(); } catch(e) {}
+            }
+        }, 100);
     }
     
-    // Tunggu 300ms sebelum mulai retry
-    setTimeout(attemptPopulate, 300);
+    // Tunggu 500ms sebelum mulai retry
+    setTimeout(attemptPopulate, 500);
 }
 
 // ======================== EVENT LISTENER UNTUK MODUL LAIN ========================
@@ -378,14 +404,14 @@ if (typeof window !== 'undefined') {
             initRekap();
         }
         setTimeout(() => {
-            if (typeof populateFilters === 'function') {
-                try { populateFilters(); } catch(e) {}
+            if (typeof window.populateFilters === 'function') {
+                try { window.populateFilters(); } catch(e) {}
             }
-            if (typeof populateDateFilter === 'function') {
-                try { populateDateFilter(); } catch(e) {}
+            if (typeof window.populateDateFilter === 'function') {
+                try { window.populateDateFilter(); } catch(e) {}
             }
-            if (typeof populateStudentFilters === 'function') {
-                try { populateStudentFilters(); } catch(e) {}
+            if (typeof window.populateStudentFilters === 'function') {
+                try { window.populateStudentFilters(); } catch(e) {}
             }
         }, 200);
     });
@@ -523,7 +549,7 @@ function formatDelayText(delayMinutes) {
     return `${minutes} menit`;
 }
 
-// ======================== LOGO SEKOLAH ========================
+// ======================== LOGO SEKOLAH (DIPERBAIKI) ========================
 function loadSchoolLogo() {
     if (typeof db === 'undefined' || !db) {
         console.warn("Firebase db not available for loading logo");
@@ -532,25 +558,43 @@ function loadSchoolLogo() {
     const headerLogo = document.getElementById('headerSchoolLogo');
     const previewLogo = document.getElementById('schoolLogoPreview');
     const btnRemove = document.getElementById('btnRemoveLogo');
+    const defaultIcon = 'https://ui-avatars.com/api/?name=S&background=00bcd4&color=fff&size=80';
     
     db.ref('system_config/schoolLogo').on('value', (snapshot) => {
         const logoUrl = snapshot.val();
-        if (logoUrl && logoUrl !== '') {
-            if (headerLogo) {
-                headerLogo.src = logoUrl;
-                headerLogo.style.display = 'block';
-                headerLogo.classList.remove('skeleton');
-            }
-            if (previewLogo) {
-                previewLogo.src = logoUrl;
-                previewLogo.classList.remove('skeleton');
-            }
-            if (btnRemove && currentUser && (currentUser.role === 'admin' || currentUser.role === 'developer')) {
-                btnRemove.style.display = 'inline-block';
-            }
-            console.log("🏫 Logo sekolah loaded:", logoUrl);
+        
+        if (logoUrl && logoUrl !== '' && logoUrl !== 'null' && logoUrl !== 'undefined') {
+            // Validasi apakah URL gambar bisa dimuat
+            const testImg = new Image();
+            testImg.onload = () => {
+                // URL valid, tampilkan logo
+                if (headerLogo) {
+                    headerLogo.src = logoUrl;
+                    headerLogo.style.display = 'block';
+                    headerLogo.classList.remove('skeleton');
+                }
+                if (previewLogo) {
+                    previewLogo.src = logoUrl;
+                    previewLogo.classList.remove('skeleton');
+                }
+                if (btnRemove && currentUser && (currentUser.role === 'admin' || currentUser.role === 'developer')) {
+                    btnRemove.style.display = 'inline-block';
+                }
+                console.log("🏫 Logo sekolah loaded:", logoUrl);
+            };
+            testImg.onerror = () => {
+                console.warn("Logo URL tidak valid atau gagal dimuat:", logoUrl);
+                // Fallback ke default
+                if (headerLogo) {
+                    headerLogo.src = defaultIcon;
+                    headerLogo.style.display = 'block';
+                }
+                if (previewLogo) previewLogo.src = defaultIcon;
+                if (btnRemove) btnRemove.style.display = 'none';
+            };
+            testImg.src = logoUrl;
         } else {
-            const defaultIcon = 'https://ui-avatars.com/api/?name=S&background=00bcd4&color=fff&size=80';
+            // Tidak ada logo, gunakan default
             if (headerLogo) {
                 headerLogo.src = defaultIcon;
                 headerLogo.style.display = 'block';
@@ -589,21 +633,23 @@ async function uploadSchoolLogo(input) {
         previewImg.style.opacity = '0.5';
     }
     if (headerImg) headerImg.classList.add('skeleton');
-    showToast('📤 Mengunggah logo sekolah ke ImgBB...', 'neutral');
+    showToast('📤 Mengunggah logo sekolah...', 'neutral');
     try {
         const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
-            const urlProxy = `https://wsrv.nl/?url=${encodeURIComponent(data.data.image.url)}&w=200&h=200&fit=cover`;
-            await db.ref('system_config/schoolLogo').set(urlProxy);
+            // Gunakan URL langsung dari ImgBB (tanpa proxy)
+            const directUrl = data.data.image.url;
+            await db.ref('system_config/schoolLogo').set(directUrl);
             if (previewImg) {
-                previewImg.src = urlProxy;
+                previewImg.src = directUrl;
                 previewImg.classList.remove('skeleton');
                 previewImg.style.opacity = '1';
             }
             if (headerImg) {
-                headerImg.src = urlProxy;
+                headerImg.src = directUrl;
                 headerImg.classList.remove('skeleton');
+                headerImg.style.display = 'block';
             }
             const btnRemove = document.getElementById('btnRemoveLogo');
             if (btnRemove) btnRemove.style.display = 'inline-block';
@@ -795,16 +841,16 @@ function switchTab(tabId) {
         if (tabId === 'dashboard') {
             renderDashboard();
         } else if (tabId === 'attendance' && typeof renderTable === 'function') {
-            if (typeof populateFilters === 'function') {
-                try { populateFilters(); } catch(e) {}
+            if (typeof window.populateFilters === 'function') {
+                try { window.populateFilters(); } catch(e) {}
             }
-            if (typeof populateDateFilter === 'function') {
-                try { populateDateFilter(); } catch(e) {}
+            if (typeof window.populateDateFilter === 'function') {
+                try { window.populateDateFilter(); } catch(e) {}
             }
             renderTable();
         } else if (tabId === 'students' && typeof renderStudentsTable === 'function') {
-            if (typeof populateStudentFilters === 'function') {
-                try { populateStudentFilters(); } catch(e) {}
+            if (typeof window.populateStudentFilters === 'function') {
+                try { window.populateStudentFilters(); } catch(e) {}
             }
             renderStudentsTable();
         } else if (tabId === 'users' && typeof renderUsersTable === 'function') {
@@ -1255,8 +1301,8 @@ function handleUpdateProfileInfo() {
                 db.ref(`users/${currentUser.fpId}`).update({ nama: newNama, kelas: newKelas, jurusan: newJurusan });
             }
             closeModal('modal-profile');
-            if (typeof populateFilters === 'function') {
-                try { populateFilters(); } catch(e) {}
+            if (typeof window.populateFilters === 'function') {
+                try { window.populateFilters(); } catch(e) {}
             }
             if (typeof renderStudentsTable === 'function') {
                 try { renderStudentsTable(); } catch(e) {}
@@ -1322,11 +1368,11 @@ async function uploadProfilePhoto(input) {
         const data = await res.json();
         
         if (data.success) {
-            const urlProxy = `https://wsrv.nl/?url=${encodeURIComponent(data.data.image.url)}`;
+            const directUrl = data.data.image.url;
+            // Gunakan URL langsung tanpa proxy untuk mempercepat
+            await db.ref(`users_auth/${currentUser.uid}`).update({ photoUrl: directUrl });
             
-            await db.ref(`users_auth/${currentUser.uid}`).update({ photoUrl: urlProxy });
-            
-            currentUser.photoUrl = urlProxy;
+            currentUser.photoUrl = directUrl;
             
             try {
                 if (typeof saveUserToLocalStorage === 'function') {
@@ -1337,8 +1383,8 @@ async function uploadProfilePhoto(input) {
             }
             
             const headerAvatar = document.getElementById('headerAvatar');
-            if (headerAvatar) headerAvatar.src = urlProxy;
-            imgEl.src = urlProxy;
+            if (headerAvatar) headerAvatar.src = directUrl;
+            imgEl.src = directUrl;
             
             showToast('✅ Foto profil berhasil diperbarui!', 'success');
         } else {
@@ -1453,7 +1499,7 @@ function renderUsersTable() {
     const search = searchInput ? searchInput.value.toLowerCase() : '';
     tbody.innerHTML = '';
     if (!dbData.users_auth || dbData.users_auth.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.${search ? '<br><small>Coba kata kunci lain</small>' : ''}</tr></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">📭 Tidak ada pengguna ditemukan.${search ? '<br><small>Coba kata kunci lain</small>' : ''}</td></tr>`;
         return;
     }
     let data = dbData.users_auth.filter(u => u.nama && u.nama.toLowerCase().includes(search));
@@ -1582,4 +1628,4 @@ window.updateSidebarUserInfo = updateSidebarUserInfo;
 window.updateMobileNavTitle = updateMobileNavTitle;
 window.applySidebarRolePermissions = applySidebarRolePermissions;
 
-console.log("✅ ui.js V5.2 loaded - Added class icon in header for siswa role");
+console.log("✅ ui.js V5.4 loaded - School logo direct URL + validation");

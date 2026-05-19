@@ -1,9 +1,4 @@
-// status.js - VERSION 2.0 (EVENT-BASED, NO AUTO-INIT)
-// Fitur Status Update (seperti Story)
-// Mendukung: upload teks/gambar, status akan hilang setelah 24 jam,
-//            tampilan status bar horizontal, viewer dengan next/prev,
-//            notifikasi status baru, real-time listener.
-// PERUBAHAN: Inisialisasi via event 'uiReady', bukan auto-init
+// status.js - VERSION 2.3 (FULLY FIXED STATUS CLICK)
 // ============================================================================
 
 let statusesListener = null;
@@ -15,56 +10,89 @@ let statusUiReadyListenerAdded = false;
 let lastStatusCount = 0;
 
 // ======================= EVENT LISTENER ========================
-
 function setupStatusUiReadyListener() {
     if (statusUiReadyListenerAdded) return;
     statusUiReadyListenerAdded = true;
     console.log("📡 Setting up uiReady event listener for status module");
-
     window.addEventListener('uiReady', (e) => {
         const user = e.detail.currentUser;
         if (user && user.uid) {
             console.log("📸 status.js: uiReady received, initializing status system");
             initStatusSystem();
-        } else {
-            console.log("📸 status.js: no user in uiReady, skipping");
         }
     });
 }
 
-// ======================= INISIALISASI =======================
-
+// ======================= INISIALISASI ========================
 function initStatusSystem() {
     if (!currentUser) {
         console.log("⏳ Menunggu currentUser untuk initStatusSystem");
         return;
     }
-    
     if (statusesListener) {
         console.log("Status system already initialized, skipping");
         return;
     }
-    
     console.log("📸 Initializing status system...");
     setupStatusListener();
     startStatusExpiryChecker();
-    
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission();
     }
 }
 
+// ======================= EVENT DELEGATION (DIPERBAIKI) ========================
+function setupStatusEventDelegation(retry = 0) {
+    const container = document.getElementById('statusBar');
+    if (!container) {
+        if (retry < 20) {
+            console.log(`⏳ Menunggu #statusBar, retry ${retry+1}/20...`);
+            setTimeout(() => setupStatusEventDelegation(retry + 1), 300);
+        } else {
+            console.error("❌ Gagal menemukan #statusBar setelah 20 retry!");
+        }
+        return;
+    }
+    // Hapus listener lama lalu pasang baru
+    container.removeEventListener('click', handleStatusClick);
+    container.addEventListener('click', handleStatusClick);
+    console.log("✅ Status event delegation attached to #statusBar");
+}
+
+function handleStatusClick(e) {
+    console.log("🖱️ Klik di statusBar, target:", e.target);
+    let target = e.target;
+    // Naik ke atas sampai menemukan .status-item
+    while (target && !target.classList?.contains('status-item')) {
+        target = target.parentElement;
+        if (!target || target === document.body) return;
+    }
+    if (!target) return;
+    const userId = target.getAttribute('data-user-id');
+    console.log("User ID dari status:", userId);
+    if (!userId) return;
+    e.stopPropagation();
+    if (!currentUser) {
+        showToast("Anda harus login!", "error");
+        return;
+    }
+    if (userId === currentUser.uid) {
+        openCreateStatusModal();
+    } else {
+        openStatusViewer(userId);
+    }
+}
+
+// ======================= LISTENER STATUS ========================
 function setupStatusListener() {
     if (statusesListener) {
         db.ref('statuses').off('value', statusesListener);
     }
-    
     statusesListener = db.ref('statuses').on('value', (snapshot) => {
         if (!currentUser) return;
         const data = snapshot.val();
         const now = Date.now();
         const twentyFourHours = 24 * 60 * 60 * 1000;
-        
         let allStatuses = [];
         if (data) {
             Object.keys(data).forEach(userId => {
@@ -85,21 +113,80 @@ function setupStatusListener() {
                 }
             });
         }
-        
         allStatuses.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        
         const groupedByUser = {};
         allStatuses.forEach(status => {
             if (!groupedByUser[status.userId]) groupedByUser[status.userId] = [];
             groupedByUser[status.userId].push(status);
         });
-        
         renderStatusBar(groupedByUser);
         currentStatusList = allStatuses;
         checkAndNotifyNewStatus(allStatuses);
     });
 }
 
+// ======================= RENDER STATUS BAR ========================
+function renderStatusBar(groupedByUser) {
+    const container = document.getElementById('statusBar');
+    if (!container) {
+        console.warn("renderStatusBar: #statusBar tidak ditemukan");
+        return;
+    }
+    if (!groupedByUser || Object.keys(groupedByUser).length === 0) {
+        container.innerHTML = '<div class="status-empty text-small" style="text-align:center; padding:10px;">📭 Belum ada status. Buat status pertama!</div>';
+        // Tetap pasang event delegation
+        setupStatusEventDelegation();
+        return;
+    }
+    let html = '';
+    // Status Saya
+    if (groupedByUser[currentUser.uid]) {
+        const myStatuses = groupedByUser[currentUser.uid];
+        const latest = myStatuses[0];
+        html += `
+            <div class="status-item" data-user-id="${currentUser.uid}">
+                <div class="status-avatar">
+                    <img src="${latest.userPhoto || getAvatarUrl(latest.userName)}" alt="${escapeHtml(latest.userName)}">
+                    <div class="status-add-icon">+</div>
+                </div>
+                <div class="status-name">Status Saya</div>
+                <div class="status-time">${formatTimeAgo(latest.createdAt)}</div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="status-item" data-user-id="${currentUser.uid}">
+                <div class="status-avatar">
+                    <img src="${currentUser.photoUrl || getAvatarUrl(currentUser.nama)}" alt="${escapeHtml(currentUser.nama)}">
+                    <div class="status-add-icon">+</div>
+                </div>
+                <div class="status-name">Status Saya</div>
+                <div class="status-time">Tambah</div>
+            </div>
+        `;
+    }
+    // Status teman
+    for (const [userId, statuses] of Object.entries(groupedByUser)) {
+        if (userId === currentUser.uid) continue;
+        const latest = statuses[0];
+        const isViewed = latest.viewedBy && latest.viewedBy[currentUser.uid];
+        html += `
+            <div class="status-item ${!isViewed ? 'unviewed' : ''}" data-user-id="${userId}">
+                <div class="status-avatar">
+                    <img src="${latest.userPhoto || getAvatarUrl(latest.userName)}" alt="${escapeHtml(latest.userName)}">
+                    ${!isViewed ? '<div class="status-ring"></div>' : ''}
+                </div>
+                <div class="status-name">${escapeHtml(latest.userName)}</div>
+                <div class="status-time">${formatTimeAgo(latest.createdAt)}</div>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+    // Pasang ulang event delegation setiap kali konten berubah
+    setupStatusEventDelegation();
+}
+
+// ======================= NOTIFIKASI ========================
 function checkAndNotifyNewStatus(statuses) {
     const currentCount = statuses.length;
     if (currentCount > lastStatusCount && lastStatusCount > 0 && currentUser) {
@@ -126,65 +213,7 @@ function startStatusExpiryChecker() {
     }, 60 * 60 * 1000);
 }
 
-// ======================= RENDER STATUS BAR =======================
-
-function renderStatusBar(groupedByUser) {
-    const container = document.getElementById('statusBar');
-    if (!container) return;
-    
-    if (!groupedByUser || Object.keys(groupedByUser).length === 0) {
-        container.innerHTML = '<div class="status-empty text-small" style="text-align:center; padding:10px;">📭 Belum ada status. Buat status pertama!</div>';
-        return;
-    }
-    
-    let html = '';
-    if (groupedByUser[currentUser.uid]) {
-        const myStatuses = groupedByUser[currentUser.uid];
-        const latest = myStatuses[0];
-        const isViewed = latest.viewedBy && latest.viewedBy[currentUser.uid];
-        html += `
-            <div class="status-item ${!isViewed ? 'unviewed' : ''}" onclick="openStatusViewer('${currentUser.uid}')">
-                <div class="status-avatar">
-                    <img src="${latest.userPhoto || getAvatarUrl(latest.userName)}" alt="${escapeHtml(latest.userName)}">
-                    <div class="status-add-icon" onclick="event.stopPropagation(); openCreateStatusModal()">+</div>
-                </div>
-                <div class="status-name">Status Saya</div>
-                <div class="status-time">${formatTimeAgo(latest.createdAt)}</div>
-            </div>
-        `;
-    } else {
-        html += `
-            <div class="status-item" onclick="openCreateStatusModal()">
-                <div class="status-avatar">
-                    <img src="${currentUser.photoUrl || getAvatarUrl(currentUser.nama)}" alt="${escapeHtml(currentUser.nama)}">
-                    <div class="status-add-icon">+</div>
-                </div>
-                <div class="status-name">Status Saya</div>
-                <div class="status-time">Tambah</div>
-            </div>
-        `;
-    }
-    
-    for (const [userId, statuses] of Object.entries(groupedByUser)) {
-        if (userId === currentUser.uid) continue;
-        const latest = statuses[0];
-        const isViewed = latest.viewedBy && latest.viewedBy[currentUser.uid];
-        html += `
-            <div class="status-item ${!isViewed ? 'unviewed' : ''}" onclick="openStatusViewer('${userId}')">
-                <div class="status-avatar">
-                    <img src="${latest.userPhoto || getAvatarUrl(latest.userName)}" alt="${escapeHtml(latest.userName)}">
-                    ${!isViewed ? '<div class="status-ring"></div>' : ''}
-                </div>
-                <div class="status-name">${escapeHtml(latest.userName)}</div>
-                <div class="status-time">${formatTimeAgo(latest.createdAt)}</div>
-            </div>
-        `;
-    }
-    container.innerHTML = html;
-}
-
-// ======================= CREATE STATUS =======================
-
+// ======================= CREATE STATUS ========================
 function openCreateStatusModal() {
     const modal = document.getElementById('modal-create-status');
     if (!modal) return;
@@ -220,14 +249,11 @@ async function createStatus() {
         showToast("Masukkan teks atau pilih gambar!", "error");
         return;
     }
-    
     const btn = document.querySelector('#modal-create-status .btn-save');
     const originalText = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Mengupload...'; }
-    
     let mediaUrl = null;
     let type = 'text';
-    
     try {
         if (imageFile) {
             if (imageFile.size > 5 * 1024 * 1024) {
@@ -244,7 +270,6 @@ async function createStatus() {
                 type = 'image';
             } else throw new Error("Gagal upload gambar");
         }
-        
         const statusId = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const statusData = {
             text: text || (type === 'image' ? '📸 ' : ''),
@@ -267,33 +292,49 @@ async function createStatus() {
     }
 }
 
-// ======================= STATUS VIEWER =======================
-
+// ======================= STATUS VIEWER ========================
 async function openStatusViewer(userId) {
-    const snapshot = await db.ref(`statuses/${userId}`).once('value');
-    const statuses = snapshot.val();
-    if (!statuses) {
-        showToast("Tidak ada status dari user ini", "info");
+    console.log("📸 openStatusViewer called for userId:", userId);
+    if (!currentUser) {
+        showToast("Anda harus login!", "error");
         return;
     }
-    const now = Date.now();
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    const userStatuses = Object.keys(statuses)
-        .filter(key => (now - (statuses[key].createdAt || 0)) < twentyFourHours)
-        .map(key => ({ id: key, ...statuses[key] }))
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    if (userStatuses.length === 0) {
-        showToast("Status sudah kadaluarsa", "info");
+    const modal = document.getElementById('modal-status-viewer');
+    if (!modal) {
+        console.error("Modal status viewer tidak ditemukan!");
+        showToast("Gagal membuka status: elemen tidak ditemukan", "error");
         return;
     }
-    for (const status of userStatuses) {
-        if (!status.viewedBy || !status.viewedBy[currentUser.uid]) {
-            await db.ref(`statuses/${userId}/${status.id}/viewedBy/${currentUser.uid}`).set(true);
+    try {
+        const snapshot = await db.ref(`statuses/${userId}`).once('value');
+        const statuses = snapshot.val();
+        if (!statuses) {
+            showToast("Tidak ada status dari pengguna ini", "info");
+            return;
         }
+        const now = Date.now();
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        const userStatuses = Object.keys(statuses)
+            .filter(key => (now - (statuses[key].createdAt || 0)) < twentyFourHours)
+            .map(key => ({ id: key, ...statuses[key] }))
+            .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        if (userStatuses.length === 0) {
+            showToast("Status sudah kadaluarsa", "info");
+            return;
+        }
+        // Tandai sudah dilihat
+        for (const status of userStatuses) {
+            if (!status.viewedBy || !status.viewedBy[currentUser.uid]) {
+                await db.ref(`statuses/${userId}/${status.id}/viewedBy/${currentUser.uid}`).set(true);
+            }
+        }
+        currentStatusList = userStatuses;
+        currentStatusIndex = 0;
+        showStatusViewerModal(currentStatusList[currentStatusIndex]);
+    } catch (err) {
+        console.error("Error opening status viewer:", err);
+        showToast("Gagal memuat status: " + err.message, "error");
     }
-    currentStatusList = userStatuses;
-    currentStatusIndex = 0;
-    showStatusViewerModal(currentStatusList[currentStatusIndex]);
 }
 
 function showStatusViewerModal(status) {
@@ -302,7 +343,6 @@ function showStatusViewerModal(status) {
     const content = document.getElementById('statusViewerContent');
     if (!content) return;
     if (statusViewerInterval) clearInterval(statusViewerInterval);
-    
     const updateContent = () => {
         const s = currentStatusList[currentStatusIndex];
         if (!s) { closeModal('modal-status-viewer'); return; }
@@ -327,7 +367,6 @@ function showStatusViewerModal(status) {
             </div>
         `;
     };
-    
     updateContent();
     modal.classList.add('open');
     statusViewerInterval = setInterval(() => {
@@ -350,8 +389,7 @@ function prevStatus() {
     }
 }
 
-// ======================= UTILITY =======================
-
+// ======================= UTILITY ========================
 function getAvatarUrl(name) {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=00bcd4&color=fff&size=100`;
 }
@@ -373,8 +411,7 @@ function escapeHtml(str) {
     return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
 
-// ======================= CLEANUP =======================
-
+// ======================= CLEANUP ========================
 function cleanupStatusSystem() {
     if (statusesListener) {
         db.ref('statuses').off('value', statusesListener);
@@ -388,12 +425,14 @@ function cleanupStatusSystem() {
         clearInterval(statusViewerInterval);
         statusViewerInterval = null;
     }
+    const container = document.getElementById('statusBar');
+    if (container) container.removeEventListener('click', handleStatusClick);
     lastStatusCount = 0;
     statusUiReadyListenerAdded = false;
     console.log("🧹 Status system cleaned up");
 }
 
-// ======================= INISIALISASI EVENT LISTENER ========================
+// ======================= INISIALISASI ========================
 setupStatusUiReadyListener();
 
 if (typeof window !== 'undefined' && window.currentUser && window.currentUser.uid && !statusesListener) {
@@ -401,7 +440,7 @@ if (typeof window !== 'undefined' && window.currentUser && window.currentUser.ui
     setTimeout(() => initStatusSystem(), 100);
 }
 
-// ======================= EKSPOR KE GLOBAL =======================
+// ======================= EKSPOR ========================
 window.initStatusSystem = initStatusSystem;
 window.openCreateStatusModal = openCreateStatusModal;
 window.previewStatusImage = previewStatusImage;
@@ -411,4 +450,4 @@ window.nextStatus = nextStatus;
 window.prevStatus = prevStatus;
 window.cleanupStatusSystem = cleanupStatusSystem;
 
-console.log("✅ status.js V2.0 loaded - Event-based initialization");
+console.log("✅ status.js V2.3 loaded - Status click fully fixed");
