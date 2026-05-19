@@ -1,4 +1,4 @@
-// status.js - VERSION 2.4 (SELF STATUS VIEW & DELETE LIKE WHATSAPP)
+// status.js - VERSION 2.5 (FIXED DELETE BUTTON VISIBILITY)
 // ============================================================================
 
 let statusesListener = null;
@@ -41,7 +41,7 @@ function initStatusSystem() {
     }
 }
 
-// ======================= EVENT DELEGATION (DIPERBAIKI - SEMUA STATUS BISA DIKLIK) ========================
+// ======================= EVENT DELEGATION ========================
 function setupStatusEventDelegation(retry = 0) {
     const container = document.getElementById('statusBar');
     if (!container) {
@@ -74,7 +74,6 @@ function handleStatusClick(e) {
         showToast("Anda harus login!", "error");
         return;
     }
-    // SEMUA status (termasuk milik sendiri) akan dibuka di viewer
     openStatusViewer(userId);
 }
 
@@ -133,7 +132,7 @@ function renderStatusBar(groupedByUser) {
         return;
     }
     let html = '';
-    // Status Saya (selalu ditampilkan, bisa diklik untuk melihat status sendiri)
+    // Status Saya
     if (groupedByUser[currentUser.uid]) {
         const myStatuses = groupedByUser[currentUser.uid];
         const latest = myStatuses[0];
@@ -141,7 +140,6 @@ function renderStatusBar(groupedByUser) {
             <div class="status-item" data-user-id="${currentUser.uid}">
                 <div class="status-avatar">
                     <img src="${latest.userPhoto || getAvatarUrl(latest.userName)}" alt="${escapeHtml(latest.userName)}">
-                    <!-- Tampilkan icon tambah untuk membedakan? Tapi tetap bisa klik untuk lihat status sendiri -->
                     <div class="status-add-icon">+</div>
                 </div>
                 <div class="status-name">Status Saya</div>
@@ -286,7 +284,7 @@ async function createStatus() {
     }
 }
 
-// ======================= STATUS VIEWER (DENGAN TOMBOL HAPUS UNTUK STATUS SENDIRI) ========================
+// ======================= STATUS VIEWER (DENGAN TOMBOL HAPUS) ========================
 async function openStatusViewer(userId) {
     console.log("📸 openStatusViewer called for userId:", userId);
     if (!currentUser) {
@@ -341,6 +339,7 @@ function showStatusViewerModal(status, ownerUserId) {
     if (statusViewerInterval) clearInterval(statusViewerInterval);
     
     const isOwner = (ownerUserId === currentUser.uid);
+    console.log("🔍 showStatusViewerModal: isOwner =", isOwner, "ownerUserId=", ownerUserId, "currentUser.uid=", currentUser?.uid);
     
     const updateContent = () => {
         const s = currentStatusList[currentStatusIndex];
@@ -349,14 +348,11 @@ function showStatusViewerModal(status, ownerUserId) {
             ? `<div class="status-image-wrapper" onclick="nextStatus()"><img src="${s.mediaUrl}" class="status-full-image" alt="Status"></div>`
             : `<div class="status-text-wrapper" onclick="nextStatus()"><div class="status-full-text">${escapeHtml(s.text)}</div></div>`;
         
-        // Tambahkan tombol hapus jika pemilik
         let deleteButton = '';
         if (isOwner) {
             deleteButton = `
-                <div style="position: absolute; top: 12px; left: 12px; z-index: 30;">
-                    <button class="status-delete-btn" onclick="deleteCurrentStatus(event)" title="Hapus status ini" style="background: rgba(0,0,0,0.6); border: none; color: white; font-size: 20px; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;">
-                        🗑️
-                    </button>
+                <div style="position: absolute; top: 12px; left: 12px; z-index: 9999;">
+                    <button class="status-delete-btn" onclick="deleteCurrentStatus(event)" title="Hapus status ini">🗑️</button>
                 </div>
             `;
         }
@@ -388,7 +384,6 @@ function showStatusViewerModal(status, ownerUserId) {
     }, 5000);
 }
 
-// Fungsi untuk menghapus status yang sedang dilihat (milik sendiri)
 async function deleteCurrentStatus(event) {
     if (event) event.stopPropagation();
     if (!currentUser) return;
@@ -404,18 +399,15 @@ async function deleteCurrentStatus(event) {
         await db.ref(`statuses/${currentUser.uid}/${currentStatus.id}`).remove();
         showToast("✅ Status dihapus", "success");
         
-        // Hapus dari daftar lokal
         currentStatusList.splice(currentStatusIndex, 1);
         if (currentStatusList.length === 0) {
             closeModal('modal-status-viewer');
-            // Refresh status bar
             if (statusesListener) {
-                db.ref('statuses').once('value'); // trigger refresh
+                db.ref('statuses').once('value');
             }
         } else {
             if (currentStatusIndex >= currentStatusList.length) currentStatusIndex = currentStatusList.length - 1;
             if (currentStatusIndex < 0) currentStatusIndex = 0;
-            // Refresh tampilan dengan status baru
             const ownerUserId = currentStatusList[0]?.userId;
             showStatusViewerModal(currentStatusList[currentStatusIndex], ownerUserId);
         }
@@ -503,4 +495,4 @@ window.prevStatus = prevStatus;
 window.deleteCurrentStatus = deleteCurrentStatus;
 window.cleanupStatusSystem = cleanupStatusSystem;
 
-console.log("✅ status.js V2.4 loaded - Self status view & delete like WhatsApp");
+console.log("✅ status.js V2.5 loaded - Delete button visibility fixed");

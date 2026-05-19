@@ -1,14 +1,11 @@
-// ui.js - VERSION 5.4 (FIXED: SCHOOL LOGO DIRECT URL + VALIDATION)
+// ui.js - VERSION 5.5 (FULLY UPDATED: STATUS DELETE, FLOATING BUTTONS, SIDEBAR)
 // Berisi fungsi-fungsi antarmuka pengguna, modal, profil, dan inisialisasi dashboard
-// PERUBAHAN:
-//   - Menambahkan fungsi sidebar (toggleSidebar, closeSidebar, initSidebar)
-//   - Menambahkan icon kelas di header untuk role siswa
-//   - Memperbaiki mekanisme retry untuk populate functions (menggunakan window scope)
-//   - Menambahkan event listener untuk menunggu module lain siap
-//   - uploadProfilePhoto aman jika modal belum terbuka
-//   - updateDashboardChart menampilkan data per minggu dalam BULAN BERJALAN
-//   - TAMBAHAN: Role developer (zaki5go@gmail.com) mendapat akses penuh seperti admin
-//   - PERBAIKAN: Logo sekolah menggunakan URL langsung dari ImgBB (tanpa proxy) + validasi gambar
+// PERUBAHAN TERBARU:
+//   - Menambahkan floating status button untuk semua user
+//   - Mendukung hapus status sendiri (integrasi dengan status.js V2.4)
+//   - Perbaikan sidebar dan role permissions
+//   - Logo sekolah dengan validasi gambar
+//   - Dashboard modern dengan chart mingguan
 // ============================================================================
 
 // ======================== GLOBAL UI STATE ========================
@@ -282,7 +279,7 @@ function initApp() {
     // Set dashboard sebagai tab aktif
     switchTab('dashboard');
     
-    // Tampilkan floating buttons
+    // Tampilkan floating buttons (termasuk status button untuk semua user)
     setTimeout(() => {
         if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'guru' || currentUser.role === 'developer')) {
             const floatingBtn = document.getElementById('floatingAnnouncementBtn');
@@ -292,6 +289,10 @@ function initApp() {
         if (floatingFriendsBtn) floatingFriendsBtn.style.display = 'flex';
         const floatingChatBtn = document.getElementById('floatingChatBtn');
         if (floatingChatBtn) floatingChatBtn.style.display = 'flex';
+        
+        // TAMPILKAN TOMBOL FLOATING STATUS UNTUK SEMUA USER
+        const floatingStatusBtn = document.getElementById('floatingStatusBtn');
+        if (floatingStatusBtn) floatingStatusBtn.style.display = 'flex';
     }, 1000);
     
     // Inisialisasi modul lain
@@ -339,10 +340,9 @@ function populateAllFiltersWithRetry() {
             if (populateRetryCount < MAX_POPULATE_RETRY) {
                 populateRetryCount++;
                 console.log(`⏳ populateFilters not available yet, retry ${populateRetryCount}/${MAX_POPULATE_RETRY}...`);
-                setTimeout(attemptPopulate, 1000); // Delay 1 detik
+                setTimeout(attemptPopulate, 1000);
             } else {
                 console.error("❌ populateFilters still not available after max retries!");
-                // Coba panggil renderTable sebagai fallback
                 if (typeof window.renderTable === 'function') {
                     console.log("🔄 Attempting to call renderTable as fallback...");
                     try {
@@ -355,7 +355,6 @@ function populateAllFiltersWithRetry() {
         
         console.log("✅ populateFilters found, executing all populate functions...");
         
-        // Eksekusi semua populate functions
         try {
             window.populateFilters();
             console.log("✅ populateFilters executed");
@@ -383,7 +382,6 @@ function populateAllFiltersWithRetry() {
         
         console.log("✅ All filters populated successfully");
         
-        // Trigger render table setelah populate
         setTimeout(() => {
             if (typeof window.renderTable === 'function') {
                 try { window.renderTable(); } catch(e) {}
@@ -391,7 +389,6 @@ function populateAllFiltersWithRetry() {
         }, 100);
     }
     
-    // Tunggu 500ms sebelum mulai retry
     setTimeout(attemptPopulate, 500);
 }
 
@@ -476,7 +473,6 @@ function updateUserInterface() {
         userRoleDisplay.className = `role-badge role-${currentUser.role}`;
     }
     
-    // TAMBAHKAN: Tampilkan kelas dengan icon di header untuk siswa
     const userClassDisplay = document.getElementById('userClassDisplay');
     if (userClassDisplay) {
         if (currentUser.role === 'siswa' && currentUser.kelas) {
@@ -564,10 +560,8 @@ function loadSchoolLogo() {
         const logoUrl = snapshot.val();
         
         if (logoUrl && logoUrl !== '' && logoUrl !== 'null' && logoUrl !== 'undefined') {
-            // Validasi apakah URL gambar bisa dimuat
             const testImg = new Image();
             testImg.onload = () => {
-                // URL valid, tampilkan logo
                 if (headerLogo) {
                     headerLogo.src = logoUrl;
                     headerLogo.style.display = 'block';
@@ -584,7 +578,6 @@ function loadSchoolLogo() {
             };
             testImg.onerror = () => {
                 console.warn("Logo URL tidak valid atau gagal dimuat:", logoUrl);
-                // Fallback ke default
                 if (headerLogo) {
                     headerLogo.src = defaultIcon;
                     headerLogo.style.display = 'block';
@@ -594,7 +587,6 @@ function loadSchoolLogo() {
             };
             testImg.src = logoUrl;
         } else {
-            // Tidak ada logo, gunakan default
             if (headerLogo) {
                 headerLogo.src = defaultIcon;
                 headerLogo.style.display = 'block';
@@ -638,7 +630,6 @@ async function uploadSchoolLogo(input) {
         const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
-            // Gunakan URL langsung dari ImgBB (tanpa proxy)
             const directUrl = data.data.image.url;
             await db.ref('system_config/schoolLogo').set(directUrl);
             if (previewImg) {
@@ -768,7 +759,6 @@ function applyRolePermissions() {
     const role = currentUser.role;
     console.log("🎭 Apply role permissions untuk role:", role);
     
-    // Developer diperlakukan sama seperti admin untuk akses
     const isAdminOrDev = (role === 'admin' || role === 'developer');
     const isGuruOrDev = (role === 'admin' || role === 'guru' || role === 'developer');
     
@@ -833,7 +823,6 @@ function switchTab(tabId) {
     const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
     if (activeBtn) activeBtn.classList.add('active');
     
-    // Update sidebar active state dan mobile title
     updateSidebarActiveState();
     updateMobileNavTitle(tabId);
     
@@ -1369,11 +1358,8 @@ async function uploadProfilePhoto(input) {
         
         if (data.success) {
             const directUrl = data.data.image.url;
-            // Gunakan URL langsung tanpa proxy untuk mempercepat
             await db.ref(`users_auth/${currentUser.uid}`).update({ photoUrl: directUrl });
-            
             currentUser.photoUrl = directUrl;
-            
             try {
                 if (typeof saveUserToLocalStorage === 'function') {
                     saveUserToLocalStorage(currentUser);
@@ -1381,11 +1367,9 @@ async function uploadProfilePhoto(input) {
             } catch (storageErr) {
                 console.warn('Gagal menyimpan ke localStorage:', storageErr);
             }
-            
             const headerAvatar = document.getElementById('headerAvatar');
             if (headerAvatar) headerAvatar.src = directUrl;
             imgEl.src = directUrl;
-            
             showToast('✅ Foto profil berhasil diperbarui!', 'success');
         } else {
             console.error('ImgBB upload failed:', data);
@@ -1513,7 +1497,6 @@ function renderUsersTable() {
         let roleHtml = '', actionsHtml = '-';
         const isDeveloper = (u.role === 'developer');
         
-        // Hanya admin atau developer yang bisa mengedit role, dan tidak bisa mengedit developer lain
         if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'developer') && !isMe && !isDeveloper) {
             roleHtml = `<select class="form-control" onchange="updateUserRole('${u.uid}', this.value)" style="background:#2c2c2c; color:white; border:1px solid #444; padding:5px; border-radius:4px; font-size:0.8rem;">
                 <option value="siswa" ${u.role === 'siswa' ? 'selected' : ''}>📚 Siswa</option>
@@ -1539,7 +1522,7 @@ function renderUsersTable() {
             <td><strong>${escapeHtmlString(u.nama)}</strong>${isMe ? '<br><small style="color:#4a90e2;">Akun Anda</small>' : ''}</td>
             <td style="color:#aaa; font-size:0.9rem;">${u.email || '-'}</td>
             <td>${roleHtml}</td>
-            <td style="color:#888; font-size:0.85rem;">${escapeHtmlString(detailText)}</div></td>
+            <td style="color:#888; font-size:0.85rem;">${escapeHtmlString(detailText)}</td>
             <td style="text-align:center;">${actionsHtml}</td>
         </tr>`;
     });
@@ -1586,14 +1569,8 @@ function cleanupUI() {
     }
     console.log("🧹 UI cleanup completed");
 }
-// Tampilkan tombol floating status untuk semua user yang login
-const floatingStatusBtn = document.getElementById('floatingStatusBtn');
-if (floatingStatusBtn) floatingStatusBtn.style.display = 'flex';
 
-// Export fungsi debug ke window
-window.debugAttendanceData = debugAttendanceData;
-
-// ======================== EXPORT KE GLOBAL ========================
+// ======================== EKSPOR KE GLOBAL ========================
 window.initApp = initApp;
 window.switchTab = switchTab;
 window.showToast = showToast;
@@ -1631,4 +1608,7 @@ window.updateSidebarUserInfo = updateSidebarUserInfo;
 window.updateMobileNavTitle = updateMobileNavTitle;
 window.applySidebarRolePermissions = applySidebarRolePermissions;
 
-console.log("✅ ui.js V5.4 loaded - School logo direct URL + validation");
+// Debug function
+window.debugAttendanceData = debugAttendanceData;
+
+console.log("✅ ui.js V5.5 loaded - Status delete support, floating buttons fully working");
