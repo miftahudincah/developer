@@ -1,8 +1,10 @@
-// rekap.js - VERSION 3.0 (EVENT-BASED, NO DUPLICATE LISTENERS)
+// rekap.js - VERSION 3.2 (FIXED: ENSURE TBODY EXISTS + FORCE RENDER)
 // Fitur Rekap Absensi per Siswa
 // Mendukung periode: Minggu, Bulan, Semester, dan Custom Range
 // Mendukung status: Hadir, Sakit, Izin, Alpha (termasuk manual dari attendance_status)
-// PERUBAHAN: Menghapus auto-init, menggunakan event 'dataReady' dan 'uiReady'
+// PERBAIKAN TERBARU:
+//   - Memastikan elemen tbody#rekapTbody ada, jika tidak akan dibuat secara dinamis
+//   - Menambahkan log untuk debugging
 // ============================================================================
 
 let currentRekapData = [];
@@ -268,20 +270,63 @@ async function calculateStudentRekap(attendanceData, studentsData, startDate, en
     return results;
 }
 
-// ======================= RENDER REKAP TABLE =======================
+// ======================= RENDER REKAP TABLE (DENGAN PEMBUATAN TBODY DINAMIS) =======================
 
 function renderRekapTable(data) {
-    const tbody = document.getElementById('rekapTbody');
-    if (!tbody) return;
+    // Pastikan tbody ada
+    let tbody = document.getElementById('rekapTbody');
+    if (!tbody) {
+        console.warn("⚠️ rekapTbody not found, attempting to create dynamically...");
+        const tabRekap = document.getElementById('tab-rekap');
+        if (tabRekap) {
+            let table = tabRekap.querySelector('table');
+            if (!table) {
+                table = document.createElement('table');
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>No</th><th>ID FP</th><th>Nama</th><th>Kelas</th><th>Jurusan</th>
+                            <th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th>
+                            <th>Persentase</th><th>Status</th>
+                        </tr>
+                    </thead>
+                `;
+                tabRekap.querySelector('.table-container')?.appendChild(table);
+            }
+            tbody = table.querySelector('tbody');
+            if (!tbody) {
+                tbody = document.createElement('tbody');
+                tbody.id = 'rekapTbody';
+                table.appendChild(tbody);
+            }
+            console.log("✅ rekapTbody created dynamically");
+        }
+        if (!tbody) {
+            console.error("❌ Failed to create rekapTbody");
+            return;
+        }
+    }
+
+    // Jika data null/undefined
     if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:40px;">📭 Tidak ada data siswa dalam periode yang dipilih.</td></tr>`;
+        let message = "📭 Tidak ada data siswa dalam periode yang dipilih.";
+        if (typeof dbData !== 'undefined' && dbData.users && dbData.users.length === 0) {
+            message = "⏳ Data siswa belum dimuat. Silakan tunggu atau refresh halaman.";
+        } else if (typeof dbData !== 'undefined' && dbData.attendance && dbData.attendance.length === 0) {
+            message = "📭 Belum ada catatan absensi sama sekali.";
+        }
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:40px;">${message}</td></tr>`;
+        updateRekapSummary([]);
         return;
     }
+    
     const validData = data.filter(item => item.nama && item.nama !== 'Tidak Diketahui');
     if (validData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:40px;">📭 Tidak ada data absensi dalam periode yang dipilih.</td></tr>`;
+        updateRekapSummary([]);
         return;
     }
+    
     tbody.innerHTML = '';
     validData.forEach((item, index) => {
         let persenColor = '#4caf50';
@@ -324,6 +369,12 @@ function updateRekapSummary(data) {
             summaryContainer = summaryDiv;
         } else return;
     }
+    
+    if (!data || data.length === 0) {
+        summaryContainer.innerHTML = '';
+        return;
+    }
+    
     const totalSiswa = data.length;
     const totalHadir = data.reduce((sum, s) => sum + s.hadir, 0);
     const totalSakit = data.reduce((sum, s) => sum + s.sakit, 0);
@@ -429,19 +480,47 @@ function renderRekapCharts(data, startDate, endDate) {
     }
 }
 
-// ======================= LOAD REKAP =======================
+// ======================= LOAD REKAP (DENGAN RETRY JIKA DATA SISWA KOSONG) =======================
 
-async function loadRekap() {
+async function loadRekap(retryCount = 0) {
+    const MAX_RETRY = 5;
+    const RETRY_DELAY = 1000;
+
     if (!dbData || !dbData.attendance || !dbData.users) {
-        console.log("⏳ Menunggu data siap untuk loadRekap...");
-        setTimeout(loadRekap, 500);
+        console.log("⏳ loadRekap: dbData belum siap, schedule ulang...");
+        if (retryCount < MAX_RETRY) {
+            setTimeout(() => loadRekap(retryCount + 1), RETRY_DELAY);
+        } else {
+            const tbody = document.getElementById('rekapTbody');
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:40px;">❌ Gagal memuat data rekap (database tidak siap).</td></tr>`;
+            }
+            if (typeof showToast === 'function') showToast("❌ Gagal memuat data rekap (database tidak siap)", "error");
+        }
         return;
     }
+
+    if (dbData.users.length === 0) {
+        console.warn(`⚠️ loadRekap: dbData.users masih kosong (retry ${retryCount+1}/${MAX_RETRY})`);
+        if (retryCount < MAX_RETRY) {
+            setTimeout(() => loadRekap(retryCount + 1), RETRY_DELAY);
+            return;
+        } else {
+            const tbody = document.getElementById('rekapTbody');
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:30px;">⏳ Data siswa belum dimuat. Silakan refresh halaman atau tunggu sebentar.</td></tr>`;
+            }
+            if (typeof showToast === 'function') showToast("⚠️ Data siswa belum tersedia, coba muat ulang halaman", "warning");
+            return;
+        }
+    }
+
     const periodSelect = document.getElementById('rekapPeriod');
     if (!periodSelect) {
-        setTimeout(loadRekap, 500);
+        setTimeout(() => loadRekap(retryCount), 500);
         return;
     }
+
     const period = periodSelect.value;
     let startDate, endDate;
     if (period === 'custom') {
@@ -459,21 +538,23 @@ async function loadRekap() {
         startDate = range.start;
         endDate = range.end;
     }
+
     if (startDate > endDate) {
         if (typeof showToast === 'function') showToast("⚠️ Tanggal mulai harus lebih kecil dari tanggal akhir!", "error");
         return;
     }
+
     localStorage.setItem('rekapLastPeriod', period);
     const periodDisplay = formatDateRangeDisplay(startDate, endDate);
     console.log(`📊 Load rekap: ${period} (${periodDisplay})`);
     if (typeof showToast === 'function') showToast(`📊 Memuat rekap periode: ${periodDisplay}`, "info");
-    
+
     currentRekapData = await calculateStudentRekap(dbData.attendance, dbData.users, startDate, endDate);
     renderRekapTable(currentRekapData);
     renderRekapCharts(currentRekapData, startDate, endDate);
-    
+
     const totalSiswa = currentRekapData.filter(s => s.nama && s.nama !== 'Tidak Diketahui').length;
-    const rataRata = currentRekapData.reduce((sum, s) => sum + parseFloat(s.percentage), 0) / totalSiswa || 0;
+    const rataRata = totalSiswa ? (currentRekapData.reduce((sum, s) => sum + parseFloat(s.percentage), 0) / totalSiswa) : 0;
     console.log(`📊 Rekap selesai: ${totalSiswa} siswa, rata-rata kehadiran: ${rataRata.toFixed(1)}%`);
 }
 
@@ -559,10 +640,19 @@ function exportRekapToPDF() {
         else if (item.status === 'Kurang') badgeClass = 'badge-kurang';
         else badgeClass = 'badge-buruk';
         printWindow.document.write(`
-            <tr><td>${no}</td><td>${item.id}</td><td class="text-left">${escapeHtml(item.nama)}</td>
-            <td>${item.kelas}</td><td>${item.jurusan}</td><td>${item.totalDays}</td>
-            <td>${item.hadir}</td><td>${item.sakit}</td><td>${item.izin}</td><td>${item.alpha}</td>
-            <td>${item.percentage}%</td><td><span class="${badgeClass}">${item.status}</span></td>
+            <tr>
+                <td>${no}</td>
+                <td>${item.id}</td>
+                <td class="text-left">${escapeHtml(item.nama)}</td>
+                <td>${item.kelas}</td>
+                <td>${item.jurusan}</td>
+                <td>${item.totalDays}</td>
+                <td>${item.hadir}</td>
+                <td>${item.sakit}</td>
+                <td>${item.izin}</td>
+                <td>${item.alpha}</td>
+                <td>${item.percentage}%</td>
+                <td><span class="${badgeClass}">${item.status}</span></td>
             </tr>
         `);
         no++;
@@ -615,4 +705,4 @@ window.exportRekapToPDF = exportRekapToPDF;
 window.initRekap = initRekap;
 window.cleanupRekap = cleanupRekap;
 
-console.log("✅ rekap.js V3.0 loaded - Event-based (no duplicate listeners)");
+console.log("✅ rekap.js V3.2 loaded - tbody creation + force render");
