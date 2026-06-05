@@ -19,6 +19,171 @@ const firebaseConfig = {
 // PERINGATAN: Di production, pindahkan upload ke Cloud Function
 const IMGBB_KEY = "67650d8ee67ebb8bba94f3bb2c72eb4f";
 
+// ==================== WHATSAPP GATEWAY CONFIG ====================
+// Gunakan Fonnte API: https://fonnte.com (daftar gratis, 100 pesan/hari)
+// Cara setup:
+// 1. Daftar di https://fonnte.com
+// 2. Verifikasi nomor WhatsApp
+// 3. Dapatkan API Key dari dashboard
+// 4. API Key sudah diisi dengan key asli Anda
+const WHATSAPP_CONFIG = {
+    gateway: 'fonnte',           // 'fonnte', 'waba', 'wati'
+    fonnteApiKey: '2VoL53ZrVsDPxwDTNPdY', // API Key asli dari Fonnte
+    enabled: true,               // Aktifkan/nonaktifkan notifikasi WA
+    sendOnCheckIn: true,         // Notifikasi saat masuk
+    sendOnCheckOut: true,        // Notifikasi saat pulang
+    sendOnLate: true,            // Notifikasi jika terlambat
+    sendOnAbsent: true,          // Notifikasi jika alpha (tidak hadir)
+    senderNumber: ''             // Nomor pengirim (opsional, kosongkan jika pakai default)
+};
+
+// ==================== KONFIGURASI IZIN ONLINE ====================
+const IZIN_CONFIG = {
+    enabled: true,               // Aktifkan fitur izin online
+    maxFileSize: 2 * 1024 * 1024, // Maksimal 2MB untuk lampiran
+    allowedFileTypes: ['pdf', 'jpg', 'jpeg', 'png'],
+    autoApprove: false,          // True jika izin otomatis disetujui (tanpa review)
+    notificationOnApprove: true, // Kirim notifikasi saat izin disetujui
+    notificationOnReject: true   // Kirim notifikasi saat izin ditolak
+};
+
+// ==================== ROLE DISPLAY NAMES ====================
+// Mapping role internal ke tampilan nama yang ramah pengguna
+const ROLE_DISPLAY_NAMES = {
+    admin: 'Kepala Sekolah',
+    wakil_kepala: 'Wakil Kepala Sekolah',
+    staff_tu: 'Staff TU',
+    guru: 'Guru',
+    developer: 'Developer',
+    siswa: 'Siswa'
+};
+
+// ==================== ROLE ICONS ====================
+const ROLE_ICONS = {
+    admin: '👑',
+    wakil_kepala: '👔',
+    staff_tu: '📋',
+    guru: '👨‍🏫',
+    developer: '👨‍💻',
+    siswa: '👨‍🎓'
+};
+
+// ==================== ROLE PERMISSIONS ====================
+// Definisi akses untuk setiap role
+const ROLE_PERMISSIONS = {
+    // Role dengan akses penuh (super admin)
+    full_access: ['admin', 'developer'],
+    
+    // Role yang bisa mengelola data (tambah/edit/hapus siswa, staff, dll)
+    management_access: ['admin', 'developer', 'wakil_kepala', 'guru'],
+    
+    // Role yang bisa membaca semua data (tanpa bisa edit)
+    read_all_access: ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'],
+    
+    // Role yang bisa mengelola pengumuman
+    announcement_access: ['admin', 'developer', 'wakil_kepala', 'guru'],
+    
+    // Role yang bisa mengelola user (tambah/edit/hapus akun)
+    user_management_access: ['admin', 'developer'],
+    
+    // Role yang bisa melihat log aktivitas
+    log_access: ['admin', 'developer', 'wakil_kepala'],
+    
+    // Role yang bisa mengelola pengaturan sistem
+    config_access: ['admin', 'developer', 'wakil_kepala'],
+    
+    // Role yang bisa mengelola staff (guru/karyawan)
+    staff_management_access: ['admin', 'developer', 'wakil_kepala', 'guru'],
+    
+    // Role yang bisa mengelola izin online
+    izin_management_access: ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'],
+    
+    // Role yang bisa mengakses rekap absensi
+    rekap_access: ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'],
+    
+    // Role yang bisa mengakses AI Summary
+    ai_summary_access: ['admin', 'developer', 'wakil_kepala', 'guru'],
+    
+    // Role yang bisa mengakses dashboard penuh
+    full_dashboard_access: ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu']
+};
+
+// ==================== FUNGSI UTILITY ROLE ====================
+
+/**
+ * Mendapatkan display name untuk suatu role
+ * @param {string} role - Role internal (admin, guru, dll)
+ * @returns {string} Nama tampilan yang ramah pengguna
+ */
+function getRoleDisplayName(role) {
+    return ROLE_DISPLAY_NAMES[role] || role.toUpperCase();
+}
+
+/**
+ * Mendapatkan icon untuk suatu role
+ * @param {string} role - Role internal
+ * @returns {string} Emoji icon
+ */
+function getRoleIcon(role) {
+    return ROLE_ICONS[role] || '👤';
+}
+
+/**
+ * Cek apakah suatu role memiliki permission tertentu
+ * @param {string} role - Role yang akan dicek
+ * @param {string} permissionType - Jenis permission (full_access, management_access, dll)
+ * @returns {boolean} True jika memiliki akses
+ */
+function hasPermission(role, permissionType) {
+    if (!role) return false;
+    const allowedRoles = ROLE_PERMISSIONS[permissionType];
+    return allowedRoles ? allowedRoles.includes(role) : false;
+}
+
+/**
+ * Mendapatkan daftar semua role yang tersedia (untuk dropdown)
+ * @returns {Array} Daftar role dengan display name dan icon
+ */
+function getAllRoles() {
+    return [
+        { value: 'admin', label: 'Kepala Sekolah', icon: '👑' },
+        { value: 'wakil_kepala', label: 'Wakil Kepala Sekolah', icon: '👔' },
+        { value: 'staff_tu', label: 'Staff TU', icon: '📋' },
+        { value: 'guru', label: 'Guru', icon: '👨‍🏫' },
+        { value: 'developer', label: 'Developer', icon: '👨‍💻' },
+        { value: 'siswa', label: 'Siswa', icon: '👨‍🎓' }
+    ];
+}
+
+/**
+ * Validasi apakah role valid
+ * @param {string} role - Role yang divalidasi
+ * @returns {boolean}
+ */
+function isValidRole(role) {
+    const validRoles = ['admin', 'wakil_kepala', 'staff_tu', 'guru', 'developer', 'siswa'];
+    return validRoles.includes(role);
+}
+
+/**
+ * Mendapatkan priority level role (untuk sorting)
+ * @param {string} role - Role
+ * @returns {number} Priority (1 tertinggi)
+ */
+function getRolePriority(role) {
+    const priorities = {
+        developer: 1,
+        admin: 2,
+        wakil_kepala: 3,
+        guru: 4,
+        staff_tu: 5,
+        siswa: 6
+    };
+    return priorities[role] || 99;
+}
+
+// ==================== INISIALISASI FIREBASE ====================
+
 // Pastikan Firebase SDK sudah dimuat sebelum inisialisasi
 if (typeof firebase === 'undefined') {
   console.error("❌ Firebase SDK tidak dimuat! Periksa koneksi internet dan urutan script.");
@@ -66,5 +231,21 @@ if (!allowedDomains.includes(origin) && !origin.endsWith('.web.app')) {
   console.log(`✅ Domain diizinkan: ${origin}`);
 }
 
-// Ekspor ke global (sudah otomatis)
-console.log("✅ config.js loaded - Firebase siap digunakan");
+// ==================== EKSPOR KE GLOBAL ====================
+window.WHATSAPP_CONFIG = WHATSAPP_CONFIG;
+window.IZIN_CONFIG = IZIN_CONFIG;
+window.IMGBB_KEY = IMGBB_KEY;
+window.firebaseConfig = firebaseConfig;
+
+// Ekspor role management functions
+window.ROLE_DISPLAY_NAMES = ROLE_DISPLAY_NAMES;
+window.ROLE_ICONS = ROLE_ICONS;
+window.ROLE_PERMISSIONS = ROLE_PERMISSIONS;
+window.getRoleDisplayName = getRoleDisplayName;
+window.getRoleIcon = getRoleIcon;
+window.hasPermission = hasPermission;
+window.getAllRoles = getAllRoles;
+window.isValidRole = isValidRole;
+window.getRolePriority = getRolePriority;
+
+console.log("✅ config.js loaded - Firebase, WhatsApp Gateway, Role Management (Kepala Sekolah, Wakil Kepala Sekolah, Staff TU, Guru, Developer, Siswa) siap digunakan");
