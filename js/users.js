@@ -1,13 +1,12 @@
-// users.js - VERSION 5.2 (FULLY LOCKED: GURU & STAFF SAME AS STUDENT)
+// users.js - VERSION 5.3 (STRICT PERMISSIONS FOR CODE GENERATION)
 // Manajemen User: Generate kode registrasi (dengan QR), daftar kode,
 // daftar pengguna, ubah role, hapus user, reset password, reset sistem.
 // Role yang didukung: developer, admin (Kepala Sekolah), wakil_kepala, staff_tu, guru, siswa
-// PERUBAHAN V5.2: 
-//   - GURU dan STAFF memiliki validasi KETAT seperti SISWA
-//   - CEK apakah sudah memiliki akun (berdasarkan email)
-//   - CEK apakah masih memiliki kode aktif (berdasarkan linkedId)
-//   - HIGHLIGHT di tabel user/kode jika sudah ada
-//   - RESET dropdown setelah generate
+// PERUBAHAN V5.3: 
+//   - HANYA Kepala Sekolah (admin), Wakil Kepala Sekolah (wakil_kepala), dan Developer yang dapat generate kode STAFF
+//   - Guru dan Staff TU hanya bisa generate kode SISWA
+//   - SISWA tidak bisa generate kode sama sekali
+//   - Update UI otomatis berdasarkan role
 // ============================================================================
 
 let usersDataReadyListenerAdded = false;
@@ -89,10 +88,29 @@ function canManageUser(currentUser, targetUser) {
 }
 
 /**
- * Cek apakah user dapat menggenerate kode
+ * Cek apakah user dapat menggenerate kode (secara umum)
  */
 function canGenerateCode(userRole) {
-    const allowedRoles = ['admin', 'developer', 'wakil_kepala', 'guru'];
+    // Semua role kecuali siswa bisa generate kode
+    const allowedRoles = ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'];
+    return allowedRoles.includes(userRole);
+}
+
+/**
+ * Cek apakah user dapat menggenerate kode untuk STAFF
+ * HANYA: Kepala Sekolah (admin), Wakil Kepala Sekolah (wakil_kepala), Developer
+ */
+function canGenerateStaffCode(userRole) {
+    const allowedRoles = ['admin', 'developer', 'wakil_kepala'];
+    return allowedRoles.includes(userRole);
+}
+
+/**
+ * Cek apakah user dapat menggenerate kode untuk SISWA
+ * Semua role kecuali siswa
+ */
+function canGenerateStudentCode(userRole) {
+    const allowedRoles = ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'];
     return allowedRoles.includes(userRole);
 }
 
@@ -120,6 +138,186 @@ function isValidRole(role) {
     return validRoles.includes(role);
 }
 
+/**
+ * Mendapatkan daftar role yang bisa generate staff (untuk ditampilkan di UI)
+ */
+function getStaffCodeAllowedRoles() {
+    return [
+        { role: 'developer', label: 'Developer', icon: '👨‍💻' },
+        { role: 'admin', label: 'Kepala Sekolah', icon: '👑' },
+        { role: 'wakil_kepala', label: 'Wakil Kepala Sekolah', icon: '👔' }
+    ];
+}
+
+// ======================= UPDATE UI GENERATE KODE BERDASARKAN ROLE ========================
+
+/**
+ * Update tampilan generate kode berdasarkan role user
+ * - Siswa: tidak bisa generate kode sama sekali (sembunyikan seluruh section)
+ * - Guru/Staff TU: hanya bisa generate kode siswa (sembunyikan opsi staff)
+ * - Admin/Wakil/Developer: bisa generate kode siswa dan staff
+ */
+function updateCodeGenerationUI() {
+    console.log("🔧 updateCodeGenerationUI dipanggil untuk role:", currentUser?.role);
+    
+    // Cek apakah tab users sedang aktif
+    const tabUsers = document.getElementById('tab-users');
+    if (!tabUsers || !tabUsers.classList.contains('active')) {
+        console.log("⏳ Tab users tidak aktif, skip UI update");
+        return;
+    }
+    
+    // SISWA: tidak bisa generate kode sama sekali
+    if (currentUser?.role === 'siswa') {
+        console.log("🔒 Siswa tidak dapat mengenerate kode, menyembunyikan section");
+        
+        // Sembunyikan seluruh section generate kode
+        const codeGenSection = document.querySelector('#tab-users .controls-bar:first-child');
+        if (codeGenSection) codeGenSection.style.display = 'none';
+        
+        const keyBox = document.querySelector('#tab-users .key-box');
+        if (keyBox) keyBox.style.display = 'none';
+        
+        const codesTable = document.querySelector('#tab-users .table-container:first-of-type');
+        if (codesTable) codesTable.style.display = 'none';
+        
+        // Tampilkan pesan akses ditolak jika belum ada
+        if (!document.getElementById('noAccessMessage')) {
+            const noAccessMsg = document.createElement('div');
+            noAccessMsg.id = 'noAccessMessage';
+            noAccessMsg.className = 'key-box';
+            noAccessMsg.style.textAlign = 'center';
+            noAccessMsg.style.padding = '40px';
+            noAccessMsg.style.margin = '20px 0';
+            noAccessMsg.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+                <h3 style="color: var(--text-primary); margin-bottom: 8px;">Akses Terbatas</h3>
+                <p style="color: var(--text-muted);">Fitur generate kode hanya tersedia untuk Admin, Guru, dan Staff.</p>
+                <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Hubungi guru atau admin untuk mendapatkan kode registrasi.</p>
+            `;
+            const firstElement = tabUsers.querySelector('.controls-bar');
+            if (firstElement) {
+                tabUsers.insertBefore(noAccessMsg, firstElement);
+            } else {
+                tabUsers.insertBefore(noAccessMsg, tabUsers.firstChild);
+            }
+        }
+        return;
+    }
+    
+    // Hapus pesan no access jika ada
+    const noAccessMsg = document.getElementById('noAccessMessage');
+    if (noAccessMsg) noAccessMsg.remove();
+    
+    // Tampilkan kembali section yang disembunyikan
+    const codeGenSection = document.querySelector('#tab-users .controls-bar:first-child');
+    if (codeGenSection) codeGenSection.style.display = '';
+    
+    const keyBox = document.querySelector('#tab-users .key-box');
+    if (keyBox) keyBox.style.display = '';
+    
+    const codesTable = document.querySelector('#tab-users .table-container:first-of-type');
+    if (codesTable) codesTable.style.display = '';
+    
+    const canGenerateStaff = canGenerateStaffCode(currentUser?.role);
+    const canGenerateStudent = canGenerateStudentCode(currentUser?.role);
+    
+    // Tampilkan/sembunyikan radio button untuk staff
+    const radioStaff = document.querySelector('input[name="genTarget"][value="staff"]');
+    const radioGuru = document.querySelector('input[name="genTarget"][value="guru"]');
+    const labelStaff = radioStaff?.closest('label');
+    const labelGuru = radioGuru?.closest('label');
+    const genTargetContainer = document.getElementById('genTargetContainer');
+    
+    if (!canGenerateStaff) {
+        // Sembunyikan opsi staff/guru
+        if (radioStaff) {
+            radioStaff.style.display = 'none';
+            if (labelStaff) labelStaff.style.display = 'none';
+        }
+        if (radioGuru) {
+            radioGuru.style.display = 'none';
+            if (labelGuru) labelGuru.style.display = 'none';
+        }
+        
+        // Jika hanya bisa generate siswa, pastikan radio siswa terpilih
+        const radioSiswa = document.querySelector('input[name="genTarget"][value="siswa"]');
+        if (radioSiswa && !radioSiswa.checked) {
+            radioSiswa.checked = true;
+            if (typeof toggleGenerateInput === 'function') toggleGenerateInput();
+        }
+        
+        // Tampilkan informasi hanya bisa generate siswa
+        const descElement = document.getElementById('gen-desc');
+        if (descElement) {
+            descElement.innerHTML = '🔒 Anda hanya dapat generate kode untuk SISWA. Generate kode STAFF hanya untuk Kepala Sekolah, Wakil Kepala Sekolah, dan Developer.';
+            descElement.style.color = '#ff9800';
+        }
+        
+        // Tampilkan info akses staff
+        let staffAccessInfo = document.getElementById('staffCodeAccessInfo');
+        if (!staffAccessInfo) {
+            staffAccessInfo = document.createElement('div');
+            staffAccessInfo.id = 'staffCodeAccessInfo';
+            staffAccessInfo.style.marginTop = '8px';
+            staffAccessInfo.style.padding = '8px 12px';
+            staffAccessInfo.style.background = 'rgba(255, 152, 0, 0.1)';
+            staffAccessInfo.style.borderRadius = '8px';
+            staffAccessInfo.style.fontSize = '12px';
+            staffAccessInfo.style.borderLeft = '3px solid #ff9800';
+            const descElementParent = descElement?.parentNode;
+            if (descElementParent) {
+                descElementParent.appendChild(staffAccessInfo);
+            }
+        }
+        if (staffAccessInfo) {
+            staffAccessInfo.innerHTML = `
+                <span>⚠️ Generate kode STAFF hanya dapat dilakukan oleh:</span>
+                <ul style="margin: 5px 0 0 20px;">
+                    <li>👑 Kepala Sekolah</li>
+                    <li>👔 Wakil Kepala Sekolah</li>
+                    <li>👨‍💻 Developer</li>
+                </ul>
+            `;
+            staffAccessInfo.style.display = 'block';
+        }
+        
+        console.log("🔒 User hanya bisa generate kode SISWA");
+    } else {
+        // Tampilkan opsi staff
+        if (radioStaff) {
+            radioStaff.style.display = '';
+            if (labelStaff) labelStaff.style.display = '';
+        }
+        if (radioGuru) {
+            radioGuru.style.display = '';
+            if (labelGuru) labelGuru.style.display = '';
+        }
+        
+        const descElement = document.getElementById('gen-desc');
+        if (descElement) {
+            descElement.innerHTML = '🔒 Kode akan dikunci ke ID terpilih.';
+            descElement.style.color = '';
+        }
+        
+        // Sembunyikan info akses staff
+        const staffAccessInfo = document.getElementById('staffCodeAccessInfo');
+        if (staffAccessInfo) staffAccessInfo.style.display = 'none';
+        
+        console.log("✅ User bisa generate kode SISWA dan STAFF");
+    }
+    
+    if (!canGenerateStudent) {
+        // Jika tidak bisa generate siswa (seharusnya tidak terjadi)
+        const radioSiswa = document.querySelector('input[name="genTarget"][value="siswa"]');
+        if (radioSiswa) {
+            radioSiswa.style.display = 'none';
+            const labelSiswa = radioSiswa.closest('label');
+            if (labelSiswa) labelSiswa.style.display = 'none';
+        }
+    }
+}
+
 // ======================= EVENT LISTENER DATA READY ========================
 function setupUsersDataReadyListener() {
     if (usersDataReadyListenerAdded) return;
@@ -133,13 +331,28 @@ function setupUsersDataReadyListener() {
         updateCodesStatistics();
         if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
         if (typeof populateStaffSelectForCode === 'function') populateStaffSelectForCode();
+        setTimeout(() => updateCodeGenerationUI(), 100);
     });
 
     window.addEventListener('uiReady', (e) => {
         console.log("👥 users.js: uiReady received, checking permissions");
         if (typeof renderUsersTable === 'function') renderUsersTable();
         if (typeof populateStaffSelectForCode === 'function') populateStaffSelectForCode();
+        setTimeout(() => updateCodeGenerationUI(), 100);
     });
+}
+
+// Override switchTab untuk update UI generate kode saat tab users dibuka
+const originalSwitchTabForCode = window.switchTab;
+if (originalSwitchTabForCode) {
+    window.switchTab = function(tabId) {
+        originalSwitchTabForCode(tabId);
+        if (tabId === 'users') {
+            setTimeout(() => {
+                updateCodeGenerationUI();
+            }, 100);
+        }
+    };
 }
 
 // ======================= UPDATE STATISTIK KODE ========================
@@ -413,22 +626,41 @@ function highlightExistingCode(code) {
     }
 }
 
-// ======================= GENERATE KODE REGISTRASI + QR CODE (VALIDASI KETAT) ========================
+// ======================= GENERATE KODE REGISTRASI + QR CODE (VALIDASI KETAT + PERMISSION) ========================
 function generateRegistrationCode() {
     if (!currentUser) {
         showToast("Anda harus login!", "error");
         return;
     }
 
+    // Cek akses dasar: apakah user bisa generate kode sama sekali
     if (!canGenerateCode(currentUser.role)) {
-        showToast("⛔ Hanya Kepala Sekolah, Wakil Kepala Sekolah, Guru, dan Developer yang dapat generate kode!", "error");
+        showToast("⛔ Akses ditolak! Hanya Admin, Guru, dan Staff yang dapat generate kode.", "error");
         return;
     }
 
     const targetType = document.querySelector('input[name="genTarget"]:checked')?.value;
     if (!targetType) {
-        showToast("Pilih target kode (Siswa/Guru/Staff)!", "error");
+        showToast("Pilih target kode!", "error");
         return;
+    }
+
+    // ========== VALIDASI KHUSUS UNTUK STAFF/GURU ==========
+    if (targetType === 'staff' || targetType === 'guru') {
+        if (!canGenerateStaffCode(currentUser.role)) {
+            const allowedRoles = getStaffCodeAllowedRoles();
+            const rolesText = allowedRoles.map(r => `${r.icon} ${r.label}`).join(', ');
+            showToast(`⛔ Hanya ${rolesText} yang dapat generate kode STAFF!`, "error");
+            return;
+        }
+    }
+    
+    // ========== VALIDASI KHUSUS UNTUK SISWA ==========
+    if (targetType === 'siswa') {
+        if (!canGenerateStudentCode(currentUser.role)) {
+            showToast(`⛔ Role ${getRoleDisplayName(currentUser.role)} tidak dapat generate kode SISWA!`, "error");
+            return;
+        }
     }
 
     // ========== VALIDASI WAJIB PILIH SEBELUM GENERATE ==========
@@ -455,76 +687,14 @@ function generateRegistrationCode() {
             highlightExistingCode(existingCode.code);
             return;
         }
-    }
-    // ========== VALIDASI UNTUK GURU (WAJIB PILIH DROPDOWN & CEK KETAT) ==========
-    else if (targetType === 'guru') {
-        const selectStaff = document.getElementById('selectStaffForCode');
         
-        if (!selectStaff) {
-            showToast("❌ Error: Dropdown staff tidak ditemukan!", "error");
-            return;
-        }
-        
-        const selectedStaffId = selectStaff.value;
-        const isValidSelection = selectedStaffId && 
-                                 selectedStaffId !== '' && 
-                                 selectedStaffId !== '-- Pilih Staff --' &&
-                                 selectedStaffId !== '⏳ Memuat data staff...' &&
-                                 selectedStaffId !== '-- Memuat data staff --';
-        
-        // ========== VALIDASI WAJIB: Harus memilih staff dari dropdown! ==========
-        if (!isValidSelection) {
-            return showDropdownError(selectStaff, "⚠️ HARAP PILIH GURU DARI DROPDOWN TERLEBIH DAHULU sebelum generate kode!");
-        }
-        
-        const selectedOption = selectStaff.querySelector('option[value="' + selectedStaffId + '"]');
-        const staffEmail = selectedOption?.getAttribute('data-email');
-        const staffName = selectedOption?.getAttribute('data-nama');
-        const staffJabatan = selectedOption?.getAttribute('data-jabatan') || 'guru';
-        
-        if (!staffEmail) {
-            showToast(`❌ GURU ini tidak memiliki email! Silakan edit data staff dan isi email terlebih dahulu.`, "error");
-            return;
-        }
-        
-        // ========== CEK APAKAH SUDAH MEMILIKI AKUN (SAMA SEPERTI SISWA) ==========
-        const existingUser = dbData.users_auth?.find(u => u.email?.toLowerCase() === staffEmail.toLowerCase());
-        if (existingUser) {
-            showToast(`❌ GAGAL: Guru (${staffName}) sudah memiliki akun dengan email ${staffEmail}.`, "error");
-            highlightUserInTable(staffEmail);
-            return;
-        }
-        
-        // ========== CEK APAKAH MASIH ADA KODE AKTIF UNTUK ID STAFF YANG SAMA ==========
-        const existingCode = dbData.codes?.find(c => c.linkedId == selectedStaffId && !c.used && (c.type === 'guru' || c.type === 'staff'));
-        if (existingCode) {
-            showToast(`❌ GAGAL: Guru ini masih memiliki kode aktif (${existingCode.code})! Tunggu expired atau hapus kode lama!`, "error");
-            highlightExistingCode(existingCode.code);
-            return;
-        }
-        
-        // Jika lolos semua validasi, generate kode GURU dengan data lengkap
-        const codeData = {
-            used: false,
-            createdAt: firebase.database.ServerValue.TIMESTAMP,
-            type: targetType,
-            createdBy: currentUser.nama || currentUser.email,
-            createdRole: currentUser.role,
-            linkedId: selectedStaffId,
-            linkedEmail: staffEmail,
-            linkedName: staffName,
-            targetRole: 'guru',
-            requireId: true,
-            nama: staffName,
-            email: staffEmail,
-            jabatan: staffJabatan
-        };
-        
-        generateStaffCode(codeData, targetType, selectedStaffId, staffName, staffEmail, staffJabatan, 'guru');
+        // Generate kode SISWA
+        generateStudentCode(selectedId);
         return;
     }
-    // ========== VALIDASI UNTUK STAFF (WAJIB PILIH DROPDOWN & CEK KETAT) ==========
-    else if (targetType === 'staff') {
+    
+    // ========== VALIDASI UNTUK GURU/STAFF ==========
+    else if (targetType === 'guru' || targetType === 'staff') {
         const selectStaff = document.getElementById('selectStaffForCode');
         
         if (!selectStaff) {
@@ -539,7 +709,6 @@ function generateRegistrationCode() {
                                  selectedStaffId !== '⏳ Memuat data staff...' &&
                                  selectedStaffId !== '-- Memuat data staff --';
         
-        // ========== VALIDASI WAJIB: Harus memilih staff dari dropdown! ==========
         if (!isValidSelection) {
             return showDropdownError(selectStaff, "⚠️ HARAP PILIH STAFF DARI DROPDOWN TERLEBIH DAHULU sebelum generate kode!");
         }
@@ -551,11 +720,11 @@ function generateRegistrationCode() {
         const staffJabatan = selectedOption?.getAttribute('data-jabatan') || 'guru';
         
         if (!staffEmail) {
-            showToast(`❌ STAFF ini tidak memiliki email! Silakan edit data staff dan isi email terlebih dahulu.`, "error");
+            showToast(`❌ Staff ini tidak memiliki email! Silakan edit data staff dan isi email terlebih dahulu.`, "error");
             return;
         }
         
-        // ========== CEK APAKAH SUDAH MEMILIKI AKUN (SAMA SEPERTI SISWA) ==========
+        // CEK APAKAH SUDAH MEMILIKI AKUN
         const existingUser = dbData.users_auth?.find(u => u.email?.toLowerCase() === staffEmail.toLowerCase());
         if (existingUser) {
             const roleName = existingUser.role === 'admin' ? 'Kepala Sekolah' : 
@@ -566,8 +735,8 @@ function generateRegistrationCode() {
             return;
         }
         
-        // ========== CEK APAKAH MASIH ADA KODE AKTIF UNTUK ID STAFF YANG SAMA ==========
-        const existingCode = dbData.codes?.find(c => c.linkedId == selectedStaffId && !c.used && (c.type === 'staff' || c.type === 'staff_tu' || c.type === 'wakil_kepala'));
+        // CEK APAKAH MASIH ADA KODE AKTIF UNTUK ID STAFF YANG SAMA
+        const existingCode = dbData.codes?.find(c => c.linkedId == selectedStaffId && !c.used && (c.type === 'guru' || c.type === 'staff'));
         if (existingCode) {
             showToast(`❌ GAGAL: Staff ini masih memiliki kode aktif (${existingCode.code})! Tunggu expired atau hapus kode lama!`, "error");
             highlightExistingCode(existingCode.code);
@@ -576,164 +745,123 @@ function generateRegistrationCode() {
         
         let targetRole = staffRole || 'guru';
         
-        // Jika lolos semua validasi, generate kode STAFF dengan data lengkap
-        const codeData = {
-            used: false,
-            createdAt: firebase.database.ServerValue.TIMESTAMP,
-            type: targetType,
-            createdBy: currentUser.nama || currentUser.email,
-            createdRole: currentUser.role,
-            linkedId: selectedStaffId,
-            linkedEmail: staffEmail,
-            linkedName: staffName,
-            targetRole: targetRole,
-            requireId: true,
-            staffJabatan: staffJabatan,
-            nama: staffName,
-            email: staffEmail,
-            roleLabel: targetRole === 'admin' ? 'Kepala Sekolah' : 
-                      (targetRole === 'wakil_kepala' ? 'Wakil Kepala Sekolah' :
-                      (targetRole === 'staff_tu' ? 'Staff TU' : 'Guru'))
-        };
-        
-        generateStaffCode(codeData, targetType, selectedStaffId, staffName, staffEmail, staffJabatan, targetRole);
+        // Generate kode STAFF/GURU
+        generateStaffCode(selectedStaffId, staffEmail, staffName, staffJabatan, targetRole, targetType);
         return;
     }
     else {
         showToast("❌ Target kode tidak valid!", "error");
         return;
     }
+}
 
-    // ========== GENERATE KODE UNTUK SISWA ==========
+/**
+ * Generate kode untuk SISWA
+ */
+function generateStudentCode(selectedId) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     const code = `REG-${timestamp.slice(-3)}${random}`;
-
+    
+    const student = dbData.users.find(s => s.id == selectedId);
+    const studentName = student?.nama || selectedId;
+    
     const codeData = {
         used: false,
         createdAt: firebase.database.ServerValue.TIMESTAMP,
-        type: targetType,
+        type: 'siswa',
         createdBy: currentUser.nama || currentUser.email,
-        createdRole: currentUser.role
+        createdRole: currentUser.role,
+        linkedId: selectedId,
+        requireId: true,
+        nama: studentName,
+        kelas: student?.kelas || '-',
+        jurusan: student?.jurusan || '-'
     };
-
+    
     const btn = document.querySelector('button[onclick="generateRegistrationCode()"]');
     const originalText = btn?.innerHTML;
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '⏳ Generating...';
     }
-
-    if (targetType === 'siswa') {
-        const selectedId = document.getElementById('selectStudentForCode').value;
-        if (!selectedId) {
-            showToast("⚠️ Harap pilih Siswa terlebih dahulu!", "error");
-            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
-            return;
-        }
-
-        const existingUser = dbData.users_auth?.find(u => u.fpId == selectedId);
-        if (existingUser) {
-            showToast(`❌ GAGAL: ID Siswa (${selectedId}) sudah terdaftar pada akun (${existingUser.email}).`, "error");
-            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
-            return;
-        }
-
-        const existingCode = dbData.codes?.find(c => c.linkedId == selectedId && !c.used && c.type === 'siswa');
-        if (existingCode) {
-            showToast(`❌ GAGAL: Siswa ini masih memiliki kode aktif (${existingCode.code}). Tunggu expired!`, "error");
-            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
-            return;
-        }
-
-        codeData.linkedId = selectedId;
-        const student = dbData.users.find(s => s.id == selectedId);
-        const studentName = student?.nama || selectedId;
-
-        db.ref('codes/' + code).set(codeData).then(() => {
-            const display = document.getElementById('generatedKeyDisplay');
-            display.style.display = 'block';
-            const qrData = JSON.stringify({ 
-                code: code, 
-                studentId: selectedId,
-                type: 'siswa',
-                requireId: true,
-                nama: studentName
-            });
-            const qrContainerId = `qrcode-${code.replace(/[^a-zA-Z0-9]/g, '')}`;
-
-            display.innerHTML = `
-                <div style="background: #1a1a2e; border-radius: 8px; padding: 15px; margin: 10px 0; border-left: 4px solid #4a90e2;">
-                    <div style="font-size: 12px; color: #888;">✨ KODE REGISTRASI BERHASIL DIGENERATE ✨</div>
-                    <div style="font-size: 20px; font-family: monospace; font-weight: bold; color: #4a90e2; margin: 10px 0;">${code}</div>
-                    <div>Tipe: <strong>SISWA</strong> 👨‍🎓</div>
-                    <div><span style="color: #ff9800;">🆔 ID WAJIB: <strong>${selectedId}</strong></span></div>
-                    <div>Terkunci ID: <strong>${selectedId}</strong> - ${studentName}</div>
-                    <div>Kelas: <strong>${student?.kelas || '-'}</strong> | Jurusan: <strong>${student?.jurusan || '-'}</strong></div>
-                    <div>Dibuat oleh: <strong>${currentUser.nama || currentUser.email} (${getRoleDisplayName(currentUser.role)})</strong></div>
-                    <div style="margin-top: 10px;"><small>⏰ Kode akan expired dalam 5 jam</small></div>
-                    <div id="${qrContainerId}" style="margin: 15px auto; display: flex; justify-content: center;"></div>
-                    <button class="btn-action btn-success" onclick="copyToClipboard('${code}')" style="margin-top: 10px;">📋 Copy Kode</button>
-                </div>
-            `;
-
-            try {
-                new QRCode(document.getElementById(qrContainerId), {
-                    text: qrData,
-                    width: 150,
-                    height: 150,
-                    colorDark: "#000000",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.H
-                });
-            } catch (err) {
-                console.error("QR Code generation error:", err);
-                document.getElementById(qrContainerId).innerHTML = '<span style="color:red;">Gagal generate QR</span>';
-            }
-            showToast(`✅ Kode untuk ${studentName} berhasil dibuat!`, "success");
-            
-            if (typeof logActivity === 'function') {
-                logActivity('generate_code', `Generate kode ${targetType}: ${code} untuk ${studentName} (ID: ${selectedId}) oleh ${getRoleDisplayName(currentUser.role)}`);
-            }
-            
-            // RESET DROPDOWN agar tidak bisa generate ulang dengan ID yang sama
-            const selectSiswa = document.getElementById('selectStudentForCode');
-            if (selectSiswa) {
-                selectSiswa.value = '';
-                selectSiswa.style.borderColor = '';
-                selectSiswa.style.backgroundColor = '';
-            }
-            
-            // Refresh dropdown untuk menghilangkan siswa yang sudah digenerate
-            setTimeout(() => populateStudentSelectForCode(), 500);
-            
-            if (typeof renderCodesTable === 'function') renderCodesTable();
-            updateCodesStatistics();
-        }).catch(err => {
-            console.error("Generate code error:", err);
-            showToast("❌ Gagal membuat kode: " + err.message, "error");
-        }).finally(() => {
-            if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+    
+    db.ref('codes/' + code).set(codeData).then(() => {
+        const display = document.getElementById('generatedKeyDisplay');
+        display.style.display = 'block';
+        const qrData = JSON.stringify({ 
+            code: code, 
+            studentId: selectedId, 
+            type: 'siswa', 
+            requireId: true,
+            nama: studentName,
+            kelas: student?.kelas || '',
+            jurusan: student?.jurusan || ''
         });
-    }
+        const qrContainerId = `qrcode-${code.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+        display.innerHTML = `
+            <div style="background: #1a1a2e; border-radius: 8px; padding: 15px; margin: 10px 0; border-left: 4px solid #4a90e2;">
+                <div style="font-size: 12px; color: #888;">✨ KODE REGISTRASI BERHASIL DIGENERATE ✨</div>
+                <div style="font-size: 20px; font-family: monospace; font-weight: bold; color: #4a90e2; margin: 10px 0;">${code}</div>
+                <div>Tipe: <strong>SISWA</strong> 👨‍🎓</div>
+                <div><span style="color: #ff9800;">🆔 ID WAJIB: <strong>${selectedId}</strong></span></div>
+                <div>Terkunci ID: <strong>${selectedId}</strong> - ${escapeHtmlString(studentName)}</div>
+                <div>Kelas: <strong>${student?.kelas || '-'}</strong> | Jurusan: <strong>${student?.jurusan || '-'}</strong></div>
+                <div>Dibuat oleh: <strong>${currentUser.nama || currentUser.email} (${getRoleDisplayName(currentUser.role)})</strong></div>
+                <div style="margin-top: 10px;"><small>⏰ Kode akan expired dalam 5 jam</small></div>
+                <div id="${qrContainerId}" style="margin: 15px auto; display: flex; justify-content: center;"></div>
+                <button class="btn-action btn-success" onclick="copyToClipboard('${code}')" style="margin-top: 10px;">📋 Copy Kode</button>
+            </div>
+        `;
+
+        try {
+            new QRCode(document.getElementById(qrContainerId), {
+                text: qrData,
+                width: 150,
+                height: 150,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        } catch (err) {
+            console.error("QR Code generation error:", err);
+            document.getElementById(qrContainerId).innerHTML = '<span style="color:red;">Gagal generate QR</span>';
+        }
+        showToast(`✅ Kode untuk ${studentName} berhasil dibuat!`, "success");
+        
+        if (typeof logActivity === 'function') {
+            logActivity('generate_code', `Generate kode siswa: ${code} untuk ${studentName} (ID: ${selectedId}) oleh ${getRoleDisplayName(currentUser.role)}`);
+        }
+        
+        // RESET DROPDOWN
+        const selectSiswa = document.getElementById('selectStudentForCode');
+        if (selectSiswa) {
+            selectSiswa.value = '';
+            selectSiswa.style.borderColor = '';
+            selectSiswa.style.backgroundColor = '';
+        }
+        
+        // Refresh dropdown
+        setTimeout(() => populateStudentSelectForCode(), 500);
+        
+        if (typeof renderCodesTable === 'function') renderCodesTable();
+        updateCodesStatistics();
+    }).catch(err => {
+        console.error("Generate code error:", err);
+        showToast("❌ Gagal membuat kode: " + err.message, "error");
+    }).finally(() => {
+        if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+    });
 }
 
 /**
  * Fungsi helper untuk generate kode staff/guru dengan reset dropdown
  */
-function generateStaffCode(codeData, targetType, selectedStaffId, staffName, staffEmail, staffJabatan, targetRole) {
+function generateStaffCode(selectedStaffId, staffEmail, staffName, staffJabatan, targetRole, targetType) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     const code = `REG-${timestamp.slice(-3)}${random}`;
-    
-    codeData.code = code;
-    
-    const btn = document.querySelector('button[onclick="generateRegistrationCode()"]');
-    const originalText = btn?.innerHTML;
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Generating...';
-    }
     
     let typeDisplay = '';
     let borderColor = '';
@@ -779,18 +907,41 @@ function generateStaffCode(codeData, targetType, selectedStaffId, staffName, sta
         }
     }
     
+    const codeData = {
+        used: false,
+        createdAt: firebase.database.ServerValue.TIMESTAMP,
+        type: targetType,
+        createdBy: currentUser.nama || currentUser.email,
+        createdRole: currentUser.role,
+        linkedId: selectedStaffId,
+        linkedEmail: staffEmail,
+        linkedName: staffName,
+        targetRole: targetRole,
+        requireId: true,
+        staffJabatan: staffJabatan,
+        nama: staffName,
+        email: staffEmail,
+        roleLabel: roleLabel
+    };
+    
+    const btn = document.querySelector('button[onclick="generateRegistrationCode()"]');
+    const originalText = btn?.innerHTML;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Generating...';
+    }
+    
     db.ref('codes/' + code).set(codeData).then(() => {
         const display = document.getElementById('generatedKeyDisplay');
         display.style.display = 'block';
-        
         const qrData = JSON.stringify({ 
             code: code, 
             staffId: selectedStaffId, 
             email: staffEmail, 
             nama: staffName,
             jabatan: staffJabatan,
-            type: targetType,
             targetRole: targetRole,
+            type: targetType, 
             requireId: true,
             roleLabel: roleLabel
         });
@@ -840,7 +991,7 @@ function generateStaffCode(codeData, targetType, selectedStaffId, staffName, sta
             logActivity('generate_code', `Generate kode ${targetType}: ${code} untuk ${staffName} (ID: ${selectedStaffId}) role ${targetRole} oleh ${getRoleDisplayName(currentUser.role)}`);
         }
         
-        // RESET DROPDOWN agar tidak bisa generate ulang dengan ID yang sama
+        // RESET DROPDOWN
         const selectStaff = document.getElementById('selectStaffForCode');
         if (selectStaff) {
             selectStaff.value = '';
@@ -848,7 +999,7 @@ function generateStaffCode(codeData, targetType, selectedStaffId, staffName, sta
             selectStaff.style.backgroundColor = '';
         }
         
-        // Refresh dropdown untuk menghilangkan staff yang sudah digenerate
+        // Refresh dropdown
         setTimeout(() => populateStaffSelectForCode(), 500);
         
         if (typeof renderCodesTable === 'function') renderCodesTable();
@@ -904,7 +1055,7 @@ function renderCodesTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (typeof dbData === 'undefined' || !dbData.codes || dbData.codes.length === 0) {
-        tbody.innerHTML = `<td><td colspan="5" style="text-align:center; padding: 30px; color:#888;">🔑 Belum ada kode registrasi. Generate kode di atas.</option></tr></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">🔑 Belum ada kode registrasi. Generate kode di atas.</option></td></tr>`;
         updateCodesStatistics();
         return;
     }
@@ -1075,7 +1226,7 @@ function renderUsersTable() {
     }
     tbody.innerHTML = '';
     if (typeof dbData === 'undefined' || !dbData.users_auth || dbData.users_auth.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 30px; color:#888;">👥 Belum ada pengguna terdaftar.</option></td></tr>`;
+        tbody.innerHTML = `</table><td colspan="6" style="text-align:center; padding: 30px; color:#888;">👥 Belum ada pengguna terdaftar.</option></td></tr>`;
         return;
     }
 
@@ -1307,6 +1458,7 @@ if (typeof dbData !== 'undefined' && dbData.users_auth) {
         if (typeof renderCodesTable === 'function') renderCodesTable();
         if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
         if (typeof populateStaffSelectForCode === 'function') populateStaffSelectForCode();
+        setTimeout(() => updateCodeGenerationUI(), 100);
     }, 100);
 }
 
@@ -1328,10 +1480,14 @@ window.getRoleDisplayName = getRoleDisplayName;
 window.getRoleIcon = getRoleIcon;
 window.canManageUser = canManageUser;
 window.canGenerateCode = canGenerateCode;
+window.canGenerateStaffCode = canGenerateStaffCode;
+window.canGenerateStudentCode = canGenerateStudentCode;
 window.canResetPassword = canResetPassword;
 window.canDeleteUser = canDeleteUser;
 window.isValidRole = isValidRole;
 window.highlightUserInTable = highlightUserInTable;
 window.highlightExistingCode = highlightExistingCode;
+window.updateCodeGenerationUI = updateCodeGenerationUI;
+window.getStaffCodeAllowedRoles = getStaffCodeAllowedRoles;
 
-console.log("✅ users.js V5.2 loaded - FULLY LOCKED: GURU & STAFF validasi ketat seperti SISWA (cek akun, cek kode aktif, reset dropdown, highlight)!");
+console.log("✅ users.js V5.3 loaded - STRICT PERMISSIONS: Hanya Kepala Sekolah, Wakil Kepala, dan Developer yang bisa generate kode STAFF! Guru & Staff TU hanya bisa generate kode SISWA!");

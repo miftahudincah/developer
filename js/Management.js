@@ -1,9 +1,13 @@
-// management.js - VERSION 3.2 (FULLY LOCKED: GURU & STAFF SAME AS STUDENT)
+// management.js - VERSION 3.3 (STRICT PERMISSIONS FOR CODE GENERATION)
 // Manajemen User & Kode Registrasi
 // Fitur: Generate kode untuk Siswa (dropdown siswa), Guru (dropdown staff), Staff (dropdown staff) DENGAN ID TERKUNCI
 // Role yang didukung: developer, admin (Kepala Sekolah), wakil_kepala, staff_tu, guru, siswa
-// PERUBAHAN V3.2: 
-//   - MENCEGAH generate ulang untuk ID yang sama (seperti sistem siswa)
+// PERUBAHAN V3.3: 
+//   - HANYA Kepala Sekolah (admin), Wakil Kepala Sekolah (wakil_kepala), dan Developer yang dapat generate kode STAFF
+//   - Guru dan Staff TU hanya bisa generate kode SISWA
+//   - SISWA tidak bisa generate kode sama sekali
+//   - Update UI otomatis berdasarkan role
+//   - MENCEGAH generate ulang untuk ID yang sama
 //   - CEK apakah sudah memiliki akun (berdasarkan email)
 //   - CEK apakah masih memiliki kode aktif
 //   - RESET dropdown setelah generate
@@ -88,10 +92,29 @@ function canManageUser(currentUser, targetUser) {
 }
 
 /**
- * Cek apakah user dapat menggenerate kode
+ * Cek apakah user dapat menggenerate kode (secara umum)
  */
 function canGenerateCode(userRole) {
-    const allowedRoles = ['admin', 'developer', 'wakil_kepala', 'guru'];
+    // Semua role kecuali siswa bisa generate kode
+    const allowedRoles = ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'];
+    return allowedRoles.includes(userRole);
+}
+
+/**
+ * Cek apakah user dapat menggenerate kode untuk STAFF
+ * HANYA: Kepala Sekolah (admin), Wakil Kepala Sekolah (wakil_kepala), Developer
+ */
+function canGenerateStaffCode(userRole) {
+    const allowedRoles = ['admin', 'developer', 'wakil_kepala'];
+    return allowedRoles.includes(userRole);
+}
+
+/**
+ * Cek apakah user dapat menggenerate kode untuk SISWA
+ * Semua role kecuali siswa
+ */
+function canGenerateStudentCode(userRole) {
+    const allowedRoles = ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'];
     return allowedRoles.includes(userRole);
 }
 
@@ -119,6 +142,185 @@ function isValidRole(role) {
     return validRoles.includes(role);
 }
 
+/**
+ * Mendapatkan daftar role yang bisa generate staff (untuk ditampilkan di UI)
+ */
+function getStaffCodeAllowedRoles() {
+    return [
+        { role: 'developer', label: 'Developer', icon: '👨‍💻' },
+        { role: 'admin', label: 'Kepala Sekolah', icon: '👑' },
+        { role: 'wakil_kepala', label: 'Wakil Kepala Sekolah', icon: '👔' }
+    ];
+}
+
+// ======================= UPDATE UI GENERATE KODE BERDASARKAN ROLE ========================
+
+/**
+ * Update tampilan generate kode berdasarkan role user
+ * - Siswa: tidak bisa generate kode sama sekali (sembunyikan seluruh section)
+ * - Guru/Staff TU: hanya bisa generate kode siswa (sembunyikan opsi staff)
+ * - Admin/Wakil/Developer: bisa generate kode siswa dan staff
+ */
+function updateCodeGenerationUI() {
+    console.log("🔧 updateCodeGenerationUI dipanggil untuk role:", currentUser?.role);
+    
+    // Cek apakah tab users sedang aktif
+    const tabUsers = document.getElementById('tab-users');
+    if (!tabUsers || !tabUsers.classList.contains('active')) {
+        console.log("⏳ Tab users tidak aktif, skip UI update");
+        return;
+    }
+    
+    // SISWA: tidak bisa generate kode sama sekali
+    if (currentUser?.role === 'siswa') {
+        console.log("🔒 Siswa tidak dapat mengenerate kode, menyembunyikan section");
+        
+        // Sembunyikan seluruh section generate kode
+        const codeGenSection = document.querySelector('#tab-users .controls-bar:first-child');
+        if (codeGenSection) codeGenSection.style.display = 'none';
+        
+        const keyBox = document.querySelector('#tab-users .key-box');
+        if (keyBox) keyBox.style.display = 'none';
+        
+        const codesTable = document.querySelector('#tab-users .table-container:first-of-type');
+        if (codesTable) codesTable.style.display = 'none';
+        
+        // Tampilkan pesan akses ditolak jika belum ada
+        if (!document.getElementById('noAccessMessage')) {
+            const noAccessMsg = document.createElement('div');
+            noAccessMsg.id = 'noAccessMessage';
+            noAccessMsg.className = 'key-box';
+            noAccessMsg.style.textAlign = 'center';
+            noAccessMsg.style.padding = '40px';
+            noAccessMsg.style.margin = '20px 0';
+            noAccessMsg.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+                <h3 style="color: var(--text-primary); margin-bottom: 8px;">Akses Terbatas</h3>
+                <p style="color: var(--text-muted);">Fitur generate kode hanya tersedia untuk Admin, Guru, dan Staff.</p>
+                <p style="color: var(--text-muted); font-size: 12px; margin-top: 8px;">Hubungi guru atau admin untuk mendapatkan kode registrasi.</p>
+            `;
+            const firstElement = tabUsers.querySelector('.controls-bar');
+            if (firstElement) {
+                tabUsers.insertBefore(noAccessMsg, firstElement);
+            } else {
+                tabUsers.insertBefore(noAccessMsg, tabUsers.firstChild);
+            }
+        }
+        return;
+    }
+    
+    // Hapus pesan no access jika ada
+    const noAccessMsg = document.getElementById('noAccessMessage');
+    if (noAccessMsg) noAccessMsg.remove();
+    
+    // Tampilkan kembali section yang disembunyikan
+    const codeGenSection = document.querySelector('#tab-users .controls-bar:first-child');
+    if (codeGenSection) codeGenSection.style.display = '';
+    
+    const keyBox = document.querySelector('#tab-users .key-box');
+    if (keyBox) keyBox.style.display = '';
+    
+    const codesTable = document.querySelector('#tab-users .table-container:first-of-type');
+    if (codesTable) codesTable.style.display = '';
+    
+    const canGenerateStaff = canGenerateStaffCode(currentUser?.role);
+    const canGenerateStudent = canGenerateStudentCode(currentUser?.role);
+    
+    // Tampilkan/sembunyikan radio button untuk staff
+    const radioStaff = document.querySelector('input[name="genTarget"][value="staff"]');
+    const radioGuru = document.querySelector('input[name="genTarget"][value="guru"]');
+    const labelStaff = radioStaff?.closest('label');
+    const labelGuru = radioGuru?.closest('label');
+    
+    if (!canGenerateStaff) {
+        // Sembunyikan opsi staff/guru
+        if (radioStaff) {
+            radioStaff.style.display = 'none';
+            if (labelStaff) labelStaff.style.display = 'none';
+        }
+        if (radioGuru) {
+            radioGuru.style.display = 'none';
+            if (labelGuru) labelGuru.style.display = 'none';
+        }
+        
+        // Jika hanya bisa generate siswa, pastikan radio siswa terpilih
+        const radioSiswa = document.querySelector('input[name="genTarget"][value="siswa"]');
+        if (radioSiswa && !radioSiswa.checked) {
+            radioSiswa.checked = true;
+            if (typeof toggleGenerateInput === 'function') toggleGenerateInput();
+        }
+        
+        // Tampilkan informasi hanya bisa generate siswa
+        const descElement = document.getElementById('gen-desc');
+        if (descElement) {
+            descElement.innerHTML = '🔒 Anda hanya dapat generate kode untuk SISWA. Generate kode STAFF hanya untuk Kepala Sekolah, Wakil Kepala Sekolah, dan Developer.';
+            descElement.style.color = '#ff9800';
+        }
+        
+        // Tampilkan info akses staff
+        let staffAccessInfo = document.getElementById('staffCodeAccessInfo');
+        if (!staffAccessInfo) {
+            staffAccessInfo = document.createElement('div');
+            staffAccessInfo.id = 'staffCodeAccessInfo';
+            staffAccessInfo.style.marginTop = '8px';
+            staffAccessInfo.style.padding = '8px 12px';
+            staffAccessInfo.style.background = 'rgba(255, 152, 0, 0.1)';
+            staffAccessInfo.style.borderRadius = '8px';
+            staffAccessInfo.style.fontSize = '12px';
+            staffAccessInfo.style.borderLeft = '3px solid #ff9800';
+            const descElementParent = descElement?.parentNode;
+            if (descElementParent) {
+                descElementParent.appendChild(staffAccessInfo);
+            }
+        }
+        if (staffAccessInfo) {
+            staffAccessInfo.innerHTML = `
+                <span>⚠️ Generate kode STAFF hanya dapat dilakukan oleh:</span>
+                <ul style="margin: 5px 0 0 20px;">
+                    <li>👑 Kepala Sekolah</li>
+                    <li>👔 Wakil Kepala Sekolah</li>
+                    <li>👨‍💻 Developer</li>
+                </ul>
+            `;
+            staffAccessInfo.style.display = 'block';
+        }
+        
+        console.log("🔒 User hanya bisa generate kode SISWA");
+    } else {
+        // Tampilkan opsi staff
+        if (radioStaff) {
+            radioStaff.style.display = '';
+            if (labelStaff) labelStaff.style.display = '';
+        }
+        if (radioGuru) {
+            radioGuru.style.display = '';
+            if (labelGuru) labelGuru.style.display = '';
+        }
+        
+        const descElement = document.getElementById('gen-desc');
+        if (descElement) {
+            descElement.innerHTML = '🔒 Kode akan dikunci ke ID terpilih.';
+            descElement.style.color = '';
+        }
+        
+        // Sembunyikan info akses staff
+        const staffAccessInfo = document.getElementById('staffCodeAccessInfo');
+        if (staffAccessInfo) staffAccessInfo.style.display = 'none';
+        
+        console.log("✅ User bisa generate kode SISWA dan STAFF");
+    }
+    
+    if (!canGenerateStudent) {
+        // Jika tidak bisa generate siswa (seharusnya tidak terjadi)
+        const radioSiswa = document.querySelector('input[name="genTarget"][value="siswa"]');
+        if (radioSiswa) {
+            radioSiswa.style.display = 'none';
+            const labelSiswa = radioSiswa.closest('label');
+            if (labelSiswa) labelSiswa.style.display = 'none';
+        }
+    }
+}
+
 // ======================= EVENT LISTENER DATA READY ========================
 let usersDataReadyListenerAdded = false;
 
@@ -134,13 +336,28 @@ function setupUsersDataReadyListener() {
         updateCodesStatistics();
         if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
         if (typeof populateStaffSelectForCode === 'function') populateStaffSelectForCode();
+        setTimeout(() => updateCodeGenerationUI(), 100);
     });
 
     window.addEventListener('uiReady', (e) => {
         console.log("👥 users.js: uiReady received, checking permissions");
         if (typeof renderUsersTable === 'function') renderUsersTable();
         if (typeof populateStaffSelectForCode === 'function') populateStaffSelectForCode();
+        setTimeout(() => updateCodeGenerationUI(), 100);
     });
+}
+
+// Override switchTab untuk update UI generate kode saat tab users dibuka
+const originalSwitchTabForCode = window.switchTab;
+if (originalSwitchTabForCode) {
+    window.switchTab = function(tabId) {
+        if (originalSwitchTabForCode) originalSwitchTabForCode(tabId);
+        if (tabId === 'users') {
+            setTimeout(() => {
+                updateCodeGenerationUI();
+            }, 100);
+        }
+    };
 }
 
 // ======================= UPDATE STATISTIK KODE ========================
@@ -409,15 +626,16 @@ function highlightExistingCode(code) {
     }
 }
 
-// ======================= GENERATE KODE REGISTRASI + QR CODE ========================
+// ======================= GENERATE KODE REGISTRASI + QR CODE (VALIDASI KETAT + PERMISSION) ========================
 function generateRegistrationCode() {
     if (!currentUser) {
         showToast("Anda harus login!", "error");
         return;
     }
 
+    // Cek akses dasar: apakah user bisa generate kode sama sekali
     if (!canGenerateCode(currentUser.role)) {
-        showToast("⛔ Hanya Kepala Sekolah, Wakil Kepala Sekolah, Guru, dan Developer yang dapat generate kode!", "error");
+        showToast("⛔ Akses ditolak! Hanya Admin, Guru, dan Staff yang dapat generate kode.", "error");
         return;
     }
 
@@ -425,6 +643,24 @@ function generateRegistrationCode() {
     if (!targetType) {
         showToast("Pilih target kode (Siswa/Guru/Staff)!", "error");
         return;
+    }
+
+    // ========== VALIDASI KHUSUS UNTUK STAFF/GURU ==========
+    if (targetType === 'staff' || targetType === 'guru') {
+        if (!canGenerateStaffCode(currentUser.role)) {
+            const allowedRoles = getStaffCodeAllowedRoles();
+            const rolesText = allowedRoles.map(r => `${r.icon} ${r.label}`).join(', ');
+            showToast(`⛔ Hanya ${rolesText} yang dapat generate kode STAFF!`, "error");
+            return;
+        }
+    }
+    
+    // ========== VALIDASI KHUSUS UNTUK SISWA ==========
+    if (targetType === 'siswa') {
+        if (!canGenerateStudentCode(currentUser.role)) {
+            showToast(`⛔ Role ${getRoleDisplayName(currentUser.role)} tidak dapat generate kode SISWA!`, "error");
+            return;
+        }
     }
 
     // ========== VALIDASI WAJIB PILIH SEBELUM GENERATE ==========
@@ -952,7 +1188,7 @@ function renderCodesTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (typeof dbData === 'undefined' || !dbData.codes || dbData.codes.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">🔑 Belum ada kode registrasi. Generate kode di atas.</option></table></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color:#888;">🔑 Belum ada kode registrasi. Generate kode di atas.</option></tr></tr>`;
         updateCodesStatistics();
         return;
     }
@@ -1345,6 +1581,7 @@ if (typeof dbData !== 'undefined' && dbData.users_auth) {
         if (typeof renderCodesTable === 'function') renderCodesTable();
         if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
         if (typeof populateStaffSelectForCode === 'function') populateStaffSelectForCode();
+        setTimeout(() => updateCodeGenerationUI(), 100);
     }, 100);
 }
 
@@ -1366,10 +1603,14 @@ window.getRoleDisplayName = getRoleDisplayName;
 window.getRoleIcon = getRoleIcon;
 window.canManageUser = canManageUser;
 window.canGenerateCode = canGenerateCode;
+window.canGenerateStaffCode = canGenerateStaffCode;
+window.canGenerateStudentCode = canGenerateStudentCode;
 window.canResetPassword = canResetPassword;
 window.canDeleteUser = canDeleteUser;
 window.isValidRole = isValidRole;
 window.highlightUserInTable = highlightUserInTable;
 window.highlightExistingCode = highlightExistingCode;
+window.updateCodeGenerationUI = updateCodeGenerationUI;
+window.getStaffCodeAllowedRoles = getStaffCodeAllowedRoles;
 
-console.log("✅ management.js V3.2 loaded - FULLY LOCKED: GURU & STAFF validasi ketat seperti SISWA (cek akun, cek kode aktif, reset dropdown, highlight)!");
+console.log("✅ management.js V3.3 loaded - STRICT PERMISSIONS: Hanya Kepala Sekolah, Wakil Kepala, dan Developer yang bisa generate kode STAFF! Guru & Staff TU hanya bisa generate kode SISWA!");
