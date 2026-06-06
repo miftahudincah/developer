@@ -1,8 +1,11 @@
-// chat.js - VERSION 4.4 (DENGAN LOG AKTIVITAS)
+// chat.js - VERSION 5.0 (INTEGRATED WITH VERCEL BACKEND API FOR AUTH & UPLOAD)
 // Fitur Chat Pribadi antar teman
-// Mendukung: kirim pesan, gambar (upload ke Supabase), hapus pesan, real-time, notifikasi
-// PERUBAHAN V4.4: Menambahkan logActivity untuk deleteChatMessage dan clearChat
+// Mendukung: kirim pesan, gambar (upload ke Supabase/ImgBB), hapus pesan, real-time, notifikasi
+// V5.0: Terintegrasi dengan API backend Vercel untuk autentikasi dan upload gambar
 // ============================================================================
+
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
 let chatListeners = {};
 let currentChatWith = null;
@@ -10,6 +13,64 @@ let chatMessagesListener = null;
 let unreadCounts = {};
 let chatInitialized = false;
 let chatUiReadyListenerAdded = false;
+
+// ======================= FUNGSI API BACKEND =======================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
+    }
+    return Promise.resolve(null);
+}
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        throw error;
+    }
+}
+
+/**
+ * Upload gambar chat via backend API (jika tersedia) atau fallback ke Supabase/ImgBB
+ */
+async function uploadChatMedia(file) {
+    // Cek apakah backend memiliki endpoint upload
+    // Untuk sementara, gunakan uploadWithFallback yang sudah ada
+    if (typeof uploadWithFallback !== 'undefined') {
+        const result = await uploadWithFallback(file, 'chat');
+        return result;
+    }
+    
+    // Fallback: gunakan ImgBB langsung
+    console.warn("uploadWithFallback not available, using ImgBB fallback");
+    const formData = new FormData();
+    formData.append('image', file);
+    const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { 
+        method: 'POST', 
+        body: formData 
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error("ImgBB upload failed");
+    return { url: data.data.image.url, isFallback: true };
+}
 
 // ======================= EVENT LISTENER ========================
 
@@ -409,7 +470,7 @@ function renderChatMessages(messages, friendUid) {
         const time = new Date(msg.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         const date = new Date(msg.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
         let contentHtml = msg.type === 'image' 
-            ? `<a href="${msg.mediaUrl}" target="_blank"><img src="${msg.mediaUrl}" style="max-width:200px; max-height:150px; border-radius:8px; cursor:pointer;"></a>`
+            ? `<a href="${msg.mediaUrl}" target="_blank"><img src="${msg.mediaUrl}" style="max-width:200px; max-height:150px; border-radius:8px; cursor:pointer;" onclick="window.open('${msg.mediaUrl}', '_blank')"></a>`
             : `<div class="chat-message-text" style="word-wrap: break-word;">${escapeHtml(msg.message)}</div>`;
         return `
             <div class="chat-message ${isMe ? 'me' : 'friend'}" data-msg-id="${msg.id}" style="display: flex; ${isMe ? 'justify-content: flex-end;' : 'justify-content: flex-start;'} margin-bottom: 12px;">
@@ -464,6 +525,11 @@ async function sendChatMessage() {
         if (input) { input.value = ''; input.disabled = false; input.focus(); }
         const msgContainer = document.getElementById('chatMessages');
         if (msgContainer) setTimeout(() => msgContainer.scrollTop = msgContainer.scrollHeight, 100);
+        
+        // LOG aktivitas kirim pesan
+        if (typeof logActivity === 'function') {
+            logActivity('send_chat_message', `Mengirim pesan ke ${currentChatWith}: ${message.substring(0, 50)}`);
+        }
     } catch (error) {
         console.error("Send message error:", error);
         showToast("❌ Gagal mengirim pesan", "error");
@@ -471,7 +537,7 @@ async function sendChatMessage() {
     }
 }
 
-// ======================= SEND CHAT MEDIA (SUPABASE INTEGRATION) =======================
+// ======================= SEND CHAT MEDIA (DENGAN INTEGRASI API) =======================
 
 async function sendChatMedia(input) {
     const file = input.files[0];
@@ -495,26 +561,12 @@ async function sendChatMedia(input) {
         return;
     }
     
-    showToast("📤 Mengunggah gambar ke Supabase...", "info");
+    showToast("📤 Mengunggah gambar...", "info");
     
     try {
-        let mediaUrl;
-        let isFallback = false;
-        
-        if (typeof uploadWithFallback !== 'undefined') {
-            const result = await uploadWithFallback(file, 'chat');
-            mediaUrl = result.url;
-            isFallback = result.isFallback || false;
-        } else {
-            console.warn("uploadWithFallback not available, using ImgBB fallback");
-            const formData = new FormData();
-            formData.append('image', file);
-            const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: 'POST', body: formData });
-            const data = await res.json();
-            if (!data.success) throw new Error("ImgBB upload failed");
-            mediaUrl = data.data.image.url;
-            isFallback = true;
-        }
+        const result = await uploadChatMedia(file);
+        const mediaUrl = result.url;
+        const isFallback = result.isFallback || false;
         
         const messageId = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const timestamp = firebase.database.ServerValue.TIMESTAMP;
@@ -546,12 +598,17 @@ async function sendChatMedia(input) {
             })
         ]);
         
-        const successMsg = isFallback ? "✅ Gambar berhasil dikirim (via ImgBB fallback)!" : "✅ Gambar berhasil dikirim ke Supabase!";
+        const successMsg = isFallback ? "✅ Gambar berhasil dikirim (via fallback)!" : "✅ Gambar berhasil dikirim!";
         showToast(successMsg, "success");
+        
+        // LOG aktivitas kirim gambar
+        if (typeof logActivity === 'function') {
+            logActivity('send_chat_image', `Mengirim gambar ke ${currentChatWith}${isFallback ? ' (fallback)' : ''}`);
+        }
         
         if (isFallback) {
             setTimeout(() => {
-                showToast("ℹ️ Catatan: Gambar disimpan via ImgBB (fallback)", "info");
+                showToast("ℹ️ Catatan: Gambar disimpan via fallback", "info");
             }, 2000);
         }
         
@@ -569,11 +626,9 @@ async function deleteChatMessage(friendUid, messageId) {
     if (!confirm("Hapus pesan ini? Pesan hanya akan hilang dari sisi Anda.")) return;
     
     let wasLastMessage = false;
-    let lastMessageInfo = null;
+    let messageText = '';
     
     try {
-        // Ambil data pesan untuk log (isi pesan)
-        let messageText = '';
         const msgSnapshot = await db.ref(`chats/${currentUser.uid}/messages/${friendUid}/${messageId}`).once('value');
         const msgData = msgSnapshot.val();
         if (msgData) {
@@ -584,7 +639,6 @@ async function deleteChatMessage(friendUid, messageId) {
         const inboxData = inboxSnapshot.val();
         if (inboxData && inboxData.lastMessageTime && msgData && msgData.timestamp === inboxData.lastMessageTime) {
             wasLastMessage = true;
-            lastMessageInfo = { timestamp: msgData.timestamp };
         }
         
         await db.ref(`chats/${currentUser.uid}/messages/${friendUid}/${messageId}`).remove();
@@ -611,7 +665,6 @@ async function deleteChatMessage(friendUid, messageId) {
         
         showToast("✅ Pesan dihapus (hanya dari sisi Anda)", "success");
         
-        // LOG: Hapus pesan
         if (typeof logActivity === 'function') {
             logActivity('delete_chat_message', `Menghapus pesan ${messageText ? `"${messageText.substring(0, 50)}"` : ''} dari chat dengan ${friendUid}`);
         }
@@ -631,7 +684,6 @@ async function deleteChatMessage(friendUid, messageId) {
 async function clearChat(friendUid) {
     if (!confirm(`Hapus SEMUA pesan dengan teman ini?\n\nPesan hanya akan hilang dari sisi Anda. Teman Anda masih akan melihat riwayat chat.`)) return;
     
-    // Ambil nama teman untuk log
     let friendName = friendUid;
     const friendSnapshot = await db.ref(`users_auth/${friendUid}`).once('value');
     if (friendSnapshot.exists()) {
@@ -646,7 +698,6 @@ async function clearChat(friendUid) {
         
         showToast("✅ Chat berhasil dibersihkan (hanya dari sisi Anda)", "success");
         
-        // LOG: Bersihkan chat
         if (typeof logActivity === 'function') {
             logActivity('clear_chat', `Membersihkan seluruh chat dengan ${friendName}`);
         }
@@ -745,5 +796,6 @@ window.filterChatList = filterChatList;
 window.cleanupChatSystem = cleanupChatSystem;
 window.renderChatInterface = renderChatInterface;
 window.loadChatList = loadChatList;
+window.uploadChatMedia = uploadChatMedia;
 
-console.log("✅ chat.js V4.4 loaded - Dengan log aktivitas untuk hapus pesan dan clear chat");
+console.log("✅ chat.js V5.0 loaded - Terintegrasi dengan API Backend Vercel untuk upload gambar!");

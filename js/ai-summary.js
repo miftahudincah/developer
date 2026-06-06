@@ -1,8 +1,83 @@
-// ai-summary.js - VERSION 4.3 (ONLY STATIC FALLBACK - NO API CALLS)
-// Analisis statis tanpa API call untuk menghindari error
+// ai-summary.js - VERSION 5.0 (Compatible with Vercel Backend API)
+// Analisis statis dengan data dari API backend
 // ============================================================================
 
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
+
 let aiSummaryInitialized = false;
+let cachedApiData = null;
+let cachedApiTimestamp = 0;
+const API_CACHE_TTL = 2 * 60 * 1000; // 2 menit
+
+// ======================= FUNGSI UTILITY =======================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
+    }
+    return Promise.resolve(null);
+}
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        return null;
+    }
+}
+
+async function fetchAttendanceDataFromAPI() {
+    try {
+        const now = Date.now();
+        if (cachedApiData && (now - cachedApiTimestamp) < API_CACHE_TTL) {
+            console.log("📦 Using cached API data");
+            return cachedApiData;
+        }
+        
+        console.log("📊 Fetching data from API...");
+        
+        // Ambil data siswa
+        const studentsData = await apiRequest('/students');
+        const students = studentsData?.data || [];
+        
+        // Ambil data absensi
+        const attendanceData = await apiRequest('/attendance');
+        const attendance = attendanceData?.data || [];
+        
+        // Ambil data user auth (untuk info akun)
+        let usersAuth = [];
+        try {
+            const usersData = await apiRequest('/users');
+            usersAuth = usersData?.data || [];
+        } catch(e) {}
+        
+        cachedApiData = { students, attendance, usersAuth };
+        cachedApiTimestamp = now;
+        
+        return cachedApiData;
+    } catch (error) {
+        console.error("Fetch API data error:", error);
+        return null;
+    }
+}
 
 // ======================= CEK AKSES ========================
 
@@ -115,7 +190,10 @@ function addFloatingAISummaryButton() {
         z-index: 999;
         border: none;
         font-size: 28px;
+        transition: transform 0.2s;
     `;
+    floatingBtn.onmouseenter = () => floatingBtn.style.transform = 'scale(1.1)';
+    floatingBtn.onmouseleave = () => floatingBtn.style.transform = 'scale(1)';
     
     document.body.appendChild(floatingBtn);
     console.log("✅ Floating AI button added for role:", currentUser.role);
@@ -141,7 +219,7 @@ async function openAISummaryModal() {
                     <div style="padding:20px;" id="aiSummaryContent">
                         <div style="text-align:center; padding:40px;">
                             <div style="font-size:48px; margin-bottom:16px;">🚀</div>
-                            <h3>Menganalisis data...</h3>
+                            <h3>Mengambil data dari server...</h3>
                             <div class="loading-spinner" style="margin-top:20px;"></div>
                         </div>
                     </div>
@@ -158,10 +236,69 @@ async function openAISummaryModal() {
     
     modal.classList.add('open');
     
-    const data = collectAttendanceData();
+    // Tampilkan loading dan ambil data
+    const contentDiv = document.getElementById('aiSummaryContent');
+    if (contentDiv) {
+        contentDiv.innerHTML = `
+            <div style="text-align:center; padding:40px;">
+                <div style="font-size:48px; margin-bottom:16px;">📡</div>
+                <h3>Mengambil data dari server...</h3>
+                <p style="color:#888;">Menghubungi API backend</p>
+                <div class="loading-spinner" style="margin-top:20px;"></div>
+            </div>
+        `;
+    }
+    
+    // Ambil data dari API
+    const apiData = await fetchAttendanceDataFromAPI();
+    
+    if (!apiData || !apiData.students || apiData.students.length === 0) {
+        if (contentDiv) {
+            contentDiv.innerHTML = `
+                <div style="text-align:center; padding:40px;">
+                    <div style="font-size:48px; margin-bottom:16px;">📭</div>
+                    <h3>Data Tidak Tersedia</h3>
+                    <p>Pastikan ada data siswa dan absensi yang cukup untuk analisis.</p>
+                    <p style="font-size:12px; color:#888; margin-top:20px;">Gunakan data lokal jika tersedia.</p>
+                </div>
+            `;
+        }
+        
+        // Fallback ke data lokal
+        const localData = collectAttendanceDataLocal();
+        if (localData && localData.totalStudents > 0) {
+            const html = generateStaticAnalysisHTML(localData);
+            if (contentDiv) {
+                const roleBadge = currentUser?.role === 'admin' ? '👑 ADMIN' : (currentUser?.role === 'guru' ? '👨‍🏫 GURU' : '👨‍💻 DEVELOPER');
+                contentDiv.innerHTML = `
+                    <div style="padding:20px;">
+                        <div style="background:linear-gradient(135deg,#667eea20,#764ba220); border-radius:16px; padding:16px; margin-bottom:20px;">
+                            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                                <span style="font-size:32px;">🤖</span>
+                                <div style="flex:1;">
+                                    <h3 style="margin:0;">Analisis Kehadiran</h3>
+                                    <p style="margin:0; font-size:12px;">Analisis • ${new Date().toLocaleString('id-ID')}</p>
+                                </div>
+                                <div style="background:#00bcd4; padding:4px 12px; border-radius:20px; font-size:11px; color:white;">${roleBadge}</div>
+                            </div>
+                        </div>
+                        <div class="ai-summary-content" style="line-height:1.6;">${html}</div>
+                    </div>
+                `;
+            }
+        }
+        
+        const exportBtn = document.getElementById('aiExportBtn');
+        const copyBtn = document.getElementById('aiCopyBtn');
+        if (exportBtn) exportBtn.style.display = 'inline-block';
+        if (copyBtn) copyBtn.style.display = 'inline-block';
+        return;
+    }
+    
+    // Proses data dari API
+    const data = processAPIData(apiData);
     const html = generateStaticAnalysisHTML(data);
     
-    const contentDiv = document.getElementById('aiSummaryContent');
     if (contentDiv) {
         const roleBadge = currentUser?.role === 'admin' ? '👑 ADMIN' : (currentUser?.role === 'guru' ? '👨‍🏫 GURU' : '👨‍💻 DEVELOPER');
         
@@ -172,7 +309,7 @@ async function openAISummaryModal() {
                         <span style="font-size:32px;">🤖</span>
                         <div style="flex:1;">
                             <h3 style="margin:0;">Analisis Kehadiran</h3>
-                            <p style="margin:0; font-size:12px;">Analisis Statis • ${new Date().toLocaleString('id-ID')}</p>
+                            <p style="margin:0; font-size:12px;">Analisis Real-time • ${new Date().toLocaleString('id-ID')}</p>
                         </div>
                         <div style="background:#00bcd4; padding:4px 12px; border-radius:20px; font-size:11px; color:white;">${roleBadge}</div>
                     </div>
@@ -188,9 +325,74 @@ async function openAISummaryModal() {
     }
 }
 
-// ======================= PENGUMPULAN DATA =======================
+// ======================= PROSES DATA DARI API =======================
 
-function collectAttendanceData() {
+function processAPIData(apiData) {
+    if (!apiData || !apiData.students) return null;
+    
+    const students = apiData.students;
+    const attendance = apiData.attendance || [];
+    
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+    
+    const validStudents = students.filter(s => s && s.nama && s.nama !== 'Tidak Diketahui' && s.nama.trim() !== '');
+    const monthAttendance = attendance.filter(a => {
+        if (!a.date) return false;
+        const d = new Date(a.date);
+        return d.getFullYear() === thisYear && d.getMonth() === thisMonth;
+    });
+    
+    const studentStats = validStudents.map(student => {
+        const records = monthAttendance.filter(a => a.studentId == student.id || a.studentId == parseInt(student.id));
+        const hadir = records.filter(r => r.status === 'Hadir' || r.status === 'Pulang').length;
+        return { 
+            id: student.id, 
+            nama: student.nama, 
+            kelas: student.kelas || '-', 
+            hadir, 
+            total: records.length 
+        };
+    });
+    
+    studentStats.sort((a, b) => b.hadir - a.hadir);
+    
+    const todayAttendance = attendance.filter(a => a.date === today && (a.status === 'Hadir' || a.status === 'Pulang'));
+    const hadirTodaySet = new Set(todayAttendance.map(a => a.studentId));
+    
+    const classStats = {};
+    validStudents.forEach(s => {
+        const kelas = s.kelas || 'Tanpa Kelas';
+        if (!classStats[kelas]) classStats[kelas] = { total: 0, hadir: 0 };
+        classStats[kelas].total++;
+        const stat = studentStats.find(st => st.id == s.id);
+        if (stat) classStats[kelas].hadir += stat.hadir;
+    });
+    
+    const totalSchoolDays = 20;
+    for (let k in classStats) {
+        classStats[k].persen = ((classStats[k].hadir / (classStats[k].total * totalSchoolDays)) * 100).toFixed(1);
+    }
+    
+    const totalHadir = studentStats.reduce((s, st) => s + st.hadir, 0);
+    const rataKehadiran = validStudents.length > 0 ? (totalHadir / (validStudents.length * totalSchoolDays) * 100).toFixed(1) : 0;
+    
+    return {
+        totalStudents: validStudents.length,
+        hadirToday: hadirTodaySet.size,
+        persenHariIni: validStudents.length > 0 ? ((hadirTodaySet.size / validStudents.length) * 100).toFixed(1) : 0,
+        rataKehadiran: rataKehadiran,
+        topPerformers: studentStats.slice(0, 5),
+        lowestAttendance: studentStats.filter(s => s.total > 0).slice(-5).reverse(),
+        classStats: classStats
+    };
+}
+
+// ======================= PENGUMPULAN DATA LOKAL (FALLBACK) =======================
+
+function collectAttendanceDataLocal() {
     if (!dbData || !dbData.attendance || !dbData.users) return null;
     
     const today = new Date().toISOString().split('T')[0];
@@ -306,7 +508,7 @@ function generateStaticAnalysisHTML(data) {
         }).join('') || '<li>Semua siswa memiliki kehadiran baik</li>'}</ul>
         
         <h3>🏫 Statistik per Kelas:</h3>
-        <ul>${Object.entries(data.classStats).map(([k, v]) => `<li>${k}: <strong>${v.persen}%</strong> kehadiran (${v.hadir} dari ${v.total * 20} total)</li>`).join('')}</ul>
+        <ul>${Object.entries(data.classStats).map(([k, v]) => `<li>${k}: <strong>${v.persen}%</strong> kehadiran</li>`).join('')}</ul>
         
         <h2>💡 REKOMENDASI</h2>
         <ul>${recommendations.map(r => `<li>${r}</li>`).join('')}</ul>
@@ -354,8 +556,9 @@ function exportAISummaryToPDF() {
     
     const win = window.open('', '_blank');
     const roleText = currentUser?.role === 'admin' ? 'Admin' : (currentUser?.role === 'guru' ? 'Guru' : 'Developer');
+    const schoolName = document.getElementById('schoolNameDisplay')?.innerText || 'Sistem Absensi';
     
-    win.document.write(`<!DOCTYPE html><html><head><title>AI Summary Absensi</title><meta charset="UTF-8"><style>
+    win.document.write(`<!DOCTYPE html><html><head><title>AI Summary Absensi - ${schoolName}</title><meta charset="UTF-8"><style>
         body{font-family:Arial,sans-serif;padding:30px;line-height:1.5}
         h2{color:#667eea;margin-top:20px}
         h3{color:#00bcd4;margin-top:15px}
@@ -364,9 +567,9 @@ function exportAISummaryToPDF() {
         .footer{text-align:center;margin-top:30px;padding-top:15px;font-size:10px;color:#888;border-top:1px solid #ddd}
         @media print{button{display:none}}
     </style></head><body>
-    <div class="header"><h1>🤖 AI SUMMARY ABSENSI</h1><p>Dicetak oleh: ${roleText}</p><p>${new Date().toLocaleString('id-ID')}</p></div>
+    <div class="header"><h1>🤖 AI SUMMARY ABSENSI</h1><p>${schoolName}</p><p>Dicetak oleh: ${roleText}</p><p>${new Date().toLocaleString('id-ID')}</p></div>
     ${html}
-    <div class="footer"><p>Sistem Absensi IoT - Fingerprint & Real-time</p></div>
+    <div class="footer"><p>Sistem Absensi IoT - Fingerprint & Real-time</p><p>API Backend: ${BACKEND_API_URL}</p></div>
     <div style="text-align:center; margin-top:20px;"><button onclick="window.print()" style="padding:10px 20px; background:#667eea; color:white; border:none; border-radius:5px; cursor:pointer;">🖨️ Cetak PDF</button><button onclick="window.close()" style="padding:10px 20px; background:#666; color:white; border:none; border-radius:5px; cursor:pointer; margin-left:10px;">✖ Tutup</button></div>
     </body></html>`);
     win.document.close();
@@ -407,6 +610,7 @@ window.exportAISummaryToPDF = exportAISummaryToPDF;
 window.hasAIAccess = hasAIAccess;
 window.removeAISummaryButtons = removeAISummaryButtons;
 window.checkAndInitAI = checkAndInitAI;
+window.fetchAttendanceDataFromAPI = fetchAttendanceDataFromAPI;
 
 // ======================= AUTO INIT =======================
 
@@ -448,4 +652,4 @@ window.addEventListener('dataReady', () => {
     }
 });
 
-console.log("✅ ai-summary.js V4.3 loaded - Static analysis only (no API calls)");
+console.log("✅ ai-summary.js V5.0 loaded - Compatible with Vercel Backend API!");

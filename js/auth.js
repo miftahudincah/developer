@@ -1,13 +1,11 @@
-// auth.js - VERSION 5.3 (REGISTRATION ONLY: SISWA & STAFF)
-// Fitur: Registrasi langsung, QR Scanner, Upload foto profil ke Supabase
+// auth.js - VERSION 6.0 (INTEGRATED WITH VERCEL BACKEND API)
+// Fitur: Registrasi via API Backend, Login Firebase Auth, Upload foto profil ke Supabase
 // Role yang didukung: developer, admin (Kepala Sekolah), wakil_kepala, staff_tu, guru, siswa
-// PERUBAHAN V5.3: 
-//   - Registrasi hanya 2 pilihan: SISWA dan STAFF (Guru & Karyawan)
-//   - Menghapus pilihan "Guru (Legacy)"
-//   - Staff WAJIB mengisi ID Staff saat registrasi
-//   - Validasi ID Staff harus sesuai dengan linkedId di kode
-//   - Sama seperti sistem registrasi siswa yang terkunci ID
+// V6.0: Menggunakan API backend Vercel untuk registrasi
 // ============================================================================
+
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
 let lastRegisterAttempt = 0;
 const REGISTER_COOLDOWN = 30000;
@@ -16,19 +14,62 @@ const REGISTER_COOLDOWN = 30000;
 let html5QrCode = null;
 let isScanning = false;
 
-// ======================= ROLE HELPER FUNCTIONS =======================
+// ======================= FUNGSI API BACKEND =======================
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        throw error;
+    }
+}
 
 /**
- * Validasi apakah role valid
+ * Registrasi via API Backend Vercel
+ * Endpoint: POST /api/auth/register
  */
+async function registerViaAPI(registerData) {
+    const data = await apiRequest('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(registerData)
+    });
+    return data;
+}
+
+/**
+ * Kirim reset password via API
+ * Endpoint: POST /api/auth/reset-password
+ */
+async function resetPasswordViaAPI(email) {
+    const data = await apiRequest('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+    });
+    return data;
+}
+
+// ======================= ROLE HELPER FUNCTIONS =======================
+
 function isValidRole(role) {
     const validRoles = ['developer', 'admin', 'wakil_kepala', 'staff_tu', 'guru', 'siswa'];
     return validRoles.includes(role);
 }
 
-/**
- * Mendapatkan display name role
- */
 function getRoleDisplayName(role) {
     const names = {
         developer: 'Developer',
@@ -41,9 +82,6 @@ function getRoleDisplayName(role) {
     return names[role] || role.toUpperCase();
 }
 
-/**
- * Mendapatkan icon untuk role
- */
 function getRoleIcon(role) {
     const icons = {
         developer: '👨‍💻',
@@ -56,29 +94,17 @@ function getRoleIcon(role) {
     return icons[role] || '👤';
 }
 
-/**
- * Update tampilan user interface berdasarkan role
- */
 function updateUserInterfaceByRole() {
     if (!currentUser) return;
     
-    // Update navbar
     const navbarUserRole = document.getElementById('navbarUserRole');
-    if (navbarUserRole) {
-        navbarUserRole.textContent = getRoleDisplayName(currentUser.role);
-    }
+    if (navbarUserRole) navbarUserRole.textContent = getRoleDisplayName(currentUser.role);
     
-    // Update user role display
     const userRoleDisplay = document.getElementById('userRoleDisplay');
-    if (userRoleDisplay) {
-        userRoleDisplay.textContent = `${getRoleIcon(currentUser.role)} ${getRoleDisplayName(currentUser.role)}`;
-    }
+    if (userRoleDisplay) userRoleDisplay.textContent = `${getRoleIcon(currentUser.role)} ${getRoleDisplayName(currentUser.role)}`;
     
-    // Update sidebar user role
     const sidebarUserRole = document.getElementById('sidebarUserRole');
-    if (sidebarUserRole) {
-        sidebarUserRole.textContent = getRoleDisplayName(currentUser.role);
-    }
+    if (sidebarUserRole) sidebarUserRole.textContent = getRoleDisplayName(currentUser.role);
 }
 
 // ======================= FUNGSI QR SCANNER =======================
@@ -208,7 +234,6 @@ function handleQrScan(data) {
         if (parsed.code) {
             document.getElementById('regCode').value = parsed.code;
             if (parsed.studentId) {
-                // QR untuk siswa
                 const idField = document.getElementById('regGeneratedId');
                 if (idField) idField.value = parsed.studentId;
                 const radioSiswa = document.querySelector('input[name="regRoleType"][value="siswa"]');
@@ -216,7 +241,6 @@ function handleQrScan(data) {
                 if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
                 showToast("✅ Data QR siswa terisi! Silakan lengkapi email & password.", "success");
             } else if (parsed.staffId && parsed.email) {
-                // QR untuk staff (dengan ID staff dan email)
                 const radioStaff = document.querySelector('input[name="regRoleType"][value="staff"]');
                 if (radioStaff) radioStaff.checked = true;
                 
@@ -236,10 +260,8 @@ function handleQrScan(data) {
                 }
                 
                 showToast("✅ Data QR staff terisi! Pastikan ID Staff sudah terisi dengan benar.", "success");
-                
                 if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
             } else if (parsed.requireId && parsed.staffId) {
-                // QR untuk staff dengan requireId flag
                 const radioStaff = document.querySelector('input[name="regRoleType"][value="staff"]');
                 if (radioStaff) radioStaff.checked = true;
                 
@@ -257,7 +279,6 @@ function handleQrScan(data) {
                 showToast("✅ Kode Staff terdeteksi! ID Staff sudah terisi otomatis.", "success");
                 if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
             } else {
-                // Default: pilih staff
                 const radioStaff = document.querySelector('input[name="regRoleType"][value="staff"]');
                 if (radioStaff) radioStaff.checked = true;
                 if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
@@ -285,7 +306,7 @@ window.closeModal = function(id) {
     if (originalCloseModal) originalCloseModal(id);
 };
 
-// ======================= FUNGSI LOGIN (DENGAN DETEKSI ROLE) =======================
+// ======================= FUNGSI LOGIN =======================
 
 function handleLogin(e) {
     e.preventDefault();
@@ -298,6 +319,7 @@ function handleLogin(e) {
     const btn = document.getElementById('btnLoginSubmit');
     btn.innerText = "Memproses...";
     btn.disabled = true;
+    
     auth.signInWithEmailAndPassword(email, pass)
         .then((userCredential) => {
             const user = userCredential.user;
@@ -306,7 +328,7 @@ function handleLogin(e) {
                 if (userData) {
                     if (userData.kelas) userData.kelas = userData.kelas.toUpperCase();
                     
-                    // ============ ROLE DEVELOPER (SUPER ADMIN) ============
+                    // Role DEVELOPER (SUPER ADMIN)
                     if (user.email === 'zaki5go@gmail.com') {
                         userData.role = 'developer';
                         if (snapshot.val().role !== 'developer') {
@@ -314,7 +336,6 @@ function handleLogin(e) {
                         }
                     }
                     
-                    // ============ VALIDASI ROLE ============
                     if (!isValidRole(userData.role)) {
                         console.warn(`⚠️ Role tidak valid: ${userData.role}, default ke siswa`);
                         userData.role = 'siswa';
@@ -351,7 +372,7 @@ function handleLogin(e) {
         });
 }
 
-// ======================= FUNGSI REGISTRASI (ONLY SISWA & STAFF) =======================
+// ======================= FUNGSI REGISTRASI VIA API BACKEND =======================
 
 async function handleRegister(e) {
     e.preventDefault();
@@ -364,17 +385,15 @@ async function handleRegister(e) {
     lastRegisterAttempt = now;
 
     const regType = document.querySelector('input[name="regRoleType"]:checked')?.value;
-    const codeInput = document.getElementById('regCode').value.trim().toUpperCase();
+    const code = document.getElementById('regCode').value.trim().toUpperCase();
     const email = document.getElementById('regEmail').value.trim();
-    const pass = document.getElementById('regPassword').value;
+    const password = document.getElementById('regPassword').value;
 
-    // ========== VALIDASI DASAR ==========
-    if (!regType || !codeInput || !email || !pass) {
+    if (!regType || !code || !email || !password) {
         showToast("Semua bidang wajib diisi!", "error");
         return;
     }
     
-    // Validasi hanya 2 tipe: siswa atau staff
     if (regType !== 'siswa' && regType !== 'staff') {
         showToast("❌ Pilih tipe pendaftaran yang valid (Siswa atau Staff)!", "error");
         return;
@@ -384,45 +403,34 @@ async function handleRegister(e) {
         showToast("Format email tidak valid!", "error");
         return;
     }
-    if (pass.length < 6) {
+    if (password.length < 6) {
         showToast("Password minimal 6 karakter!", "error");
         return;
     }
     
-    // Cegah registrasi dengan email developer
     if (email === 'zaki5go@gmail.com') {
         showToast("❌ Email ini tidak dapat didaftarkan melalui kode registrasi.", "error");
         return;
     }
 
-    let extraData = {};
+    let studentId = null;
+    let staffId = null;
+    let staffName = null;
     
-    // ============ REGISTRASI SISWA ============
     if (regType === 'siswa') {
-        const inputId = document.getElementById('regGeneratedId').value.trim();
-        if (!inputId) { 
+        studentId = document.getElementById('regGeneratedId').value.trim();
+        if (!studentId) { 
             showToast("❌ Masukkan ID Siswa! ID wajib diisi.", "error"); 
             return; 
         }
-        extraData = { fpId: inputId };
-    } 
-    // ============ REGISTRASI STAFF (GURU & KARYAWAN) ============
-    else if (regType === 'staff') {
-        const staffId = document.getElementById('regStaffId')?.value.trim();
-        const staffNama = document.getElementById('regStaffNama')?.value.trim();
-        const staffEmail = document.getElementById('regStaffEmail')?.value.trim();
+    } else if (regType === 'staff') {
+        staffId = document.getElementById('regStaffId')?.value.trim();
+        staffName = document.getElementById('regStaffNama')?.value.trim();
         
-        // ========== VALIDASI WAJIB: ID Staff harus diisi! ==========
         if (!staffId) {
             showToast('❌ ID Staff WAJIB diisi! Silakan masukkan ID Staff yang tertera pada QR Code atau dari admin.', 'error');
             return;
         }
-        
-        extraData = { 
-            staffId: staffId,
-            staffNama: staffNama || null,
-            staffEmail: staffEmail || null
-        };
     }
 
     const btn = document.getElementById('btnRegSubmit');
@@ -431,212 +439,38 @@ async function handleRegister(e) {
     btn.disabled = true;
 
     try {
-        const codeSnapshot = await db.ref(`codes/${codeInput}`).once('value');
-        const codeData = codeSnapshot.val();
-        if (!codeData || codeData.used === true) throw new Error('Kode tidak valid atau sudah digunakan');
-        
-        // ========== VALIDASI TIPE KODE ==========
-        let expectedType = regType;
-        
-        // Staff bisa menggunakan kode 'guru', 'staff', 'staff_tu', 'wakil_kepala'
-        if (regType === 'staff') {
-            const allowedStaffTypes = ['guru', 'staff', 'staff_tu', 'wakil_kepala'];
-            if (!allowedStaffTypes.includes(codeData.type)) {
-                throw new Error(`Kode ini untuk ${codeData.type.toUpperCase()}, bukan untuk STAFF.`);
-            }
-        }
-        // Siswa hanya bisa menggunakan kode 'siswa'
-        else if (regType === 'siswa' && codeData.type !== 'siswa') {
-            throw new Error(`Kode ini untuk ${codeData.type.toUpperCase()}, bukan SISWA.`);
-        }
-
-        const methods = await auth.fetchSignInMethodsForEmail(email);
-        if (methods.length > 0) throw new Error('Email sudah terdaftar');
-
-        const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
-        const user = userCredential.user;
-
-        let userRole = 'siswa';
-        let userData = { 
-            uid: user.uid, 
-            email, 
-            registeredAt: firebase.database.ServerValue.TIMESTAMP 
+        // Panggil API backend untuk registrasi
+        const registerData = {
+            email: email,
+            password: password,
+            code: code,
+            roleType: regType,
+            studentId: studentId,
+            staffId: staffId,
+            staffName: staffName
         };
-        let userName = '';
         
-        // ============ REGISTRASI SISWA ============
-        if (regType === 'siswa') {
-            const fpId = extraData.fpId;
-            const studentSnap = await db.ref(`users/${fpId}`).once('value');
-            if (!studentSnap.exists()) {
-                await user.delete();
-                throw new Error(`ID Fingerprint ${fpId} tidak ditemukan di data siswa`);
-            }
-            const student = studentSnap.val();
-            userRole = 'siswa';
-            userData.nama = student.nama;
-            userData.kelas = student.kelas;
-            userData.jurusan = student.jurusan;
-            userData.fpId = fpId;
-            userName = student.nama;
-        }
-        // ============ REGISTRASI STAFF (DENGAN ID WAJIB) ============
-        else if (regType === 'staff') {
-            const inputStaffId = extraData.staffId;
+        const result = await registerViaAPI(registerData);
+        
+        if (result && result.success) {
+            showToast("✅ Pendaftaran Berhasil! Silakan Login.", "success");
+            toggleAuth('login');
+            document.getElementById('registerForm').reset();
+            if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
             
-            // Cek apakah kode memiliki data linked (kode yang digenerate untuk staff tertentu)
-            if (codeData.linkedId) {
-                // ========== VALIDASI KETAT: ID staff harus SAMA dengan linkedId ==========
-                if (inputStaffId !== codeData.linkedId) {
-                    await user.delete();
-                    throw new Error(`❌ ID Staff tidak sesuai! Kode ini terikat dengan ID Staff: ${codeData.linkedId}. Silakan masukkan ID Staff yang benar.`);
-                }
-                
-                // VALIDASI: Email harus sesuai dengan email yang terikat di kode
-                if (codeData.linkedEmail && codeData.linkedEmail.toLowerCase() !== email.toLowerCase()) {
-                    await user.delete();
-                    throw new Error(`❌ Email tidak sesuai! Staff ini harus menggunakan email: ${codeData.linkedEmail}`);
-                }
-                
-                // Ambil data staff dari node staff
-                const staffSnap = await db.ref(`staff/${codeData.linkedId}`).once('value');
-                const staffData = staffSnap.val();
-                
-                if (staffData) {
-                    userRole = codeData.targetRole || 'guru';
-                    userData.nama = staffData.nama;
-                    userData.jabatan = staffData.jabatan;
-                    userData.departemen = staffData.departemen || '';
-                    userData.staffId = codeData.linkedId;
-                    userData.noHp = staffData.noHp || '';
-                    userName = staffData.nama;
-                    
-                    // VALIDASI OPSIONAL: Nama staff harus sesuai (jika diinput)
-                    if (extraData.staffNama && extraData.staffNama.toLowerCase() !== staffData.nama.toLowerCase()) {
-                        await user.delete();
-                        throw new Error(`❌ Nama staff tidak sesuai! Staff dengan ID ${codeData.linkedId} terdaftar sebagai: ${staffData.nama}`);
-                    }
-                } else {
-                    // Jika data staff tidak ditemukan di node staff, gunakan data dari kode
-                    userRole = codeData.targetRole || 'guru';
-                    userData.nama = codeData.linkedName || extraData.staffNama || email.split('@')[0];
-                    userData.staffId = codeData.linkedId;
-                    userName = userData.nama;
-                }
-            } 
-            // Fallback: untuk kode lama yang tidak memiliki linkedId (kompatibilitas)
-            else {
-                const staffName = extraData.staffNama;
-                if (!staffName) {
-                    await user.delete();
-                    throw new Error('❌ Nama staff wajib diisi! Silakan masukkan nama lengkap staff.');
-                }
-                
-                // Cari staff berdasarkan nama (case insensitive)
-                const staffSnapshot = await db.ref('staff').once('value');
-                const staffData = staffSnapshot.val();
-                let matchedStaff = null;
-                let matchedStaffId = null;
-                
-                if (staffData) {
-                    for (const [id, staff] of Object.entries(staffData)) {
-                        if (staff.nama && staff.nama.toLowerCase() === staffName.toLowerCase()) {
-                            matchedStaff = staff;
-                            matchedStaffId = id;
-                            break;
-                        }
-                    }
-                }
-                
-                if (!matchedStaff) {
-                    await user.delete();
-                    throw new Error(`❌ Staff dengan nama "${staffName}" tidak ditemukan. Pastikan nama sesuai dengan data staff.`);
-                }
-                
-                // VALIDASI: Email harus sesuai dengan email staff di database
-                if (matchedStaff.email && matchedStaff.email.toLowerCase() !== email.toLowerCase()) {
-                    await user.delete();
-                    throw new Error(`❌ Email tidak sesuai! Staff ${staffName} harus menggunakan email: ${matchedStaff.email}`);
-                }
-                
-                // VALIDASI: ID staff yang diinput harus sesuai dengan ID yang ditemukan
-                if (inputStaffId && inputStaffId !== matchedStaffId) {
-                    await user.delete();
-                    throw new Error(`❌ ID Staff tidak sesuai! Staff "${staffName}" memiliki ID: ${matchedStaffId}`);
-                }
-                
-                // Tentukan role berdasarkan jabatan
-                if (matchedStaff.jabatan === 'kepala_sekolah') userRole = 'admin';
-                else if (matchedStaff.jabatan === 'wakil_kepala') userRole = 'wakil_kepala';
-                else if (matchedStaff.jabatan === 'staff_tu') userRole = 'staff_tu';
-                else userRole = 'guru';
-                
-                userData.nama = matchedStaff.nama;
-                userData.jabatan = matchedStaff.jabatan;
-                userData.departemen = matchedStaff.departemen || '';
-                userData.staffId = matchedStaffId;
-                userData.noHp = matchedStaff.noHp || '';
-                userName = matchedStaff.nama;
-            }
+            // Reset field staff
+            const staffIdField = document.getElementById('regStaffId');
+            const staffNamaField = document.getElementById('regStaffNama');
+            const staffEmailField = document.getElementById('regStaffEmail');
+            if (staffIdField) staffIdField.value = '';
+            if (staffNamaField) staffNamaField.value = '';
+            if (staffEmailField) staffEmailField.value = '';
+            
+            const regGeneratedId = document.getElementById('regGeneratedId');
+            if (regGeneratedId) regGeneratedId.value = '';
+        } else {
+            throw new Error(result?.error || 'Registrasi gagal');
         }
-
-        userData.role = userRole;
-        await db.ref(`users_auth/${user.uid}`).set(userData);
-        
-        // Update kode menjadi terpakai
-        const updateData = { 
-            used: true, 
-            userId: user.uid, 
-            usedAt: firebase.database.ServerValue.TIMESTAMP 
-        };
-        
-        // Jika staff, tambahkan informasi akun yang dibuat
-        if (regType === 'staff') {
-            updateData.createdAccountEmail = email;
-            updateData.createdAccountRole = userRole;
-            updateData.registeredStaffId = extraData.staffId;
-        }
-        
-        await db.ref(`codes/${codeInput}`).update(updateData);
-        
-        // Jika staff, update node staff dengan userId
-        if (regType === 'staff' && userData.staffId) {
-            await db.ref(`staff/${userData.staffId}/userId`).set(user.uid);
-        }
-
-        // LOG: Registrasi berhasil
-        try {
-            const roleDisplay = getRoleDisplayName(userRole);
-            await db.ref('logs').push({
-                action: 'register',
-                userId: user.uid,
-                userName: userName,
-                userRole: userRole,
-                details: `Registrasi berhasil sebagai ${roleDisplay} dengan email ${email}${regType === 'staff' ? ` (Staff - ID: ${extraData.staffId})` : ''}`,
-                timestamp: firebase.database.ServerValue.TIMESTAMP,
-                userAgent: navigator.userAgent.substring(0, 200)
-            });
-            console.log(`📝 Log activity: register - ${roleDisplay} ${email}`);
-        } catch (logErr) {
-            console.warn("Gagal menyimpan log registrasi:", logErr);
-        }
-
-        showToast("✅ Pendaftaran Berhasil! Silakan Login.", "success");
-        toggleAuth('login');
-        document.getElementById('registerForm').reset();
-        if (typeof toggleRegisterInput === 'function') toggleRegisterInput();
-        
-        // Reset field staff
-        const staffIdField = document.getElementById('regStaffId');
-        const staffNamaField = document.getElementById('regStaffNama');
-        const staffEmailField = document.getElementById('regStaffEmail');
-        if (staffIdField) staffIdField.value = '';
-        if (staffNamaField) staffNamaField.value = '';
-        if (staffEmailField) staffEmailField.value = '';
-        
-        // Reset field siswa
-        const regGeneratedId = document.getElementById('regGeneratedId');
-        if (regGeneratedId) regGeneratedId.value = '';
         
     } catch (error) {
         console.error(error);
@@ -658,6 +492,8 @@ async function handleRegister(e) {
     }
 }
 
+// ======================= FUNGSI LOGOUT =======================
+
 function handleLogout() {
     if (typeof logActivity === 'function' && currentUser) {
         logActivity('logout', `Logout dari akun ${currentUser.nama || currentUser.email} (${getRoleDisplayName(currentUser.role)})`);
@@ -675,35 +511,42 @@ function handleLogout() {
     }).catch(() => location.reload());
 }
 
-function processForgot() {
+// ======================= FUNGSI FORGOT PASSWORD (VIA API) =======================
+
+async function processForgot() {
     const email = document.getElementById('forgotEmail').value.trim();
     if (!email) { showToast('Masukkan email terlebih dahulu!', 'error'); return; }
     const btn = document.querySelector('#modal-forgot .btn-save');
     if (btn) { btn.innerText = '📧 Mengirim...'; btn.disabled = true; }
-    auth.sendPasswordResetEmail(email)
-        .then(() => {
-            showToast(`✅ Link reset password telah dikirim ke ${email}`, 'success');
-            closeModal('modal-forgot');
-            if (typeof logActivity === 'function' && currentUser) {
-                logActivity('forgot_password', `Link reset password dikirim ke ${email}`);
-            } else {
-                db.ref('logs').push({
-                    action: 'forgot_password',
-                    userId: 'unknown',
-                    userName: email,
-                    userRole: 'unknown',
-                    details: `Link reset password dikirim ke ${email}`,
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                    userAgent: navigator.userAgent.substring(0, 200)
-                }).catch(e => console.warn(e));
-            }
-        })
-        .catch(error => { 
-            let msg = error.code === 'auth/user-not-found' ? '❌ Email belum terdaftar!' : error.message; 
-            showToast(msg, 'error'); 
-        })
-        .finally(() => { if (btn) { btn.innerText = 'Kirim Link'; btn.disabled = false; } });
+    
+    try {
+        const result = await resetPasswordViaAPI(email);
+        showToast(`✅ Link reset password telah dikirim ke ${email}`, 'success');
+        closeModal('modal-forgot');
+        
+        if (typeof logActivity === 'function' && currentUser) {
+            logActivity('forgot_password', `Link reset password dikirim ke ${email}`);
+        } else if (typeof db !== 'undefined' && db) {
+            db.ref('logs').push({
+                action: 'forgot_password',
+                userId: 'unknown',
+                userName: email,
+                userRole: 'unknown',
+                details: `Link reset password dikirim ke ${email}`,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                userAgent: navigator.userAgent.substring(0, 200)
+            }).catch(e => console.warn(e));
+        }
+    } catch (error) {
+        let msg = error.message || 'Gagal mengirim link reset password';
+        if (msg.includes('user-not-found')) msg = '❌ Email belum terdaftar!';
+        showToast(msg, 'error');
+    } finally {
+        if (btn) { btn.innerText = 'Kirim Link'; btn.disabled = false; }
+    }
 }
+
+// ======================= FUNGSI CHANGE PASSWORD =======================
 
 async function handleChangePassword(e) {
     e.preventDefault();
@@ -733,6 +576,8 @@ async function handleChangePassword(e) {
         else showToast("Gagal: " + err.message, "error");
     } finally { if (btn) { btn.disabled = false; btn.textContent = "Simpan"; } }
 }
+
+// ======================= FUNGSI TOGGLE AUTH =======================
 
 function toggleAuth(mode) {
     const loginCard = document.getElementById('login-card');
@@ -806,7 +651,6 @@ async function uploadProfilePhoto(input) {
         if (typeof refreshAllAvatars === 'function') {
             refreshAllAvatars();
         } else {
-            console.warn("refreshAllAvatars not available, using manual update");
             const headerAvatar = document.getElementById('headerAvatar');
             if (headerAvatar) headerAvatar.src = result.url;
             imgEl.src = result.url;
@@ -857,4 +701,9 @@ window.getRoleDisplayName = getRoleDisplayName;
 window.getRoleIcon = getRoleIcon;
 window.updateUserInterfaceByRole = updateUserInterfaceByRole;
 
-console.log("✅ auth.js V5.3 loaded - REGISTRATION ONLY: SISWA & STAFF (Guru & Karyawan) dengan validasi ID wajib!");
+// Ekspor fungsi API
+window.registerViaAPI = registerViaAPI;
+window.resetPasswordViaAPI = resetPasswordViaAPI;
+window.BACKEND_API_URL = BACKEND_API_URL;
+
+console.log("✅ auth.js V6.0 loaded - Terintegrasi dengan API Backend Vercel!");
