@@ -1,13 +1,118 @@
-// friends.js - VERSION 2.3 (DENGAN LOG AKTIVITAS)
+// friends.js - VERSION 3.0 (INTEGRATED WITH VERCEL BACKEND API)
 // Fitur Pertemanan (Friendship System)
 // Mengirim request, menerima/menolak, dan daftar teman
 // Dengan integrasi Chat System
-// PERUBAHAN V2.3: Menambahkan logActivity untuk semua operasi pertemanan
+// V3.0: Terintegrasi dengan API backend Vercel untuk autentikasi dan data user
 // ============================================================================
+
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
 let friendsRealtimeListener = null;
 let friendRequestsListener = null;
 let friendsUiReadyListenerAdded = false;
+
+// Cache untuk data user
+let cachedUsersMap = {};
+let cachedUsersTimestamp = 0;
+const USERS_CACHE_TTL = 5 * 60 * 1000; // 5 menit
+
+// ======================= FUNGSI API BACKEND =======================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
+    }
+    return Promise.resolve(null);
+}
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        throw error;
+    }
+}
+
+/**
+ * Ambil data user dari API backend
+ */
+async function fetchUsersFromAPI() {
+    try {
+        const now = Date.now();
+        if (Object.keys(cachedUsersMap).length > 0 && (now - cachedUsersTimestamp) < USERS_CACHE_TTL) {
+            console.log("📦 Using cached users data");
+            return cachedUsersMap;
+        }
+        
+        console.log("📊 Fetching users from API...");
+        const data = await apiRequest('/users');
+        const users = data.data || [];
+        
+        cachedUsersMap = {};
+        users.forEach(user => {
+            cachedUsersMap[user.uid] = user;
+        });
+        cachedUsersTimestamp = now;
+        
+        console.log(`👥 Users loaded from API: ${Object.keys(cachedUsersMap).length} users`);
+        return cachedUsersMap;
+    } catch (error) {
+        console.error("Fetch users from API error:", error);
+        return {};
+    }
+}
+
+/**
+ * Ambil data user dari Firebase (fallback)
+ */
+async function fetchUserFromFirebase(uid) {
+    if (typeof db === 'undefined' || !db) return null;
+    
+    try {
+        const snapshot = await db.ref(`users_auth/${uid}`).once('value');
+        return snapshot.val();
+    } catch (error) {
+        console.error(`Failed to fetch user ${uid} from Firebase:`, error);
+        return null;
+    }
+}
+
+/**
+ * Ambil data user dengan fallback
+ */
+async function getUserData(uid) {
+    // Coba dari cache API dulu
+    if (cachedUsersMap[uid]) {
+        return cachedUsersMap[uid];
+    }
+    
+    // Coba dari API langsung
+    try {
+        const users = await fetchUsersFromAPI();
+        if (users[uid]) return users[uid];
+    } catch (e) {}
+    
+    // Fallback ke Firebase
+    return fetchUserFromFirebase(uid);
+}
 
 // ======================= EVENT LISTENER ========================
 
@@ -45,7 +150,14 @@ function initFriendsSystem() {
 
 function setupFriendRequestsListener() {
     if (friendRequestsListener) {
-        db.ref('friendships/requests').off('value', friendRequestsListener);
+        if (typeof db !== 'undefined' && db) {
+            db.ref('friendships/requests').off('value', friendRequestsListener);
+        }
+    }
+    
+    if (typeof db === 'undefined' || !db) {
+        console.warn("Firebase not available for friend requests listener");
+        return;
     }
     
     friendRequestsListener = db.ref('friendships/requests').on('value', (snapshot) => {
@@ -66,6 +178,7 @@ function setupFriendRequestsListener() {
 
 function setupFriendsListListener() {
     if (!currentUser) return;
+    if (typeof db === 'undefined' || !db) return;
     
     if (friendsRealtimeListener) {
         db.ref(`friendships/list/${currentUser.uid}`).off('value', friendsRealtimeListener);
@@ -86,47 +199,18 @@ async function enrichFriendsWithLatestData(friendsList) {
     const friendUids = friendsList.map(f => f.friendUid).filter(Boolean);
     if (friendUids.length === 0) return friendsList;
     
-    if (dbData && dbData.users_auth && dbData.users_auth.length > 0) {
-        const userDataMap = {};
-        for (const user of dbData.users_auth) {
-            userDataMap[user.uid] = user;
-        }
-        const allFound = friendUids.every(uid => userDataMap[uid]);
-        if (allFound) {
-            console.log("⚡ friends.js: Using cached user data from dbData");
-            return friendsList.map(friend => {
-                const latest = userDataMap[friend.friendUid];
-                if (latest) {
-                    return {
-                        ...friend,
-                        friendName: latest.nama || friend.friendName,
-                        friendEmail: latest.email || friend.friendEmail,
-                        friendPhoto: latest.photoUrl || null
-                    };
-                }
-                return friend;
-            });
-        }
-    }
+    // Coba ambil data dari API
+    const usersMap = await fetchUsersFromAPI();
     
-    console.log("📡 friends.js: Fetching missing user data from Firebase");
-    const snapshots = await Promise.all(
-        friendUids.map(uid => db.ref(`users_auth/${uid}`).once('value'))
-    );
-    const userDataMap = {};
-    snapshots.forEach(snap => {
-        const uid = snap.key;
-        const val = snap.val();
-        if (val) userDataMap[uid] = val;
-    });
     return friendsList.map(friend => {
-        const latest = userDataMap[friend.friendUid];
+        const latest = usersMap[friend.friendUid];
         if (latest) {
             return {
                 ...friend,
                 friendName: latest.nama || friend.friendName,
                 friendEmail: latest.email || friend.friendEmail,
-                friendPhoto: latest.photoUrl || null
+                friendPhoto: latest.photoUrl || null,
+                friendRole: latest.role || 'siswa'
             };
         }
         return friend;
@@ -235,7 +319,7 @@ function renderFriendRequestsList(requests) {
     container.innerHTML = requests.map(req => `
         <div class="friend-request-item" data-request-id="${req.id}">
             <div class="friend-avatar">
-                <img src="${req.fromPhoto || getAvatarUrl(req.fromName)}" alt="${escapeHtml(req.fromName)}">
+                <img src="${req.fromPhoto || getAvatarUrl(req.fromName)}" alt="${escapeHtml(req.fromName)}" onerror="this.src='${getAvatarUrl(req.fromName)}'">
             </div>
             <div class="friend-info">
                 <div class="friend-name">${escapeHtml(req.fromName)}</div>
@@ -260,12 +344,13 @@ function renderFriendsList(friends) {
     container.innerHTML = friends.map(friend => `
         <div class="friend-item" data-friend-uid="${friend.friendUid}">
             <div class="friend-avatar">
-                <img src="${friend.friendPhoto || getAvatarUrl(friend.friendName)}" alt="${escapeHtml(friend.friendName)}">
+                <img src="${friend.friendPhoto || getAvatarUrl(friend.friendName)}" alt="${escapeHtml(friend.friendName)}" onerror="this.src='${getAvatarUrl(friend.friendName)}'">
             </div>
             <div class="friend-info">
                 <div class="friend-name">${escapeHtml(friend.friendName)}</div>
                 <div class="friend-email">${escapeHtml(friend.friendEmail)}</div>
                 <div class="friend-since">Teman sejak ${formatDate(friend.createdAt)}</div>
+                ${friend.friendRole ? `<div class="friend-role role-badge role-${friend.friendRole}" style="font-size:10px; margin-top:4px;">${getRoleDisplayName(friend.friendRole)}</div>` : ''}
             </div>
             <div class="friend-actions">
                 <button class="btn-icon chat" onclick="startChatWithFriend('${friend.friendUid}', '${escapeHtml(friend.friendName)}', '${escapeHtml(friend.friendEmail)}')" title="Chat">💬</button>
@@ -274,6 +359,18 @@ function renderFriendsList(friends) {
             </div>
         </div>
     `).join('');
+}
+
+function getRoleDisplayName(role) {
+    const names = {
+        developer: 'Developer',
+        admin: 'Kepala Sekolah',
+        wakil_kepala: 'Wakil Kepala Sekolah',
+        staff_tu: 'Staff TU',
+        guru: 'Guru',
+        siswa: 'Siswa'
+    };
+    return names[role] || role.toUpperCase();
 }
 
 // ======================= FUNGSI PENCARIAN =======================
@@ -292,16 +389,30 @@ async function searchUserByEmail() {
     showToast("🔍 Mencari pengguna...", "info");
     
     try {
-        const snapshot = await db.ref('users_auth').once('value');
-        const users = snapshot.val();
+        // Coba cari dari API dulu
         let foundUser = null;
         let foundUid = null;
-        if (users) {
-            for (const [uid, userData] of Object.entries(users)) {
-                if (userData.email && userData.email.toLowerCase() === email) {
-                    foundUser = userData;
-                    foundUid = uid;
-                    break;
+        
+        const usersMap = await fetchUsersFromAPI();
+        for (const [uid, userData] of Object.entries(usersMap)) {
+            if (userData.email && userData.email.toLowerCase() === email) {
+                foundUser = userData;
+                foundUid = uid;
+                break;
+            }
+        }
+        
+        // Jika tidak ditemukan di API, coba dari Firebase
+        if (!foundUser && typeof db !== 'undefined' && db) {
+            const snapshot = await db.ref('users_auth').once('value');
+            const users = snapshot.val();
+            if (users) {
+                for (const [uid, userData] of Object.entries(users)) {
+                    if (userData.email && userData.email.toLowerCase() === email) {
+                        foundUser = userData;
+                        foundUid = uid;
+                        break;
+                    }
                 }
             }
         }
@@ -329,12 +440,12 @@ async function searchUserByEmail() {
             resultContainer.innerHTML = `
                 <div class="search-result-item">
                     <div class="friend-avatar">
-                        <img src="${foundUser.photoUrl || getAvatarUrl(foundUser.nama)}" alt="${escapeHtml(foundUser.nama)}">
+                        <img src="${foundUser.photoUrl || getAvatarUrl(foundUser.nama)}" alt="${escapeHtml(foundUser.nama)}" onerror="this.src='${getAvatarUrl(foundUser.nama)}'">
                     </div>
                     <div class="friend-info">
                         <div class="friend-name">${escapeHtml(foundUser.nama)}</div>
                         <div class="friend-email">${escapeHtml(foundUser.email)}</div>
-                        <div class="friend-role">${foundUser.role === 'admin' ? '👑 Admin' : (foundUser.role === 'guru' ? '👨‍🏫 Guru' : '👨‍🎓 Siswa')}</div>
+                        <div class="friend-role">${getRoleDisplayName(foundUser.role)}</div>
                         ${statusMessage}
                     </div>
                     <div class="friend-actions">
@@ -359,29 +470,45 @@ async function searchUserByEmail() {
     }
 }
 
-// ======================= FUNGSI PERTEMANAN (DENGAN LOG) =======================
+// ======================= FUNGSI PERTEMANAN =======================
 
 async function checkIsFriend(friendUid) {
-    const snapshot = await db.ref(`friendships/list/${currentUser.uid}/${friendUid}`).once('value');
-    return snapshot.exists();
+    if (typeof db === 'undefined' || !db) return false;
+    try {
+        const snapshot = await db.ref(`friendships/list/${currentUser.uid}/${friendUid}`).once('value');
+        return snapshot.exists();
+    } catch (error) {
+        console.error("Check is friend error:", error);
+        return false;
+    }
 }
 
 async function checkPendingRequest(friendUid) {
-    const snapshot = await db.ref('friendships/requests').once('value');
-    const requests = snapshot.val();
-    if (!requests) return false;
-    return Object.values(requests).some(req => 
-        req.from === currentUser.uid && req.to === friendUid && req.status === 'pending'
-    );
+    if (typeof db === 'undefined' || !db) return false;
+    try {
+        const snapshot = await db.ref('friendships/requests').once('value');
+        const requests = snapshot.val();
+        if (!requests) return false;
+        return Object.values(requests).some(req => 
+            req.from === currentUser.uid && req.to === friendUid && req.status === 'pending'
+        );
+    } catch (error) {
+        return false;
+    }
 }
 
 async function checkIncomingRequest(friendUid) {
-    const snapshot = await db.ref('friendships/requests').once('value');
-    const requests = snapshot.val();
-    if (!requests) return false;
-    return Object.values(requests).some(req => 
-        req.from === friendUid && req.to === currentUser.uid && req.status === 'pending'
-    );
+    if (typeof db === 'undefined' || !db) return false;
+    try {
+        const snapshot = await db.ref('friendships/requests').once('value');
+        const requests = snapshot.val();
+        if (!requests) return false;
+        return Object.values(requests).some(req => 
+            req.from === friendUid && req.to === currentUser.uid && req.status === 'pending'
+        );
+    } catch (error) {
+        return false;
+    }
 }
 
 async function sendFriendRequest(toUid, toName, toEmail) {
@@ -393,6 +520,11 @@ async function sendFriendRequest(toUid, toName, toEmail) {
         showToast("❌ Anda tidak bisa mengirim request ke diri sendiri!", "error");
         return;
     }
+    if (typeof db === 'undefined' || !db) {
+        showToast("❌ Database tidak tersedia!", "error");
+        return;
+    }
+    
     const isFriend = await checkIsFriend(toUid);
     if (isFriend) {
         showToast("👥 Anda sudah berteman dengan pengguna ini!", "info");
@@ -431,7 +563,6 @@ async function sendFriendRequest(toUid, toName, toEmail) {
         await db.ref(`friendships/requests/${requestId}`).set(requestData);
         showToast(`✅ Permintaan pertemanan dikirim ke ${toName}`, "success");
         
-        // LOG: Kirim permintaan teman
         if (typeof logActivity === 'function') {
             logActivity('send_friend_request', `Mengirim permintaan pertemanan ke ${toName} (${toEmail})`);
         }
@@ -450,20 +581,29 @@ async function sendFriendRequest(toUid, toName, toEmail) {
 }
 
 async function findIncomingRequest(fromUid) {
-    const snapshot = await db.ref('friendships/requests').once('value');
-    const requests = snapshot.val();
-    if (!requests) return null;
-    for (const [id, req] of Object.entries(requests)) {
-        if (req.from === fromUid && req.to === currentUser.uid && req.status === 'pending') {
-            return { id, ...req };
+    if (typeof db === 'undefined' || !db) return null;
+    try {
+        const snapshot = await db.ref('friendships/requests').once('value');
+        const requests = snapshot.val();
+        if (!requests) return null;
+        for (const [id, req] of Object.entries(requests)) {
+            if (req.from === fromUid && req.to === currentUser.uid && req.status === 'pending') {
+                return { id, ...req };
+            }
         }
+        return null;
+    } catch (error) {
+        return null;
     }
-    return null;
 }
 
 async function acceptFriendRequest(requestId, fromUid) {
     if (!currentUser) {
         showToast("Anda harus login!", "error");
+        return;
+    }
+    if (typeof db === 'undefined' || !db) {
+        showToast("❌ Database tidak tersedia!", "error");
         return;
     }
     
@@ -476,9 +616,7 @@ async function acceptFriendRequest(requestId, fromUid) {
     
     showToast("⏳ Memproses...", "info");
     
-    // Ambil data pengirim untuk keperluan log
-    const senderSnapshot = await db.ref(`users_auth/${fromUid}`).once('value');
-    const senderData = senderSnapshot.val();
+    const senderData = await getUserData(fromUid);
     const senderName = senderData?.nama || fromUid;
     
     try {
@@ -515,7 +653,6 @@ async function acceptFriendRequest(requestId, fromUid) {
         
         showToast(`✅ Anda sekarang berteman!`, "success");
         
-        // LOG: Terima permintaan teman
         if (typeof logActivity === 'function') {
             logActivity('accept_friend_request', `Menerima permintaan pertemanan dari ${senderName}`);
         }
@@ -539,10 +676,9 @@ async function rejectFriendRequest(requestId, fromUid) {
         return;
     }
     if (!confirm("❌ Tolak permintaan pertemanan ini?")) return;
+    if (typeof db === 'undefined' || !db) return;
     
-    // Ambil data pengirim untuk log
-    const senderSnapshot = await db.ref(`users_auth/${fromUid}`).once('value');
-    const senderData = senderSnapshot.val();
+    const senderData = await getUserData(fromUid);
     const senderName = senderData?.nama || fromUid;
     
     try {
@@ -552,7 +688,6 @@ async function rejectFriendRequest(requestId, fromUid) {
         });
         showToast(`✅ Permintaan pertemanan ditolak`, "info");
         
-        // LOG: Tolak permintaan teman
         if (typeof logActivity === 'function') {
             logActivity('reject_friend_request', `Menolak permintaan pertemanan dari ${senderName}`);
         }
@@ -570,6 +705,7 @@ async function removeFriend(friendUid, friendName) {
         return;
     }
     if (!confirm(`⚠️ Hapus ${friendName} dari daftar teman?\n\nAnda tidak akan bisa melihat profil dan chat dengannya.`)) return;
+    if (typeof db === 'undefined' || !db) return;
     
     try {
         await Promise.all([
@@ -578,7 +714,6 @@ async function removeFriend(friendUid, friendName) {
         ]);
         showToast(`✅ ${friendName} telah dihapus dari daftar teman`, "success");
         
-        // LOG: Hapus teman
         if (typeof logActivity === 'function') {
             logActivity('remove_friend', `Menghapus teman: ${friendName}`);
         }
@@ -614,31 +749,43 @@ async function startChatWithFriend(friendUid, friendName, friendEmail) {
 
 async function loadFriendRequests() {
     if (!currentUser) return;
-    const snapshot = await db.ref('friendships/requests').once('value');
-    const data = snapshot.val();
-    if (data) {
-        const pendingRequests = Object.keys(data)
-            .filter(key => data[key].to === currentUser.uid && data[key].status === 'pending')
-            .map(key => ({ id: key, ...data[key] }));
-        updateFriendRequestBadge(pendingRequests.length);
-        renderFriendRequestsList(pendingRequests);
+    if (typeof db === 'undefined' || !db) return;
+    
+    try {
+        const snapshot = await db.ref('friendships/requests').once('value');
+        const data = snapshot.val();
+        if (data) {
+            const pendingRequests = Object.keys(data)
+                .filter(key => data[key].to === currentUser.uid && data[key].status === 'pending')
+                .map(key => ({ id: key, ...data[key] }));
+            updateFriendRequestBadge(pendingRequests.length);
+            renderFriendRequestsList(pendingRequests);
+        }
+    } catch (error) {
+        console.error("Load friend requests error:", error);
     }
 }
 
 async function loadFriendsList() {
     if (!currentUser) return;
-    const snapshot = await db.ref(`friendships/list/${currentUser.uid}`).once('value');
-    const data = snapshot.val();
-    const friendsList = data ? Object.values(data) : [];
-    const enriched = await enrichFriendsWithLatestData(friendsList);
-    renderFriendsList(enriched);
-    updateFriendsCount(enriched.length);
+    if (typeof db === 'undefined' || !db) return;
+    
+    try {
+        const snapshot = await db.ref(`friendships/list/${currentUser.uid}`).once('value');
+        const data = snapshot.val();
+        const friendsList = data ? Object.values(data) : [];
+        const enriched = await enrichFriendsWithLatestData(friendsList);
+        renderFriendsList(enriched);
+        updateFriendsCount(enriched.length);
+    } catch (error) {
+        console.error("Load friends list error:", error);
+    }
 }
 
 // ======================= UTILITY =======================
 
 function getAvatarUrl(name) {
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=00bcd4&color=fff&size=100`;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=00bcd4&color=fff&size=100&bold=true`;
 }
 
 function formatTimeAgo(timestamp) {
@@ -664,14 +811,13 @@ function escapeHtml(str) {
     return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
 
-function viewFriendProfile(friendUid) {
+async function viewFriendProfile(friendUid) {
     openFriendProfileModal(friendUid);
 }
 
 async function openFriendProfileModal(friendUid) {
     try {
-        const snapshot = await db.ref(`users_auth/${friendUid}`).once('value');
-        const friendData = snapshot.val();
+        const friendData = await getUserData(friendUid);
         if (!friendData) {
             showToast("❌ Data teman tidak ditemukan", "error");
             return;
@@ -685,18 +831,18 @@ async function openFriendProfileModal(friendUid) {
                         <span onclick="closeModal('modal-friend-profile')">✖</span>
                     </div>
                     <div style="text-align: center; padding: 20px;">
-                        <img src="${friendData.photoUrl || getAvatarUrl(friendData.nama)}" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary);">
+                        <img src="${friendData.photoUrl || getAvatarUrl(friendData.nama)}" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary);" onerror="this.src='${getAvatarUrl(friendData.nama)}'">
                         <h3 style="margin-top: 10px;">${escapeHtml(friendData.nama)}</h3>
                         <p style="color: var(--text-muted);">${escapeHtml(friendData.email)}</p>
-                        <div class="role-badge role-${friendData.role || 'siswa'}">${(friendData.role || 'siswa').toUpperCase()}</div>
+                        <div class="role-badge role-${friendData.role || 'siswa'}">${getRoleDisplayName(friendData.role || 'siswa')}</div>
                     </div>
                     <div class="form-group" style="padding: 0 20px;">
-                        <label>📚 Kelas</label>
-                        <p>${friendData.kelas || '-'}</p>
+                        <label>📚 Kelas / Mata Pelajaran</label>
+                        <p>${friendData.kelas || friendData.subject || '-'}</p>
                     </div>
                     <div class="form-group" style="padding: 0 20px;">
-                        <label>🎓 Jurusan / Mata Pelajaran</label>
-                        <p>${friendData.jurusan || friendData.subject || '-'}</p>
+                        <label>🎓 Jurusan / Departemen</label>
+                        <p>${friendData.jurusan || friendData.departemen || '-'}</p>
                     </div>
                     <div class="modal-actions">
                         <button class="btn-cancel" onclick="closeModal('modal-friend-profile')">Tutup</button>
@@ -728,11 +874,11 @@ async function removeFriendAndClose(friendUid, friendName) {
 // ======================= CLEANUP =======================
 
 function cleanupFriendsSystem() {
-    if (friendRequestsListener) {
+    if (friendRequestsListener && typeof db !== 'undefined' && db) {
         db.ref('friendships/requests').off('value', friendRequestsListener);
         friendRequestsListener = null;
     }
-    if (friendsRealtimeListener && currentUser) {
+    if (friendsRealtimeListener && currentUser && typeof db !== 'undefined' && db) {
         db.ref(`friendships/list/${currentUser.uid}`).off('value', friendsRealtimeListener);
         friendsRealtimeListener = null;
     }
@@ -764,5 +910,7 @@ window.removeFriendAndClose = removeFriendAndClose;
 window.startChatWithFriend = startChatWithFriend;
 window.startChatFromProfile = startChatFromProfile;
 window.cleanupFriendsSystem = cleanupFriendsSystem;
+window.fetchUsersFromAPI = fetchUsersFromAPI;
+window.getUserData = getUserData;
 
-console.log("✅ friends.js V2.3 loaded - Dengan log aktivitas untuk pertemanan");
+console.log("✅ friends.js V3.0 loaded - Terintegrasi dengan API Backend Vercel untuk data user!");

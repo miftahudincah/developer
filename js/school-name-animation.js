@@ -1,11 +1,15 @@
-// school-name-animation.js - VERSION 6.0 (LOOPING TYPING EFFECT)
+// school-name-animation.js - VERSION 7.0 (INTEGRATED WITH VERCEL BACKEND API)
 // Animasi nama sekolah dengan LOOPING TYPING EFFECT + perubahan warna berulang
 // Fitur:
 // - Typing effect berulang (terus menerus)
 // - Setelah selesai typing, akan pause sebentar lalu restart typing
 // - Warna berubah terus menerus selama animasi berjalan
-// - Mendukung perubahan nama sekolah dari Firebase
+// - Mendukung perubahan nama sekolah dari API backend dan Firebase
+// V7.0: Terintegrasi dengan API backend Vercel
 // ============================================================================
+
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
 let schoolNameAnimationEnabled = true;
 let originalSchoolName = '';
@@ -19,16 +23,87 @@ let currentTypingSpan = null;
 let isLoopingEnabled = true;
 
 // Konfigurasi animasi
-const TYPING_SPEED = 80; // kecepatan typing (ms per karakter)
-const PAUSE_BEFORE_RESTART = 2000; // jeda sebelum restart typing (2 detik)
-const COLOR_ANIMATION_DURATION = 4000; // durasi animasi warna (4 detik)
-const DEBOUNCE_DELAY = 300; // delay untuk menghindari restart berlebihan
+const TYPING_SPEED = 80;
+const PAUSE_BEFORE_RESTART = 2000;
+const COLOR_ANIMATION_DURATION = 4000;
+const DEBOUNCE_DELAY = 300;
+
+// Cache untuk nama sekolah
+let cachedSchoolName = null;
+let cachedSchoolNameTimestamp = 0;
+const SCHOOL_NAME_CACHE_TTL = 60 * 1000; // 1 menit
+
+// ======================= FUNGSI API BACKEND =======================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
+    }
+    return Promise.resolve(null);
+}
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        throw error;
+    }
+}
+
+/**
+ * Ambil nama sekolah dari API backend
+ */
+async function fetchSchoolNameFromAPI() {
+    try {
+        const now = Date.now();
+        if (cachedSchoolName && (now - cachedSchoolNameTimestamp) < SCHOOL_NAME_CACHE_TTL) {
+            console.log("📦 Using cached school name");
+            return cachedSchoolName;
+        }
+        
+        console.log("🏫 Fetching school name from API...");
+        const data = await apiRequest('/config');
+        const schoolName = data.data?.school_name || 'Sistem Absensi IoT';
+        
+        cachedSchoolName = schoolName;
+        cachedSchoolNameTimestamp = now;
+        return schoolName;
+    } catch (error) {
+        console.error("Fetch school name from API error:", error);
+        return null;
+    }
+}
+
+/**
+ * Update nama sekolah ke API backend
+ */
+async function updateSchoolNameToAPI(schoolName) {
+    const data = await apiRequest('/config', {
+        method: 'PUT',
+        body: JSON.stringify({ school_name: schoolName })
+    });
+    return data;
+}
 
 // ======================= FUNGSI UTILITY =======================
 
-/**
- * Membersihkan semua interval, timeout, dan loop yang sedang berjalan
- */
 function clearAllAnimations() {
     if (typingInterval) {
         clearInterval(typingInterval);
@@ -44,9 +119,6 @@ function clearAllAnimations() {
     }
 }
 
-/**
- * Mendapatkan teks nama sekolah saat ini
- */
 function getCurrentSchoolName() {
     const element = document.getElementById('schoolNameDisplay');
     if (!element) return 'Sistem Absensi IoT';
@@ -54,9 +126,6 @@ function getCurrentSchoolName() {
     return text.trim() || 'Sistem Absensi IoT';
 }
 
-/**
- * Memperbarui teks asli nama sekolah
- */
 function updateOriginalSchoolName() {
     const newText = getCurrentSchoolName();
     if (newText !== originalSchoolName) {
@@ -73,41 +142,16 @@ function injectAnimationStyles() {
     const style = document.createElement('style');
     style.id = 'school-name-animation-styles';
     style.textContent = `
-        /* ==================== ANIMASI NAMA SEKOLAH - LOOPING TYPING ==================== */
-        
-        /* Animasi warna berulang (looping) - Lebih smooth */
         @keyframes schoolNameColorShift {
-            0% {
-                color: #ffd700;
-                text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
-            }
-            15% {
-                color: #ffaa00;
-                text-shadow: 0 0 10px rgba(255, 170, 0, 0.6);
-            }
-            30% {
-                color: #ff6600;
-                text-shadow: 0 0 15px rgba(255, 102, 0, 0.7);
-            }
-            45% {
-                color: #ff3366;
-                text-shadow: 0 0 15px rgba(255, 51, 102, 0.7);
-            }
-            60% {
-                color: #9c27b0;
-                text-shadow: 0 0 15px rgba(156, 39, 176, 0.7);
-            }
-            75% {
-                color: #00bcd4;
-                text-shadow: 0 0 12px rgba(0, 188, 212, 0.6);
-            }
-            100% {
-                color: #2196f3;
-                text-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
-            }
+            0% { color: #ffd700; text-shadow: 0 0 5px rgba(255, 215, 0, 0.5); }
+            15% { color: #ffaa00; text-shadow: 0 0 10px rgba(255, 170, 0, 0.6); }
+            30% { color: #ff6600; text-shadow: 0 0 15px rgba(255, 102, 0, 0.7); }
+            45% { color: #ff3366; text-shadow: 0 0 15px rgba(255, 51, 102, 0.7); }
+            60% { color: #9c27b0; text-shadow: 0 0 15px rgba(156, 39, 176, 0.7); }
+            75% { color: #00bcd4; text-shadow: 0 0 12px rgba(0, 188, 212, 0.6); }
+            100% { color: #2196f3; text-shadow: 0 0 8px rgba(33, 150, 243, 0.5); }
         }
 
-        /* Animasi warna untuk light mode */
         @keyframes schoolNameColorShiftLight {
             0% { color: #d4a017; }
             15% { color: #e6a800; }
@@ -118,38 +162,22 @@ function injectAnimationStyles() {
             100% { color: #0288d1; }
         }
 
-        /* Efek glow berkelanjutan */
         @keyframes schoolNameGlow {
-            0% {
-                text-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
-            }
-            50% {
-                text-shadow: 0 0 20px rgba(0, 188, 212, 0.5), 0 0 8px rgba(255, 215, 0, 0.3);
-            }
-            100% {
-                text-shadow: 0 0 5px rgba(33, 150, 243, 0.3);
-            }
+            0% { text-shadow: 0 0 5px rgba(255, 215, 0, 0.3); }
+            50% { text-shadow: 0 0 20px rgba(0, 188, 212, 0.5), 0 0 8px rgba(255, 215, 0, 0.3); }
+            100% { text-shadow: 0 0 5px rgba(33, 150, 243, 0.3); }
         }
 
-        /* Efek bounce saat hover */
         @keyframes schoolNameBounce {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-4px); }
         }
 
-        /* Efek pulse ringan untuk typing */
-        @keyframes typingPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-
-        /* Cursor berkedip untuk efek typing */
         @keyframes blinkCursor {
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0; }
         }
 
-        /* Gaya untuk efek typing */
         .school-name-typing {
             display: inline-block;
             font-weight: 800;
@@ -160,7 +188,6 @@ function injectAnimationStyles() {
             animation: blinkCursor 0.8s step-end infinite;
         }
 
-        /* Gaya untuk animasi warna berulang */
         .school-name-animated {
             display: inline-block;
             font-weight: 800;
@@ -175,7 +202,6 @@ function injectAnimationStyles() {
             cursor: pointer;
         }
 
-        /* Light mode */
         body.light-mode .school-name-animated {
             animation: schoolNameColorShiftLight 4s ease-in-out infinite;
         }
@@ -184,22 +210,12 @@ function injectAnimationStyles() {
             animation: schoolNameColorShiftLight 4s ease-in-out infinite, schoolNameBounce 0.5s ease-in-out, schoolNameGlow 1s ease-in-out;
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
             .school-name-animated,
             .school-name-typing {
                 font-size: 1.2rem;
                 animation-duration: 3s;
             }
-            body.light-mode .school-name-animated {
-                animation-duration: 3s;
-            }
-        }
-
-        /* Tooltip style */
-        .school-name-animated[title],
-        .school-name-typing[title] {
-            position: relative;
         }
 
         .school-name-animated[title]:hover::after,
@@ -218,23 +234,6 @@ function injectAnimationStyles() {
             z-index: 100;
             pointer-events: none;
         }
-
-        /* Loading/dots animation */
-        .loading-dots {
-            display: inline-block;
-            font-size: 1.2rem;
-            letter-spacing: 2px;
-        }
-        .loading-dots span {
-            animation: blink 1.4s infinite both;
-        }
-        .loading-dots span:nth-child(1) { animation-delay: 0s; }
-        .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes blink {
-            0%, 80%, 100% { opacity: 0; }
-            40% { opacity: 1; }
-        }
     `;
     document.head.appendChild(style);
     console.log('🎨 School name animation styles injected');
@@ -242,23 +241,15 @@ function injectAnimationStyles() {
 
 // ======================= FUNGSI ANIMASI UTAMA =======================
 
-/**
- * Menjalankan efek typing untuk teks yang diberikan
- * @param {HTMLElement} container - Element container untuk menampung typing span
- * @param {string} text - Teks yang akan diketik
- * @param {function} onComplete - Callback setelah typing selesai
- */
 function runTypingEffect(container, text, onComplete) {
     if (!container || !text) {
         if (onComplete) onComplete();
         return;
     }
     
-    // Bersihkan container
     container.innerHTML = '';
     container.style.opacity = '1';
     
-    // Buat span untuk efek typing
     const typingSpan = document.createElement('span');
     typingSpan.className = 'school-name-typing';
     typingSpan.style.whiteSpace = 'nowrap';
@@ -274,13 +265,10 @@ function runTypingEffect(container, text, onComplete) {
             typingSpan.textContent = currentText;
             i++;
         } else {
-            // Typing selesai
             clearInterval(typingInterval);
             typingInterval = null;
             
-            // Hapus border cursor
             typingSpan.style.borderRight = 'none';
-            // Ganti dengan efek warna berubah
             typingSpan.className = 'school-name-animated';
             typingSpan.setAttribute('title', '✨ Sistem Absensi IoT - HakaTech ✨');
             typingSpan.style.transition = 'all 0.3s ease';
@@ -294,19 +282,12 @@ function runTypingEffect(container, text, onComplete) {
     }, TYPING_SPEED);
 }
 
-/**
- * Menjalankan loop typing (terus menerus)
- * @param {HTMLElement} container - Element container
- * @param {string} text - Teks yang akan diketik berulang
- */
 function startLoopingTyping(container, text) {
     if (!isLoopingEnabled || !schoolNameAnimationEnabled) return;
     
     runTypingEffect(container, text, function() {
-        // Setelah typing selesai, tunggu beberapa detik lalu restart
         if (isLoopingEnabled && schoolNameAnimationEnabled) {
             loopTimeout = setTimeout(function() {
-                // Cek apakah teks masih sama (mungkin berubah dari Firebase)
                 const currentText = getCurrentSchoolName();
                 if (currentText !== text) {
                     text = currentText;
@@ -318,9 +299,6 @@ function startLoopingTyping(container, text) {
     });
 }
 
-/**
- * Menghentikan loop typing
- */
 function stopLoopingTyping() {
     isLoopingEnabled = false;
     if (loopTimeout) {
@@ -334,9 +312,6 @@ function stopLoopingTyping() {
     isTypingActive = false;
 }
 
-/**
- * Memulai ulang loop typing (dengan teks terbaru)
- */
 function restartLoopingTyping() {
     const schoolNameElement = document.getElementById('schoolNameDisplay');
     if (!schoolNameElement) return;
@@ -344,7 +319,6 @@ function restartLoopingTyping() {
     const newText = getCurrentSchoolName();
     originalSchoolName = newText;
     
-    // Hentikan loop yang sedang berjalan
     if (loopTimeout) {
         clearTimeout(loopTimeout);
         loopTimeout = null;
@@ -354,16 +328,32 @@ function restartLoopingTyping() {
         typingInterval = null;
     }
     
-    // Mulai loop baru
     isLoopingEnabled = true;
     startLoopingTyping(schoolNameElement, newText);
     console.log('🔄 Looping typing restarted with text:', newText);
 }
 
-/**
- * Inisialisasi animasi nama sekolah (Looping Typing)
- */
-function initSchoolNameAnimation() {
+// ======================= INISIALISASI DENGAN API =======================
+
+async function initSchoolNameFromAPI() {
+    try {
+        const apiSchoolName = await fetchSchoolNameFromAPI();
+        if (apiSchoolName) {
+            const schoolNameElement = document.getElementById('schoolNameDisplay');
+            if (schoolNameElement && schoolNameElement.textContent !== apiSchoolName) {
+                schoolNameElement.textContent = apiSchoolName;
+                originalSchoolName = apiSchoolName;
+                console.log('🏫 School name loaded from API:', apiSchoolName);
+            }
+            return apiSchoolName;
+        }
+    } catch (error) {
+        console.warn('Failed to load school name from API:', error);
+    }
+    return null;
+}
+
+async function initSchoolNameAnimation() {
     const schoolNameElement = document.getElementById('schoolNameDisplay');
     if (!schoolNameElement) {
         console.warn('⚠️ schoolNameDisplay element not found, retrying in 500ms...');
@@ -371,16 +361,19 @@ function initSchoolNameAnimation() {
         return;
     }
     
-    // Bersihkan animasi yang sedang berjalan
+    // Coba ambil nama sekolah dari API
+    const apiSchoolName = await initSchoolNameFromAPI();
+    if (apiSchoolName) {
+        schoolNameElement.textContent = apiSchoolName;
+    }
+    
     clearAllAnimations();
     isLoopingEnabled = true;
     isTypingActive = true;
     
-    // Simpan teks asli
     const fullText = getCurrentSchoolName();
     originalSchoolName = fullText;
     
-    // Reset elemen
     schoolNameElement.innerHTML = '';
     schoolNameElement.style.opacity = '1';
     schoolNameElement.style.display = 'inline-block';
@@ -393,42 +386,33 @@ function initSchoolNameAnimation() {
         return;
     }
     
-    // Mulai loop typing
     startLoopingTyping(schoolNameElement, fullText);
     
     console.log('✨ School name LOOPING typing animation initialized for:', fullText);
 }
 
-/**
- * Restart animasi (saat teks berubah)
- */
 function restartSchoolNameAnimation() {
-    // Debounce untuk menghindari restart berlebihan
     if (animationRestartDebounceTimer) {
         clearTimeout(animationRestartDebounceTimer);
     }
     
-    animationRestartDebounceTimer = setTimeout(() => {
+    animationRestartDebounceTimer = setTimeout(async () => {
         const schoolNameElement = document.getElementById('schoolNameDisplay');
-        if (!schoolNameElement) {
-            console.warn('⚠️ schoolNameDisplay not found for restart');
-            return;
-        }
+        if (!schoolNameElement) return;
         
-        const newText = getCurrentSchoolName();
+        // Coba ambil nama sekolah terbaru dari API
+        const apiSchoolName = await initSchoolNameFromAPI();
+        let newText = apiSchoolName || getCurrentSchoolName();
         
-        // Hanya restart jika teks benar-benar berubah
-        if (newText === originalSchoolName) {
+        if (newText === originalSchoolName && !apiSchoolName) {
             console.log('📝 Text unchanged, skipping restart');
             return;
         }
         
         originalSchoolName = newText;
         
-        // Hentikan loop yang sedang berjalan
         stopLoopingTyping();
         
-        // Reset elemen
         schoolNameElement.innerHTML = '';
         schoolNameElement.style.opacity = '1';
         
@@ -446,9 +430,6 @@ function restartSchoolNameAnimation() {
     }, DEBOUNCE_DELAY);
 }
 
-/**
- * Force restart animasi (tanpa debounce)
- */
 function forceRestartSchoolNameAnimation() {
     if (animationRestartDebounceTimer) {
         clearTimeout(animationRestartDebounceTimer);
@@ -461,10 +442,8 @@ function forceRestartSchoolNameAnimation() {
     const newText = getCurrentSchoolName();
     originalSchoolName = newText;
     
-    // Hentikan semua animasi
     stopLoopingTyping();
     
-    // Reset elemen
     schoolNameElement.innerHTML = '';
     schoolNameElement.style.opacity = '1';
     
@@ -479,9 +458,6 @@ function forceRestartSchoolNameAnimation() {
     console.log('✨ Force restart completed for:', originalSchoolName);
 }
 
-/**
- * Hentikan animasi sementara
- */
 function pauseSchoolNameAnimation() {
     const schoolNameElement = document.getElementById('schoolNameDisplay');
     if (!schoolNameElement) return;
@@ -497,38 +473,26 @@ function pauseSchoolNameAnimation() {
     console.log('⏸️ School name animation paused');
 }
 
-/**
- * Lanjutkan animasi
- */
 function resumeSchoolNameAnimation() {
     const schoolNameElement = document.getElementById('schoolNameDisplay');
     if (!schoolNameElement) return;
-    
     if (!schoolNameAnimationEnabled) return;
     
-    // Jika sedang tidak ada animasi, restart
     const hasTypingClass = schoolNameElement.querySelector('.school-name-typing');
     const hasAnimatedClass = schoolNameElement.querySelector('.school-name-animated');
     
     if (!hasTypingClass && !hasAnimatedClass) {
         forceRestartSchoolNameAnimation();
     } else if (hasTypingClass && !isTypingActive) {
-        // Jika ada typing class tapi tidak aktif, restart
         forceRestartSchoolNameAnimation();
-    } else {
-        // Jika animasi warna, pastikan berjalan
-        if (hasAnimatedClass) {
-            const animatedSpan = schoolNameElement.querySelector('.school-name-animated');
-            animatedSpan.style.animation = '';
-        }
+    } else if (hasAnimatedClass) {
+        const animatedSpan = schoolNameElement.querySelector('.school-name-animated');
+        animatedSpan.style.animation = '';
     }
     
     console.log('▶️ School name animation resumed');
 }
 
-/**
- * Nonaktifkan animasi
- */
 function disableSchoolNameAnimation() {
     schoolNameAnimationEnabled = false;
     isLoopingEnabled = false;
@@ -546,9 +510,6 @@ function disableSchoolNameAnimation() {
     console.log('🔇 School name animation disabled');
 }
 
-/**
- * Aktifkan animasi
- */
 function enableSchoolNameAnimation() {
     if (schoolNameAnimationEnabled) return;
     
@@ -564,18 +525,13 @@ function enableSchoolNameAnimation() {
 
 // ======================= OBSERVER DAN LISTENER =======================
 
-/**
- * Setup observer untuk mendeteksi perubahan teks nama sekolah
- */
 function setupSchoolNameObserver() {
     const schoolNameElement = document.getElementById('schoolNameDisplay');
     if (!schoolNameElement) {
-        console.warn('⚠️ schoolNameDisplay not found for observer setup');
         setTimeout(() => setupSchoolNameObserver(), 500);
         return;
     }
     
-    // Hapus observer lama jika ada
     if (window._schoolNameObserver) {
         window._schoolNameObserver.disconnect();
     }
@@ -614,9 +570,6 @@ function setupSchoolNameObserver() {
     console.log('👁️ School name observer set up');
 }
 
-/**
- * Setup listener untuk Firebase realtime
- */
 function setupSchoolNameFirebaseListener() {
     if (typeof db === 'undefined' || !db) {
         console.warn('⚠️ Firebase not available, skipping realtime listener');
@@ -624,7 +577,6 @@ function setupSchoolNameFirebaseListener() {
         return;
     }
     
-    // Hapus listener lama jika ada
     if (window._schoolNameFirebaseListener) {
         db.ref('system_config/schoolName').off('value', window._schoolNameFirebaseListener);
     }
@@ -634,10 +586,11 @@ function setupSchoolNameFirebaseListener() {
         if (newName && newName !== originalSchoolName) {
             console.log('📡 School name changed from Firebase:', newName);
             originalSchoolName = newName;
+            // Invalidate cache
+            cachedSchoolName = null;
             
             const schoolNameElement = document.getElementById('schoolNameDisplay');
             if (schoolNameElement) {
-                // Update element tanpa memicu observer berlebihan
                 if (typingInterval) {
                     clearInterval(typingInterval);
                     typingInterval = null;
@@ -662,9 +615,6 @@ function setupSchoolNameFirebaseListener() {
     console.log('📡 Firebase school name listener set up');
 }
 
-/**
- * Setup listener untuk perubahan tema (dark/light mode)
- */
 function setupThemeChangeListener() {
     const themeObserver = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
@@ -672,7 +622,6 @@ function setupThemeChangeListener() {
                 const schoolNameElement = document.getElementById('schoolNameDisplay');
                 const animatedSpan = schoolNameElement?.querySelector('.school-name-animated');
                 if (animatedSpan) {
-                    // Refresh animasi dengan class baru
                     animatedSpan.style.animation = 'none';
                     setTimeout(() => {
                         animatedSpan.style.animation = '';
@@ -687,9 +636,6 @@ function setupThemeChangeListener() {
     console.log('🎨 Theme change listener set up');
 }
 
-/**
- * Setup listener untuk tab dashboard aktif
- */
 function setupDashboardTabListener() {
     const originalSwitchTab = window.switchTab;
     if (originalSwitchTab && typeof originalSwitchTab === 'function') {
@@ -712,9 +658,6 @@ function setupDashboardTabListener() {
     }
 }
 
-/**
- * Setup periodic check untuk memastikan animasi tetap berjalan
- */
 function setupPeriodicAnimationCheck() {
     setInterval(() => {
         const schoolNameElement = document.getElementById('schoolNameDisplay');
@@ -724,43 +667,43 @@ function setupPeriodicAnimationCheck() {
         const hasAnimatedClass = schoolNameElement.querySelector('.school-name-animated');
         const isEmpty = schoolNameElement.innerHTML === '' || schoolNameElement.textContent === '';
         
-        // Jika element kosong atau tidak memiliki animasi yang benar
         if ((isEmpty || (!hasTypingClass && !hasAnimatedClass)) && schoolNameAnimationEnabled && !isTypingActive) {
             console.log('🔄 Periodic check: animation missing, restarting');
             forceRestartSchoolNameAnimation();
         }
         
-        // Jika sudah dalam mode animated tapi tidak ada animasi warna
         if (hasAnimatedClass && hasAnimatedClass.style.animation === 'none') {
             hasAnimatedClass.style.animation = '';
         }
-    }, 15000); // Cek setiap 15 detik
+    }, 15000);
     console.log('🔄 Periodic animation check set up (every 15 seconds)');
 }
 
 // ======================= INISIALISASI LENGKAP =======================
 
-/**
- * Inisialisasi lengkap semua komponen
- */
-function initFullSchoolNameAnimation() {
+async function initFullSchoolNameAnimation() {
     if (isInitialized) {
         console.log('⚠️ School name animation already initialized');
         return;
     }
     
-    console.log('🚀 Initializing full school name animation system (LOOPING TYPING)...');
+    console.log('🚀 Initializing full school name animation system with API integration...');
     
-    const init = () => {
+    const init = async () => {
         injectAnimationStyles();
+        
+        // Coba ambil nama sekolah dari API
+        const apiSchoolName = await initSchoolNameFromAPI();
+        
         setupSchoolNameObserver();
         setupSchoolNameFirebaseListener();
         setupThemeChangeListener();
         setupDashboardTabListener();
         setupPeriodicAnimationCheck();
-        initSchoolNameAnimation();
+        
+        await initSchoolNameAnimation();
         isInitialized = true;
-        console.log('✅ Full school name animation system initialized with LOOPING TYPING!');
+        console.log('✅ Full school name animation system initialized with API integration!');
     };
     
     if (document.readyState === 'loading') {
@@ -772,13 +715,9 @@ function initFullSchoolNameAnimation() {
     }
 }
 
-/**
- * Reset seluruh sistem animasi (untuk debugging)
- */
 function resetSchoolNameAnimationSystem() {
     console.log('🔄 Resetting school name animation system...');
     
-    // Bersihkan semua listener
     if (window._schoolNameObserver) {
         window._schoolNameObserver.disconnect();
         window._schoolNameObserver = null;
@@ -794,16 +733,14 @@ function resetSchoolNameAnimationSystem() {
     isTypingActive = false;
     isInitialized = false;
     isLoopingEnabled = true;
+    cachedSchoolName = null;
+    cachedSchoolNameTimestamp = 0;
     
-    // Re-init
     setTimeout(() => {
         initFullSchoolNameAnimation();
     }, 100);
 }
 
-/**
- * Mengatur ulang loop typing dengan teks terbaru (tanpa reset penuh)
- */
 function refreshLoopingTyping() {
     const schoolNameElement = document.getElementById('schoolNameDisplay');
     if (!schoolNameElement) return;
@@ -831,8 +768,10 @@ window.enableSchoolNameAnimation = enableSchoolNameAnimation;
 window.resetSchoolNameAnimationSystem = resetSchoolNameAnimationSystem;
 window.refreshLoopingTyping = refreshLoopingTyping;
 window.stopLoopingTyping = stopLoopingTyping;
+window.fetchSchoolNameFromAPI = fetchSchoolNameFromAPI;
+window.updateSchoolNameToAPI = updateSchoolNameToAPI;
 
 // Auto initialize
 initFullSchoolNameAnimation();
 
-console.log('✅ school-name-animation.js v6.0 loaded - LOOPING TYPING + Looping color change animation ready!');
+console.log("✅ school-name-animation.js V7.0 loaded - Terintegrasi dengan API Backend Vercel! LOOPING TYPING + Looping color change animation ready!");

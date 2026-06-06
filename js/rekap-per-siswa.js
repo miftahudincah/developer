@@ -1,10 +1,11 @@
-// rekap-per-siswa.js - VERSION 2.1 (DENGAN PERIODE LENGKAP DI MODAL)
+// rekap-per-siswa.js - VERSION 3.0 (INTEGRATED WITH VERCEL BACKEND API)
 // Fitur Rekap Absensi per Siswa - Tampil dalam Modal
-// PERUBAHAN V2.1: 
-//   - Menambahkan pilihan periode lengkap di dalam modal
-//   - Periode: Hari Ini, Minggu Ini, Bulan Ini, Semester Ini, Tahun Ini, Pertama Kali, Custom Range
-//   - Periode dapat diubah langsung dari modal tanpa harus ke halaman utama
+// V3.0: Terintegrasi dengan API backend Vercel untuk pengambilan data
+// Periode: Hari Ini, Minggu Ini, Bulan Ini, Semester Ini, Tahun Ini, Pertama Kali, Custom Range
 // ============================================================================
+
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
 let currentRekapPerSiswaData = null;
 let currentSelectedStudent = null;
@@ -14,6 +15,137 @@ let currentModalPeriod = 'minggu'; // default period
 let currentModalCustomStart = null;
 let currentModalCustomEnd = null;
 const rekapPhotoCache = new Map();
+
+// Cache untuk data dari API
+let cachedStudentsData = null;
+let cachedAttendanceData = null;
+let cachedStudentsTimestamp = 0;
+let cachedAttendanceTimestamp = 0;
+const DATA_CACHE_TTL = 2 * 60 * 1000; // 2 menit
+
+// ======================= FUNGSI API BACKEND =======================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
+    }
+    return Promise.resolve(null);
+}
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        throw error;
+    }
+}
+
+/**
+ * Ambil data siswa dari API backend
+ */
+async function fetchStudentsFromAPI() {
+    try {
+        const now = Date.now();
+        if (cachedStudentsData && (now - cachedStudentsTimestamp) < DATA_CACHE_TTL) {
+            console.log("📦 Using cached students data");
+            return cachedStudentsData;
+        }
+        
+        console.log("📊 Fetching students from API...");
+        const data = await apiRequest('/students');
+        const students = data.data || [];
+        
+        // Transform ke format yang sama dengan dbData.users
+        const formattedStudents = students.map(s => ({
+            id: s.id,
+            nama: s.nama,
+            kelas: s.kelas,
+            jurusan: s.jurusan,
+            delayOut: s.delayOut || 60,
+            hasAccount: s.hasAccount || false
+        }));
+        
+        cachedStudentsData = formattedStudents;
+        cachedStudentsTimestamp = now;
+        return formattedStudents;
+    } catch (error) {
+        console.error("Fetch students from API error:", error);
+        // Fallback ke data lokal
+        if (dbData && dbData.users) return dbData.users;
+        return [];
+    }
+}
+
+/**
+ * Ambil data absensi dari API backend
+ */
+async function fetchAttendanceFromAPI() {
+    try {
+        const now = Date.now();
+        if (cachedAttendanceData && (now - cachedAttendanceTimestamp) < DATA_CACHE_TTL) {
+            console.log("📦 Using cached attendance data");
+            return cachedAttendanceData;
+        }
+        
+        console.log("📊 Fetching attendance from API...");
+        const data = await apiRequest('/attendance');
+        const attendance = data.data || [];
+        
+        // Transform ke format yang sama dengan dbData.attendance
+        const formattedAttendance = attendance.map(a => ({
+            id: a.id,
+            studentId: a.studentId,
+            timestamp: a.timestamp,
+            date: a.date,
+            timeIn: a.timeIn,
+            timeOut: a.timeOut,
+            nama: a.nama,
+            kelas: a.kelas,
+            jurusan: a.jurusan,
+            status: a.status
+        }));
+        
+        cachedAttendanceData = formattedAttendance;
+        cachedAttendanceTimestamp = now;
+        return formattedAttendance;
+    } catch (error) {
+        console.error("Fetch attendance from API error:", error);
+        // Fallback ke data lokal
+        if (dbData && dbData.attendance) return dbData.attendance;
+        return [];
+    }
+}
+
+/**
+ * Ambil data users auth dari API backend
+ */
+async function fetchUsersAuthFromAPI() {
+    try {
+        const data = await apiRequest('/users');
+        return data.data || [];
+    } catch (error) {
+        console.error("Fetch users auth from API error:", error);
+        if (dbData && dbData.users_auth) return dbData.users_auth;
+        return [];
+    }
+}
 
 // ======================= FUNGSI PERIODE LENGKAP ========================
 
@@ -124,7 +256,8 @@ function getRekapStudentPhotoUrl(studentId, studentName) {
         return rekapPhotoCache.get(studentId);
     }
     
-    const userAuth = dbData?.users_auth?.find(u => u.fpId == studentId);
+    // Cari user auth dari dbData atau API
+    const userAuth = (dbData?.users_auth || []).find(u => u.fpId == studentId);
     
     let photoUrl;
     if (userAuth && userAuth.photoUrl && userAuth.photoUrl !== 'null' && userAuth.photoUrl !== 'undefined') {
@@ -162,14 +295,11 @@ function setupRekapPhotoListener() {
 
 // ======================= INISIALISASI ========================
 
-function initRekapPerSiswa() {
-    console.log("📋 Initializing Rekap per Siswa module (Modal version with period options)...");
+async function initRekapPerSiswa() {
+    console.log("📋 Initializing Rekap per Siswa module (API integrated)...");
     
-    if (dbData && dbData.users && dbData.users.length > 0) {
-        updateStudentList();
-    } else {
-        setTimeout(initRekapPerSiswa, 500);
-    }
+    // Load data dari API
+    await loadAllDataForRekap();
     
     setupRekapPhotoListener();
     
@@ -179,6 +309,28 @@ function initRekapPerSiswa() {
     thirtyDaysAgo.setDate(today.getDate() - 30);
     currentModalCustomStart = thirtyDaysAgo.toISOString().split('T')[0];
     currentModalCustomEnd = today.toISOString().split('T')[0];
+}
+
+async function loadAllDataForRekap() {
+    try {
+        const [students, attendance, usersAuth] = await Promise.all([
+            fetchStudentsFromAPI(),
+            fetchAttendanceFromAPI(),
+            fetchUsersAuthFromAPI()
+        ]);
+        
+        // Update global dbData jika perlu
+        if (!dbData) window.dbData = {};
+        dbData.users = students;
+        dbData.attendance = attendance;
+        dbData.users_auth = usersAuth;
+        
+        updateStudentList();
+        
+    } catch (error) {
+        console.error("Load data for rekap error:", error);
+        updateStudentList();
+    }
 }
 
 function updateStudentList() {
@@ -203,8 +355,8 @@ async function openRekapPerSiswaModal(studentId, studentName) {
         return;
     }
     
-    // Update daftar siswa
-    updateStudentList();
+    // Refresh data terbaru
+    await loadAllDataForRekap();
     
     // Cari data siswa
     const student = dbData.users?.find(s => s.id == studentId);
@@ -216,7 +368,6 @@ async function openRekapPerSiswaModal(studentId, studentName) {
     // Update current student index untuk navigasi
     currentStudentIndex = currentStudentList.findIndex(s => s.id == studentId);
     
-    // Tampilkan loading
     if (typeof showToast === 'function') showToast(`📊 Memuat rekap ${student.nama}...`, "info");
     
     // Hitung data rekap dengan periode yang dipilih
@@ -233,7 +384,8 @@ async function loadRekapDataForModal(student) {
         periodLabel = `Custom (${formatIndonesianDateShort(currentModalCustomStart)} - ${formatIndonesianDateShort(currentModalCustomEnd)})`;
     } 
     else if (currentModalPeriod === 'pertama') {
-        const firstAttendance = dbData.attendance
+        const attendance = await fetchAttendanceFromAPI();
+        const firstAttendance = attendance
             .filter(a => a.studentId == student.id && a.date)
             .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
         
@@ -275,6 +427,7 @@ async function loadRekapDataForModal(student) {
  */
 async function calculateRekapForStudent(student, startDate, endDate, periodLabel) {
     const studentId = student.id;
+    const attendance = await fetchAttendanceFromAPI();
     
     // Jika startDate tidak ada (belum pernah absen)
     if (!startDate) {
@@ -295,7 +448,7 @@ async function calculateRekapForStudent(student, startDate, endDate, periodLabel
         };
     }
     
-    let attendanceRecords = dbData.attendance.filter(a => a.studentId == studentId);
+    let attendanceRecords = attendance.filter(a => a.studentId == studentId);
     attendanceRecords = attendanceRecords.filter(a => {
         const recordDate = new Date(a.date);
         return recordDate >= startDate && recordDate <= endDate;
@@ -305,10 +458,11 @@ async function calculateRekapForStudent(student, startDate, endDate, periodLabel
         attendanceRecords = filterAttendanceByHoliday(attendanceRecords);
     }
     
+    // Manual status dari Firebase (fallback)
     let manualStatusMap = {};
     if (typeof fetchManualStatusForRange === 'function') {
         manualStatusMap = await fetchManualStatusForRange(startDate, endDate);
-    } else {
+    } else if (typeof db !== 'undefined' && db) {
         const currentDate = new Date(startDate);
         const end = new Date(endDate);
         while (currentDate <= end) {
@@ -445,7 +599,6 @@ async function navigateRekapStudent(direction) {
         currentStudentIndex = newIndex;
         const student = currentStudentList[currentStudentIndex];
         if (student) {
-            // Tampilkan loading di modal
             const modalContent = document.querySelector('#modal-rekap-per-siswa .modal-box > div:first-child');
             if (modalContent) {
                 modalContent.innerHTML = '<div style="text-align:center; padding:40px;">⏳ Memuat data siswa...</div>';
@@ -460,13 +613,11 @@ async function navigateRekapStudent(direction) {
 function changeModalPeriod(period) {
     currentModalPeriod = period;
     
-    // Tampilkan/hide custom range inputs
     const customRangeDiv = document.getElementById('modal-custom-range');
     if (customRangeDiv) {
         customRangeDiv.style.display = period === 'custom' ? 'flex' : 'none';
     }
     
-    // Reload data dengan periode baru
     if (currentRekapPerSiswaData && currentRekapPerSiswaData.student) {
         loadRekapDataForModal(currentRekapPerSiswaData.student);
     }
@@ -490,7 +641,7 @@ function renderRekapPerSiswaModal(data) {
     if (!data) return;
     
     const student = data.student;
-    const hasAccount = dbData.users_auth?.some(u => u.fpId == student.id);
+    const hasAccount = (dbData?.users_auth || []).some(u => u.fpId == student.id);
     const accountBadge = hasAccount 
         ? '<span class="badge-account" style="background:#4caf50; font-size:11px; margin-left:10px; padding:2px 8px; border-radius:20px;">✓ Berakun</span>' 
         : '<span class="badge-no-account" style="background:#888; font-size:11px; margin-left:10px; padding:2px 8px; border-radius:20px;">❌ Belum Berakun</span>';
@@ -498,13 +649,12 @@ function renderRekapPerSiswaModal(data) {
     const avatarUrl = getRekapStudentPhotoUrl(student.id, student.nama);
     const studentInitial = student.nama ? student.nama.charAt(0).toUpperCase() : 'U';
     
-    // Build detail tabel
     let tableRows = '';
     let no = 1;
     for (const item of data.details) {
         tableRows += `
             <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 10px; text-align: center;">${no++}</td>
+                <td style="padding: 10px; text-align: center;">${no++}</div>
                 <td style="padding: 10px; text-align: center;">${formatIndonesianDateShort(item.date)}</div>
                 <td style="padding: 10px; text-align: center;">${item.dayName}</div>
                 <td style="padding: 10px; text-align: center;">
@@ -550,7 +700,6 @@ function renderRekapPerSiswaModal(data) {
         </div>
     `;
     
-    // Navigasi prev/next buttons
     const navButtons = currentStudentList.length > 1 ? `
         <div style="display: flex; gap: 10px; align-items: center;">
             <button class="btn-icon" onclick="navigateRekapStudent(-1)" 
@@ -567,7 +716,6 @@ function renderRekapPerSiswaModal(data) {
         </div>
     ` : '';
     
-    // Pilihan periode yang sudah dipilih
     const periodOptions = `
         <select id="modal-period-select" onchange="changeModalPeriod(this.value)" style="padding: 8px 12px; border-radius: 30px; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary);">
             <option value="hari" ${currentModalPeriod === 'hari' ? 'selected' : ''}>📅 Hari Ini</option>
@@ -580,7 +728,6 @@ function renderRekapPerSiswaModal(data) {
         </select>
     `;
     
-    // Custom range inputs
     const customRangeHtml = `
         <div id="modal-custom-range" style="display: ${currentModalPeriod === 'custom' ? 'flex' : 'none'}; gap: 10px; align-items: center; flex-wrap: wrap;">
             <input type="date" id="modal-custom-start" value="${currentModalCustomStart || ''}" style="padding: 8px 12px; border-radius: 30px; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary);">
@@ -602,7 +749,6 @@ function renderRekapPerSiswaModal(data) {
                 </div>
                 
                 <div style="padding: 20px;">
-                    <!-- Header Info Siswa -->
                     <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap;">
                         <div style="display: flex; align-items: center; gap: 15px;">
                             <img src="${avatarUrl}" 
@@ -626,7 +772,6 @@ function renderRekapPerSiswaModal(data) {
                         </div>
                     </div>
                     
-                    <!-- Pilihan Periode -->
                     <div style="margin-bottom: 20px; padding: 15px; background: var(--bg-hover); border-radius: 16px;">
                         <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
                             <label style="font-weight: 500;">📅 Pilih Periode:</label>
@@ -635,7 +780,6 @@ function renderRekapPerSiswaModal(data) {
                         ${customRangeHtml}
                     </div>
                     
-                    <!-- Ringkasan Statistik -->
                     <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
                         <div class="rekap-stat-card" style="text-align: center; background: rgba(76, 175, 80, 0.15); padding: 8px 15px; border-radius: 12px; flex: 1; min-width: 70px;">
                             <div style="font-size: 24px; font-weight: bold; color: #4caf50;">${data.hadir}</div>
@@ -659,7 +803,6 @@ function renderRekapPerSiswaModal(data) {
                         </div>
                     </div>
                     
-                    <!-- Periode dan Progress -->
                     <div style="margin-bottom: 20px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                             <div style="color: var(--text-muted); font-size: 0.85rem;">
@@ -677,7 +820,6 @@ function renderRekapPerSiswaModal(data) {
                         </div>
                     </div>
                     
-                    <!-- Tabel Detail -->
                     ${emptyMessage}
                 </div>
                 
@@ -688,13 +830,11 @@ function renderRekapPerSiswaModal(data) {
         </div>
     `;
     
-    // Hapus modal lama jika ada
     const existingModal = document.getElementById('modal-rekap-per-siswa');
     if (existingModal) existingModal.remove();
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    // Update label periode di modal setelah render
     const periodLabelSpan = document.getElementById('modal-period-label');
     if (periodLabelSpan) {
         periodLabelSpan.textContent = data.periodLabel || `${formatIndonesianDateShort(data.startDate)} - ${formatIndonesianDateShort(data.endDate)}`;
@@ -879,6 +1019,7 @@ async function exportCurrentRekapPerSiswaToPDF() {
                 <p>Dicetak oleh: ${escapeHtml(currentUser?.nama || 'Admin')} | Tanggal: ${dateNow} ${timeNow}</p>
                 <p>* Data dihitung berdasarkan hari sekolah (tidak termasuk hari libur mingguan & khusus)</p>
                 <p>Sistem Absensi IoT - Fingerprint & Real-time</p>
+                <p>API Backend: ${BACKEND_API_URL}</p>
             </div>
             <div class="no-print" style="text-align:center; margin-top:20px;">
                 <button onclick="window.print()" style="padding:10px 20px; background:#00bcd4; color:white; border:none; border-radius:5px; cursor:pointer;">🖨️ Cetak / Simpan PDF</button>
@@ -896,7 +1037,7 @@ async function exportCurrentRekapPerSiswaToPDF() {
 }
 
 function showRekapStudentPhoto(studentId, studentName, photoUrl) {
-    const userAuth = dbData?.users_auth?.find(u => u.fpId == studentId);
+    const userAuth = (dbData?.users_auth || []).find(u => u.fpId == studentId);
     const hasAccount = !!userAuth;
     const accountInfo = hasAccount 
         ? `✅ Sudah memiliki akun (${userAuth.email || userAuth.nama})` 
@@ -945,6 +1086,10 @@ function cleanupRekapPerSiswa() {
     currentStudentList = [];
     currentStudentIndex = -1;
     rekapPhotoCache.clear();
+    cachedStudentsData = null;
+    cachedAttendanceData = null;
+    cachedStudentsTimestamp = 0;
+    cachedAttendanceTimestamp = 0;
     console.log("🧹 Rekap per Siswa system cleaned up");
 }
 
@@ -962,5 +1107,8 @@ window.getRekapStudentPhotoUrl = getRekapStudentPhotoUrl;
 window.refreshRekapPhotoCache = refreshRekapPhotoCache;
 window.showRekapStudentPhoto = showRekapStudentPhoto;
 window.getRekapDateRange = getRekapDateRange;
+window.loadAllDataForRekap = loadAllDataForRekap;
+window.fetchStudentsFromAPI = fetchStudentsFromAPI;
+window.fetchAttendanceFromAPI = fetchAttendanceFromAPI;
 
-console.log("✅ rekap-per-siswa.js V2.1 loaded - Modal dengan pilihan periode lengkap (Hari, Minggu, Bulan, Semester, Tahun, Pertama Kali, Custom)");
+console.log("✅ rekap-per-siswa.js V3.0 loaded - Terintegrasi dengan API Backend Vercel!");

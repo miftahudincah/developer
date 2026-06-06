@@ -1,4 +1,4 @@
-// rekap.js - VERSION 4.0 (DENGAN ROLE BARU: WAKIL KEPALA SEKOLAH & STAFF TU)
+// rekap.js - VERSION 5.0 (INTEGRATED WITH VERCEL BACKEND API)
 // Fitur Rekap Absensi per Siswa
 // Role yang didukung:
 // - Developer: akses penuh
@@ -7,7 +7,11 @@
 // - Staff TU: akses baca (dapat melihat rekap)
 // - Guru: akses penuh
 // - Siswa: TIDAK memiliki akses
+// V5.0: Terintegrasi dengan API backend Vercel
 // ============================================================================
+
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
 let currentRekapData = [];
 let rekapInitDone = false;
@@ -17,11 +21,125 @@ let rekapDataReadyListenerAdded = false;
 let rekapUiReadyListenerAdded = false;
 let isLoadingRekap = false;
 
-// ======================= ROLE HELPER FUNCTIONS ========================
+// Cache untuk data dari API
+let cachedAttendanceData = null;
+let cachedAttendanceTimestamp = 0;
+const ATTENDANCE_CACHE_TTL = 2 * 60 * 1000; // 2 menit
+
+// ======================= FUNGSI API BACKEND =======================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
+    }
+    return Promise.resolve(null);
+}
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        throw error;
+    }
+}
 
 /**
- * Mendapatkan display name role
+ * Ambil data absensi dari API backend
  */
+async function fetchAttendanceFromAPI(force = false) {
+    try {
+        const now = Date.now();
+        if (!force && cachedAttendanceData && (now - cachedAttendanceTimestamp) < ATTENDANCE_CACHE_TTL) {
+            console.log("📦 Using cached attendance data");
+            return cachedAttendanceData;
+        }
+        
+        console.log("📊 Fetching attendance from API...");
+        const data = await apiRequest('/attendance');
+        const attendance = data.data || [];
+        
+        // Transform ke format yang sama dengan dbData.attendance
+        const formattedAttendance = attendance.map(a => ({
+            id: a.id,
+            studentId: a.studentId,
+            timestamp: a.timestamp,
+            date: a.date,
+            timeIn: a.timeIn,
+            timeOut: a.timeOut,
+            nama: a.nama,
+            kelas: a.kelas,
+            jurusan: a.jurusan,
+            status: a.status
+        }));
+        
+        cachedAttendanceData = formattedAttendance;
+        cachedAttendanceTimestamp = now;
+        
+        // Update dbData.attendance untuk kompatibilitas
+        if (dbData) dbData.attendance = formattedAttendance;
+        
+        return formattedAttendance;
+    } catch (error) {
+        console.error("Fetch attendance from API error:", error);
+        // Fallback ke data lokal
+        if (dbData && dbData.attendance) return dbData.attendance;
+        return [];
+    }
+}
+
+/**
+ * Ambil data siswa dari API backend
+ */
+async function fetchStudentsFromAPI() {
+    try {
+        console.log("📊 Fetching students from API...");
+        const data = await apiRequest('/students');
+        const students = data.data || [];
+        
+        // Update dbData.users untuk kompatibilitas
+        if (dbData) dbData.users = students;
+        
+        return students;
+    } catch (error) {
+        console.error("Fetch students from API error:", error);
+        if (dbData && dbData.users) return dbData.users;
+        return [];
+    }
+}
+
+/**
+ * Ambil data manual status dari Firebase (fallback)
+ */
+async function fetchManualStatusFromFirebase(dateStr) {
+    if (typeof db === 'undefined' || !db) return null;
+    try {
+        const snapshot = await db.ref(`attendance_status/${dateStr}`).once('value');
+        return snapshot.val();
+    } catch (error) {
+        console.warn(`Failed to fetch manual status for ${dateStr}:`, error);
+        return null;
+    }
+}
+
+// ======================= ROLE HELPER FUNCTIONS ========================
+
 function getRoleDisplayName(role) {
     const names = {
         developer: 'Developer',
@@ -34,9 +152,6 @@ function getRoleDisplayName(role) {
     return names[role] || role.toUpperCase();
 }
 
-/**
- * Mendapatkan icon untuk role
- */
 function getRoleIcon(role) {
     const icons = {
         developer: '👨‍💻',
@@ -64,46 +179,26 @@ if (typeof getHolidayCountInRange === 'undefined') {
 
 // ======================= CEK AKSES REKAP ========================
 
-/**
- * Cek apakah user memiliki akses ke fitur rekap
- * - Siswa: TIDAK memiliki akses
- * - Staff TU: memiliki akses baca
- * - Guru/Wakil Kepala Sekolah/Admin/Developer: memiliki akses penuh
- */
 function isRekapAccessible() {
     if (!currentUser) return false;
-    // Semua role kecuali siswa dapat mengakses rekap
-    // Staff TU dapat melihat rekap (read-only)
     const allowedRoles = ['admin', 'developer', 'wakil_kepala', 'staff_tu', 'guru'];
     return allowedRoles.includes(currentUser.role);
 }
 
-/**
- * Cek apakah user memiliki akses edit/export rekap
- * - Staff TU: hanya baca, tidak bisa export
- * - Guru/Wakil/Admin/Developer: bisa export
- */
 function canExportRekap() {
     if (!currentUser) return false;
     const exportRoles = ['admin', 'developer', 'wakil_kepala', 'guru'];
     return exportRoles.includes(currentUser.role);
 }
 
-/**
- * Mendapatkan pesan akses berdasarkan role
- */
 function getAccessDeniedMessage() {
     if (!currentUser) return "Silakan login terlebih dahulu.";
-    
     if (currentUser.role === 'siswa') {
         return "Fitur Rekap Absensi hanya tersedia untuk Guru, Staff TU, Wakil Kepala Sekolah, dan Kepala Sekolah.";
     }
     return "Anda tidak memiliki akses ke fitur ini.";
 }
 
-/**
- * Mendapatkan daftar role yang diizinkan untuk ditampilkan di pesan
- */
 function getAllowedRolesList() {
     return [
         { role: 'admin', label: 'Kepala Sekolah', icon: '👑', color: '#f44336' },
@@ -114,19 +209,13 @@ function getAllowedRolesList() {
     ];
 }
 
-/**
- * Menampilkan pesan akses terbatas
- */
 function showRekapBlockedMessage() {
     const tabRekap = document.getElementById('tab-rekap');
     if (!tabRekap) return;
-    
     if (tabRekap.querySelector('.rekap-blocked-message')) return;
-    
     if (!tabRekap.getAttribute('data-original-content')) {
         tabRekap.setAttribute('data-original-content', tabRekap.innerHTML);
     }
-    
     const allowedRoles = getAllowedRolesList();
     const rolesHtml = allowedRoles.map(r => `
         <span style="background: ${r.color}; padding: 5px 15px; border-radius: 20px; color: white;">
@@ -148,13 +237,9 @@ function showRekapBlockedMessage() {
     `;
 }
 
-/**
- * Merestore konten asli tab rekap
- */
 function restoreRekapContent() {
     const tabRekap = document.getElementById('tab-rekap');
     if (!tabRekap) return;
-    
     const originalContent = tabRekap.getAttribute('data-original-content');
     if (originalContent) {
         tabRekap.innerHTML = originalContent;
@@ -169,8 +254,12 @@ function setupRekapDataReadyListener() {
     rekapDataReadyListenerAdded = true;
     console.log("📡 Setting up dataReady event listener for rekap module");
 
-    window.addEventListener('dataReady', (e) => {
+    window.addEventListener('dataReady', async (e) => {
         console.log("📊 rekap.js: dataReady received, initializing rekap system");
+        
+        // Refresh data dari API
+        await fetchAttendanceFromAPI(true);
+        await fetchStudentsFromAPI();
         
         if (!isRekapAccessible()) {
             const roleDisplay = getRoleDisplayName(currentUser?.role);
@@ -200,7 +289,6 @@ function setupRekapUiReadyListener() {
             showRekapBlockedMessage();
             return;
         }
-        
         restoreRekapContent();
         if (rekapInitDone) {
             if (document.getElementById('tab-rekap')?.classList.contains('active')) {
@@ -222,7 +310,7 @@ function initRekap() {
         return;
     }
     
-    console.log("📊 Initializing rekap system...");
+    console.log("📊 Initializing rekap system with API integration...");
     
     const periodSelect = document.getElementById('rekapPeriod');
     if (!periodSelect) {
@@ -281,7 +369,6 @@ function setupRekapTableObserver() {
     const observer = new MutationObserver(() => {
         attachRekapRowClickListeners();
     });
-    
     const tbody = document.getElementById('rekapTbody');
     if (tbody) {
         observer.observe(tbody, { childList: true, subtree: true });
@@ -383,19 +470,19 @@ async function fetchManualStatusForRange(startDate, endDate) {
         const dateStr = currentDate.toISOString().split('T')[0];
         if (!isHoliday(dateStr)) {
             dateStrings.push(dateStr);
-            datePromises.push(db.ref(`attendance_status/${dateStr}`).once('value'));
+            datePromises.push(fetchManualStatusFromFirebase(dateStr));
         }
         currentDate.setDate(currentDate.getDate() + 1);
     }
     
     if (datePromises.length === 0) return manualData;
     
-    console.log(`📡 Fetching manual status for ${datePromises.length} non-holiday dates in parallel...`);
+    console.log(`📡 Fetching manual status for ${datePromises.length} non-holiday dates...`);
     
-    const snapshots = await Promise.all(datePromises);
-    snapshots.forEach((snapshot, idx) => {
-        if (snapshot.exists()) {
-            manualData[dateStrings[idx]] = snapshot.val();
+    const results = await Promise.all(datePromises);
+    results.forEach((result, idx) => {
+        if (result) {
+            manualData[dateStrings[idx]] = result;
         }
     });
     
@@ -536,7 +623,9 @@ function renderRekapTable(data) {
                         </tr>
                     </thead>
                 `;
-                tabRekap.querySelector('.table-container')?.appendChild(table);
+                const container = tabRekap.querySelector('.table-container');
+                if (container) container.appendChild(table);
+                else tabRekap.appendChild(table);
             }
             tbody = table.querySelector('tbody');
             if (!tbody) {
@@ -666,14 +755,8 @@ function attachRekapRowClickListeners() {
     rows.forEach(row => {
         row.removeEventListener('click', handleRekapRowClick);
         row.addEventListener('click', handleRekapRowClick);
-        
-        row.addEventListener('mouseenter', () => {
-            row.style.backgroundColor = 'var(--bg-hover)';
-        });
-        row.addEventListener('mouseleave', () => {
-            row.style.backgroundColor = '';
-        });
-        
+        row.addEventListener('mouseenter', () => { row.style.backgroundColor = 'var(--bg-hover)'; });
+        row.addEventListener('mouseleave', () => { row.style.backgroundColor = ''; });
         row.setAttribute('title', 'Klik untuk melihat detail rekap per siswa');
     });
 }
@@ -683,7 +766,7 @@ async function handleRekapRowClick(event) {
     
     if (!isRekapAccessible()) {
         const roleDisplay = getRoleDisplayName(currentUser?.role);
-        showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
+        if (typeof showToast === 'function') showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
         return;
     }
     
@@ -714,10 +797,9 @@ async function handleRekapRowClick(event) {
 
 async function openRekapPerSiswa(studentId, studentName) {
     if (!isRekapAccessible()) {
-        showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
+        if (typeof showToast === 'function') showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
         return;
     }
-    
     if (typeof openRekapPerSiswaModal === 'function') {
         await openRekapPerSiswaModal(studentId, studentName);
     } else {
@@ -765,12 +847,14 @@ function renderRekapCharts(data, startDate, endDate) {
         });
     }
     
-    const attendanceByDate = {};
-    let filteredAttendance = dbData.attendance.filter(a => {
+    // Gunakan data dari dbData.attendance (sudah diupdate dari API)
+    let filteredAttendance = (dbData.attendance || []).filter(a => {
         const recordDate = new Date(a.date);
         return recordDate >= startDate && recordDate <= endDate;
     });
     filteredAttendance = filterAttendanceByHoliday(filteredAttendance);
+    
+    const attendanceByDate = {};
     filteredAttendance.forEach(a => {
         if (!attendanceByDate[a.date]) attendanceByDate[a.date] = 0;
         attendanceByDate[a.date]++;
@@ -826,8 +910,12 @@ async function loadRekap(retryCount = 0, forceRefresh = false) {
         return;
     }
 
-    if (!dbData || !dbData.attendance || !dbData.users) {
-        console.log("⏳ loadRekap: dbData belum siap, schedule ulang...");
+    // Refresh data dari API
+    let attendanceData = await fetchAttendanceFromAPI(forceRefresh);
+    let studentsData = await fetchStudentsFromAPI();
+    
+    if ((!attendanceData || attendanceData.length === 0) && (!dbData.attendance || dbData.attendance.length === 0)) {
+        console.log("⏳ loadRekap: Data belum siap, schedule ulang...");
         if (retryCount < MAX_RETRY) {
             setTimeout(() => loadRekap(retryCount + 1, forceRefresh), RETRY_DELAY);
         } else {
@@ -842,7 +930,7 @@ async function loadRekap(retryCount = 0, forceRefresh = false) {
 
     const validStudents = getValidStudentsList();
     if (validStudents.length === 0) {
-        console.warn(`⚠️ loadRekap: Tidak ada siswa valid (total: ${dbData.users.length})`);
+        console.warn(`⚠️ loadRekap: Tidak ada siswa valid (total: ${dbData.users?.length || 0})`);
         if (retryCount < MAX_RETRY) {
             setTimeout(() => loadRekap(retryCount + 1, forceRefresh), RETRY_DELAY);
             return;
@@ -913,11 +1001,11 @@ async function loadRekap(retryCount = 0, forceRefresh = false) {
     
     const tbody = document.getElementById('rekapTbody');
     if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:40px;">⏳ Menghitung data rekap... (${periodDisplay})<\/td><\/tr>`;
+        tbody.innerHTML = `<td><td colspan="12" style="text-align:center; padding:40px;">⏳ Menghitung data rekap... (${periodDisplay})<\/td><\/tr>`;
     }
 
     try {
-        currentRekapData = await calculateStudentRekap(dbData.attendance, validStudents, startDate, endDate);
+        currentRekapData = await calculateStudentRekap(attendanceData, validStudents, startDate, endDate);
         
         try {
             sessionStorage.setItem(cacheKey, JSON.stringify({ data: currentRekapData, timestamp: Date.now() }));
@@ -946,15 +1034,13 @@ async function loadRekap(retryCount = 0, forceRefresh = false) {
 
 function exportRekapToExcel() {
     if (!isRekapAccessible()) {
-        showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
+        if (typeof showToast === 'function') showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
         return;
     }
-    
     if (!canExportRekap()) {
-        showToast("🔒 Akses ditolak! Hanya Guru, Wakil Kepala Sekolah, Kepala Sekolah, dan Developer yang dapat mengekspor data.", "error");
+        if (typeof showToast === 'function') showToast("🔒 Akses ditolak! Hanya Guru, Wakil Kepala Sekolah, Kepala Sekolah, dan Developer yang dapat mengekspor data.", "error");
         return;
     }
-    
     if (!currentRekapData || currentRekapData.length === 0) {
         if (typeof showToast === 'function') showToast("❌ Tidak ada data untuk diekspor!", "error");
         return;
@@ -995,7 +1081,6 @@ function exportRekapToExcel() {
     URL.revokeObjectURL(url);
     
     if (typeof showToast === 'function') showToast("📥 Rekap berhasil diekspor ke Excel!", "success");
-    
     if (typeof logActivity === 'function') {
         logActivity('export_rekap_excel', `Ekspor rekap absensi ke Excel: ${exportedCount} siswa, periode ${periodText} oleh ${roleDisplay}`);
     }
@@ -1003,15 +1088,13 @@ function exportRekapToExcel() {
 
 function exportRekapToPDF() {
     if (!isRekapAccessible()) {
-        showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
+        if (typeof showToast === 'function') showToast(`🔒 Akses ditolak! ${getAccessDeniedMessage()}`, "error");
         return;
     }
-    
     if (!canExportRekap()) {
-        showToast("🔒 Akses ditolak! Hanya Guru, Wakil Kepala Sekolah, Kepala Sekolah, dan Developer yang dapat mengekspor data.", "error");
+        if (typeof showToast === 'function') showToast("🔒 Akses ditolak! Hanya Guru, Wakil Kepala Sekolah, Kepala Sekolah, dan Developer yang dapat mengekspor data.", "error");
         return;
     }
-    
     if (!currentRekapData || currentRekapData.length === 0) {
         if (typeof showToast === 'function') showToast("❌ Tidak ada data untuk diekspor!", "error");
         return;
@@ -1055,15 +1138,14 @@ function exportRekapToPDF() {
                 <strong>📅 Tanggal Cetak:</strong> ${dateNow} | ${timeNow}<br>
                 <strong>👥 Total Siswa:</strong> ${validData.length} orang<br>
                 <strong>📊 Rata-rata Kehadiran:</strong> ${(validData.reduce((sum, s) => sum + parseFloat(s.percentage), 0) / validData.length || 0).toFixed(1)}%<br>
-                <strong>👤 Dicetak oleh:</strong> ${escapeHtml(currentUser?.nama || currentUser?.email)} (${roleDisplay})
+                <strong>👤 Dicetak oleh:</strong> ${escapeHtml(currentUser?.nama || currentUser?.email)} (${roleDisplay})<br>
+                <strong>🔌 Backend API:</strong> ${BACKEND_API_URL}
             </div>
             <table>
                 <thead>
-                    <tr>
-                        <th>No</th><th>ID FP</th><th>Nama Siswa</th><th>Kelas</th><th>Jurusan</th>
-                        <th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th>
-                        <th>Persentase</th><th>Status</th>
-                    </tr>
+                    <tr><th>No</th><th>ID FP</th><th>Nama Siswa</th><th>Kelas</th><th>Jurusan</th>
+                    <th>Total Hari</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpha</th>
+                    <th>Persentase</th><th>Status</th></tr>
                 </thead>
                 <tbody>
     `);
@@ -1091,7 +1173,7 @@ function exportRekapToPDF() {
                 <td>${item.alpha}<\/td>
                 <td>${item.percentage}%<\/td>
                 <td><span class="${badgeClass}">${item.status}<\/span><\/td>
-            <\/tr>
+            </tr>
         `);
         no++;
     });
@@ -1113,7 +1195,6 @@ function exportRekapToPDF() {
     printWindow.document.close();
     
     if (typeof showToast === 'function') showToast("📄 Membuka halaman print...", "info");
-    
     if (typeof logActivity === 'function') {
         logActivity('export_rekap_pdf', `Ekspor rekap absensi ke PDF: ${validData.length} siswa, periode ${periodText} oleh ${roleDisplay}`);
     }
@@ -1129,17 +1210,13 @@ function escapeHtml(str) {
 function cleanupRekap() {
     rekapInitDone = false;
     currentRekapData = [];
-    if (rekapPieChart) { 
-        try { rekapPieChart.destroy(); } catch(e) {}
-        rekapPieChart = null; 
-    }
-    if (rekapBarChart) { 
-        try { rekapBarChart.destroy(); } catch(e) {}
-        rekapBarChart = null; 
-    }
+    if (rekapPieChart) { try { rekapPieChart.destroy(); } catch(e) {} rekapPieChart = null; }
+    if (rekapBarChart) { try { rekapBarChart.destroy(); } catch(e) {} rekapBarChart = null; }
     rekapDataReadyListenerAdded = false;
     rekapUiReadyListenerAdded = false;
     isLoadingRekap = false;
+    cachedAttendanceData = null;
+    cachedAttendanceTimestamp = 0;
     console.log("🧹 Rekap system cleaned up");
 }
 
@@ -1149,7 +1226,9 @@ setupRekapUiReadyListener();
 
 if (typeof window !== 'undefined' && window.dbData && window.dbData.attendance && window.dbData.users) {
     console.log("📊 rekap.js: Data already available, initializing rekap immediately");
-    setTimeout(() => {
+    setTimeout(async () => {
+        await fetchAttendanceFromAPI();
+        await fetchStudentsFromAPI();
         if (!rekapInitDone && isRekapAccessible()) {
             initRekap();
         } else if (!isRekapAccessible()) {
@@ -1174,5 +1253,7 @@ window.getRoleDisplayName = getRoleDisplayName;
 window.getRoleIcon = getRoleIcon;
 window.canExportRekap = canExportRekap;
 window.getAllowedRolesList = getAllowedRolesList;
+window.fetchAttendanceFromAPI = fetchAttendanceFromAPI;
+window.fetchStudentsFromAPI = fetchStudentsFromAPI;
 
-console.log("✅ rekap.js V4.0 loaded - Rekap dengan role: Developer, Kepala Sekolah, Wakil Kepala Sekolah, Staff TU (baca), Guru");
+console.log("✅ rekap.js V5.0 loaded - Terintegrasi dengan API Backend Vercel! Rekap dengan role: Developer, Kepala Sekolah, Wakil Kepala Sekolah, Staff TU (baca), Guru");

@@ -1,20 +1,85 @@
-// main.js - VERSION 6.0 (DENGAN ROLE BARU: WAKIL KEPALA SEKOLAH & STAFF TU)
+// main.js - VERSION 7.0 (INTEGRATED WITH VERCEL BACKEND API)
 // Fokus: Session persistence, Auth state handler, Periodic refresh,
 //        Dashboard dengan filter berdasarkan role (role-based filtering)
 //        Theme management dark/light mode
+//        Integrasi API backend Vercel
 // Role yang didukung: developer, admin (Kepala Sekolah), wakil_kepala, staff_tu, guru, siswa
 // ============================================================================
+
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
 // ======================== GLOBAL VARIABLES ========================
 let refreshInterval = null;
 let isInitialized = false;
 let mainDataReadyListenerAdded = false;
+let apiConnectionStatus = true;
+
+// ======================== FUNGSI API BACKEND ========================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
+    }
+    return Promise.resolve(null);
+}
+
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        apiConnectionStatus = false;
+        throw error;
+    }
+}
+
+/**
+ * Cek kesehatan backend API
+ */
+async function checkBackendHealth() {
+    try {
+        const response = await fetch(`${BACKEND_API_URL}/health`);
+        const data = await response.json();
+        apiConnectionStatus = data.status === 'OK';
+        return apiConnectionStatus;
+    } catch (error) {
+        apiConnectionStatus = false;
+        return false;
+    }
+}
+
+/**
+ * Ambil data dashboard dari API
+ */
+async function fetchDashboardStatsFromAPI() {
+    try {
+        const data = await apiRequest('/attendance/stats/today');
+        return data.data || {};
+    } catch (error) {
+        console.warn("Failed to fetch dashboard stats from API:", error);
+        return null;
+    }
+}
 
 // ======================== ROLE HELPER FUNCTIONS ========================
 
-/**
- * Mendapatkan display name role
- */
 function getRoleDisplayName(role) {
     const names = {
         developer: 'Developer',
@@ -27,9 +92,6 @@ function getRoleDisplayName(role) {
     return names[role] || role.toUpperCase();
 }
 
-/**
- * Mendapatkan icon untuk role
- */
 function getRoleIcon(role) {
     const icons = {
         developer: '👨‍💻',
@@ -42,40 +104,25 @@ function getRoleIcon(role) {
     return icons[role] || '👤';
 }
 
-/**
- * Cek apakah user memiliki akses full (admin atau developer)
- */
 function hasFullAccess(role) {
     return role === 'admin' || role === 'developer';
 }
 
-/**
- * Cek apakah user memiliki akses membaca semua data
- */
 function hasReadAllAccess(role) {
     const readAllRoles = ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'];
     return readAllRoles.includes(role);
 }
 
-/**
- * Cek apakah user memiliki akses manajemen (tambah/edit/hapus)
- */
 function hasManagementAccess(role) {
     const managementRoles = ['admin', 'developer', 'wakil_kepala', 'guru'];
     return managementRoles.includes(role);
 }
 
-/**
- * Cek apakah user dapat melihat rekap
- */
 function canAccessRekap(role) {
     const rekapRoles = ['admin', 'developer', 'wakil_kepala', 'guru', 'staff_tu'];
     return rekapRoles.includes(role);
 }
 
-/**
- * Cek apakah user dapat mengakses AI Summary
- */
 function canAccessAISummary(role) {
     const aiRoles = ['admin', 'developer', 'wakil_kepala', 'guru'];
     return aiRoles.includes(role);
@@ -99,6 +146,7 @@ function saveUserToLocalStorage(userData) {
         photoUrl: userData.photoUrl || '',
         subject: userData.subject || '',
         bidang: userData.bidang || '',
+        departemen: userData.departemen || '',
         registeredAt: userData.registeredAt
     };
     localStorage.setItem('currentUser', JSON.stringify(storageData));
@@ -127,32 +175,19 @@ function clearUserSession() {
 
 // ======================== FUNGSI FILTER BERDASARKAN ROLE ========================
 
-/**
- * Mendapatkan daftar siswa yang sesuai dengan role pengguna
- * - Admin/Developer: semua siswa
- * - Wakil Kepala Sekolah: semua siswa
- * - Staff TU: semua siswa (hanya baca)
- * - Guru: semua siswa
- * - Siswa: hanya siswa dengan kelas & jurusan yang sama
- */
 function getFilteredStudentsForDashboard() {
     if (!dbData.users) return [];
     
-    // Filter siswa yang valid (punya nama)
     const validStudents = dbData.users.filter(s => s && s.nama && s.nama !== 'Tidak Diketahui' && s.nama.trim() !== '');
     
-    // Role dengan akses baca semua data
     if (currentUser && hasReadAllAccess(currentUser.role)) {
         console.log(`📊 Full access (${getRoleDisplayName(currentUser.role)}): menampilkan semua siswa`);
         return validStudents;
     }
     
-    // Siswa hanya melihat data kelas dan jurusannya sendiri
     if (currentUser && currentUser.role === 'siswa') {
         const userKelas = currentUser.kelas;
         const userJurusan = currentUser.jurusan;
-        
-        console.log(`📊 Student access: filter by kelas=${userKelas}, jurusan=${userJurusan}`);
         
         const filtered = validStudents.filter(s => {
             const matchKelas = !userKelas || s.kelas === userKelas;
@@ -160,25 +195,20 @@ function getFilteredStudentsForDashboard() {
             return matchKelas && matchJurusan;
         });
         
-        console.log(`📊 Filtered students: ${filtered.length} dari ${validStudents.length} total`);
+        console.log(`📊 Student access: filtered to ${filtered.length} dari ${validStudents.length} total`);
         return filtered;
     }
     
     return validStudents;
 }
 
-/**
- * Mendapatkan data absensi yang sesuai dengan role pengguna
- */
 function getFilteredAttendanceForDashboard() {
     if (!dbData.attendance) return [];
     
-    // Role dengan akses baca semua data
     if (currentUser && hasReadAllAccess(currentUser.role)) {
         return dbData.attendance;
     }
     
-    // Siswa hanya melihat absensi kelas dan jurusannya sendiri
     if (currentUser && currentUser.role === 'siswa') {
         const userKelas = currentUser.kelas;
         const userJurusan = currentUser.jurusan;
@@ -193,7 +223,7 @@ function getFilteredAttendanceForDashboard() {
     return dbData.attendance;
 }
 
-// ======================== DASHBOARD UPDATE DENGAN FILTER ROLE ========================
+// ======================== DASHBOARD UPDATE ========================
 
 async function updateDashboardModern() {
     if (!currentUser || typeof dbData === 'undefined' || !dbData) {
@@ -256,6 +286,9 @@ async function updateDashboardModern() {
         if (typeof window.updateDashboardChart === 'function') {
             window.updateDashboardChart();
         }
+        
+        // Update API connection status indicator
+        updateAPIStatusIndicator(apiConnectionStatus);
         
         console.log(`✅ Dashboard updated: ${totalSiswa} siswa, ${hadir} hadir hari ini (${getRoleDisplayName(currentUser.role)})`);
         
@@ -459,8 +492,6 @@ function updateDashboardRoleInfoUI() {
             infoEl.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span>${roleIcon} <strong>Mode ${roleDisplay}</strong></span>
-                    <span style="color: var(--text-muted);">|</span>
-                    <span>📋 Bidang: <strong>${currentUser.bidang || '-'}</strong></span>
                     <span style="color: #00bcd4; font-size: 12px;">ℹ️ Dashboard menampilkan semua data siswa</span>
                 </div>
             `;
@@ -468,19 +499,10 @@ function updateDashboardRoleInfoUI() {
             infoEl.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span>${roleIcon} <strong>Mode ${roleDisplay}</strong></span>
-                    <span style="color: var(--text-muted);">|</span>
-                    <span>📋 Departemen: <strong>${currentUser.departemen || '-'}</strong></span>
                     <span style="color: #00bcd4; font-size: 12px;">ℹ️ Dashboard menampilkan semua data siswa</span>
                 </div>
             `;
-        } else if (currentUser.role === 'admin') {
-            infoEl.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <span>${roleIcon} <strong>Mode ${roleDisplay}</strong></span>
-                    <span style="color: #00bcd4; font-size: 12px;">ℹ️ Dashboard menampilkan semua data siswa</span>
-                </div>
-            `;
-        } else if (currentUser.role === 'developer') {
+        } else {
             infoEl.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span>${roleIcon} <strong>Mode ${roleDisplay}</strong></span>
@@ -488,6 +510,27 @@ function updateDashboardRoleInfoUI() {
                 </div>
             `;
         }
+    }
+}
+
+function updateAPIStatusIndicator(isConnected) {
+    let indicator = document.getElementById('apiStatusIndicator');
+    if (!indicator) {
+        const dashboardSection = document.querySelector('#tab-dashboard .dashboard-header');
+        if (dashboardSection && !document.getElementById('apiStatusIndicator')) {
+            indicator = document.createElement('div');
+            indicator.id = 'apiStatusIndicator';
+            indicator.style.cssText = 'display: inline-block; margin-left: 15px; font-size: 12px;';
+            dashboardSection.appendChild(indicator);
+        } else {
+            return;
+        }
+    }
+    
+    if (isConnected) {
+        indicator.innerHTML = '<span style="color: #4caf50;">● API Connected</span>';
+    } else {
+        indicator.innerHTML = '<span style="color: #ff9800;">● API Fallback Mode (using local data)</span>';
     }
 }
 
@@ -504,6 +547,11 @@ function startPeriodicRefresh() {
         if (currentUser && typeof dbData !== 'undefined' && dbData?.attendance) {
             console.log("🔄 Periodic refresh: updating dashboard...");
             updateDashboardModern();
+            // Also check API health periodically
+            checkBackendHealth().then(connected => {
+                apiConnectionStatus = connected;
+                updateAPIStatusIndicator(connected);
+            });
         }
     }, 30000);
 }
@@ -538,7 +586,6 @@ function initAuthStateHandler() {
                 if (snapshot.exists()) {
                     const userData = snapshot.val();
                     
-                    // Validasi role
                     const validRoles = ['developer', 'admin', 'wakil_kepala', 'staff_tu', 'guru', 'siswa'];
                     if (!userData.role || !validRoles.includes(userData.role)) {
                         userData.role = 'siswa';
@@ -561,6 +608,10 @@ function initAuthStateHandler() {
                     } else {
                         setTimeout(() => updateDashboardModern(), 100);
                     }
+                    
+                    // Check API connection
+                    const apiConnected = await checkBackendHealth();
+                    updateAPIStatusIndicator(apiConnected);
                     
                     console.log(`✅ Login successful for: ${currentUser.nama}, Role: ${getRoleDisplayName(currentUser.role)}`);
                 } else {
@@ -636,9 +687,6 @@ function resetAppState() {
 
 // ======================== THEME MANAGEMENT (DARK/LIGHT MODE) ========================
 
-/**
- * Inisialisasi tema (dark/light mode)
- */
 function initTheme() {
     console.log("🎨 Initializing theme system...");
     
@@ -662,10 +710,6 @@ function initTheme() {
     }
 }
 
-/**
- * Menerapkan tema ke seluruh halaman
- * @param {string} theme - 'dark' atau 'light'
- */
 function applyTheme(theme) {
     const isLight = theme === 'light';
     const toggleBtn = document.getElementById('themeToggleBtn');
@@ -684,9 +728,6 @@ function applyTheme(theme) {
     refreshThemeDependentComponents();
 }
 
-/**
- * Refresh komponen yang bergantung pada tema
- */
 function refreshThemeDependentComponents() {
     if (typeof updateDashboardChart === 'function') {
         setTimeout(() => {
@@ -736,27 +777,16 @@ function refreshThemeDependentComponents() {
     }
 }
 
-/**
- * Mendapatkan tema saat ini
- * @returns {string} 'dark' atau 'light'
- */
 function getCurrentTheme() {
     return document.body.classList.contains('light-mode') ? 'light' : 'dark';
 }
 
-/**
- * Toggle tema secara manual
- */
 function toggleTheme() {
     const currentTheme = getCurrentTheme();
     const newTheme = currentTheme === 'light' ? 'dark' : 'light';
     applyTheme(newTheme);
 }
 
-/**
- * Mendapatkan warna chart berdasarkan tema aktif
- * @returns {object} Warna untuk chart
- */
 function getChartColorsByTheme() {
     const isLight = document.body.classList.contains('light-mode');
     return {
@@ -781,6 +811,7 @@ window.stopPeriodicRefresh = stopPeriodicRefresh;
 window.updateDashboardModern = updateDashboardModern;
 window.getFilteredStudentsForDashboard = getFilteredStudentsForDashboard;
 window.getFilteredAttendanceForDashboard = getFilteredAttendanceForDashboard;
+window.checkBackendHealth = checkBackendHealth;
 
 // Ekspor fungsi role helper
 window.getRoleDisplayName = getRoleDisplayName;
@@ -822,7 +853,15 @@ function waitForFirebaseAndInit() {
     } else {
         setTimeout(() => initAuthStateHandler(), 100);
     }
+    
+    // Initial API health check
+    setTimeout(() => {
+        checkBackendHealth().then(connected => {
+            apiConnectionStatus = connected;
+            updateAPIStatusIndicator(connected);
+        });
+    }, 2000);
 }
 
 waitForFirebaseAndInit();
-console.log("✅ main.js V6.0 loaded - Role-based dashboard filtering (Developer, Kepala Sekolah, Wakil Kepala Sekolah, Staff TU, Guru, Siswa) & Theme management integrated");
+console.log("✅ main.js V7.0 loaded - Terintegrasi dengan API Backend Vercel! Role-based dashboard filtering (Developer, Kepala Sekolah, Wakil Kepala Sekolah, Staff TU, Guru, Siswa) & Theme management integrated");

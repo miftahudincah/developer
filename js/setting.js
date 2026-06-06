@@ -1,1112 +1,995 @@
-// setting.js - VERSION 3.7 (DENGAN LOG AKTIVITAS)
-// PENGATURAN SEKOLAH (SCHOOL CONFIG) & DELAY GLOBAL
-// Dengan dukungan manajemen KELAS dan JURUSAN yang bisa diedit
-// SENSOR STATUS: Dipisahkan ke modul sendiri (tetap di sini untuk kemudahan)
-// PERUBAHAN V3.7: Menambahkan logActivity untuk semua operasi pengaturan
+// staff-attendance.js - VERSION 3.0 (INTEGRATED WITH VERCEL BACKEND API)
+// Absensi Guru/Karyawan dengan Notifikasi WhatsApp
+// V3.0: Terintegrasi dengan API backend Vercel
 // ============================================================================
 
-let currentSchoolConfig = {
-    type: 'smp',
-    majors: [],
-    classes: ['VII', 'VIII', 'IX']
-};
+// Backend API URL (Vercel)
+const BACKEND_API_URL = "https://absensi-backend-3we5.vercel.app/api";
 
-// Pengaturan jam efektif & hari libur (default)
-let attendanceSettings = {
-    lateThreshold: '07:30',
-    minOutTime: '14:00',
-    weeklyHolidays: [0], // Minggu
-    dateHolidays: []
-};
+let staffAttendanceDonutChart = null;
+let staffAttendanceListener = null;
+let staffAttendanceInitialized = false;
+let currentStaffListForAttendance = [];
+let currentStaffListForOut = [];
 
-let settingDataReadyListenerAdded = false;
-let settingUiReadyListenerAdded = false;
-let isSchoolConfigLoaded = false;
+// Cache untuk data staff
+let cachedStaffData = null;
+let cachedStaffTimestamp = 0;
+const STAFF_CACHE_TTL = 60 * 1000; // 1 menit
 
-// Pastikan window.currentSchoolConfig selalu sinkron (dengan return promise)
-function syncSchoolConfigToWindow() {
-    window.currentSchoolConfig = {
-        type: currentSchoolConfig.type,
-        majors: [...currentSchoolConfig.majors],
-        classes: [...currentSchoolConfig.classes]
-    };
-    console.log("🔄 Synced school config to window:", window.currentSchoolConfig.type, 
-                "classes:", window.currentSchoolConfig.classes.length,
-                "majors:", window.currentSchoolConfig.majors.length);
-    
-    const typeSelect = document.getElementById('schoolTypeSelect');
-    if (typeSelect && typeSelect.value !== currentSchoolConfig.type) {
-        typeSelect.value = currentSchoolConfig.type;
-        console.log(`📋 Set schoolTypeSelect to: ${currentSchoolConfig.type}`);
+// ======================= FUNGSI API BACKEND =======================
+
+function getAuthToken() {
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        return firebase.auth().currentUser.getIdToken();
     }
-    
-    const majorsDiv = document.getElementById('majorsManager');
-    if (majorsDiv) {
-        const shouldShow = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both');
-        majorsDiv.style.display = shouldShow ? 'block' : 'none';
-    }
-    
-    return window.currentSchoolConfig;
+    return Promise.resolve(null);
 }
 
-// Fungsi untuk memaksa reload school config dari Firebase
-function forceReloadSchoolConfig() {
-    console.log("🔄 Force reloading school config from Firebase...");
-    
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin atau developer yang dapat me-refresh config!", "error");
-        return;
+async function apiRequest(endpoint, options = {}) {
+    try {
+        const token = await getAuthToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        return data;
+    } catch (error) {
+        console.warn(`API request failed: ${endpoint}`, error);
+        throw error;
     }
-    
-    const btn = event?.target;
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Memuat...';
+}
+
+/**
+ * Ambil data staff dari API backend
+ */
+async function fetchStaffFromAPI() {
+    try {
+        const now = Date.now();
+        if (cachedStaffData && (now - cachedStaffTimestamp) < STAFF_CACHE_TTL) {
+            console.log("📦 Using cached staff data");
+            return cachedStaffData;
+        }
+        
+        console.log("👥 Fetching staff from API...");
+        const data = await apiRequest('/staff');
+        const staff = data.data || [];
+        
+        cachedStaffData = staff;
+        cachedStaffTimestamp = now;
+        return staff;
+    } catch (error) {
+        console.error("Fetch staff from API error:", error);
+        // Fallback ke Firebase
+        if (typeof db !== 'undefined' && db) {
+            const snapshot = await db.ref('staff').once('value');
+            const staffData = snapshot.val();
+            const staffList = staffData ? Object.entries(staffData).map(([id, s]) => ({ id, ...s })) : [];
+            return staffList;
+        }
+        return [];
     }
-    
-    db.ref('school_config').once('value').then((snapshot) => {
+}
+
+/**
+ * Simpan absensi staff via API (simulasi - karena API belum memiliki endpoint staff_attendance)
+ * Untuk sementara tetap menggunakan Firebase
+ */
+async function saveStaffAttendanceToAPI(staffId, nama, jabatan, timeIn, dateStr) {
+    // API backend belum memiliki endpoint untuk staff attendance
+    // Fallback ke Firebase
+    if (typeof db !== 'undefined' && db) {
+        const attendanceData = {
+            staffId: staffId,
+            nama: nama,
+            jabatan: jabatan,
+            timeIn: timeIn,
+            timeOut: null,
+            status: 'hadir',
+            date: dateStr,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        };
+        await db.ref(`staff_attendance/${dateStr}/${staffId}`).set(attendanceData);
+        return true;
+    }
+    throw new Error('No database connection available');
+}
+
+/**
+ * Update absensi pulang staff via API (fallback ke Firebase)
+ */
+async function updateStaffAttendanceOutToAPI(staffId, timeOutStr, dateStr) {
+    if (typeof db !== 'undefined' && db) {
+        await db.ref(`staff_attendance/${dateStr}/${staffId}`).update({
+            timeOut: timeOutStr,
+            status: 'pulang',
+            updatedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+        return true;
+    }
+    throw new Error('No database connection available');
+}
+
+/**
+ * Hapus absensi staff via API (fallback ke Firebase)
+ */
+async function deleteStaffAttendanceFromAPI(date, staffId) {
+    if (typeof db !== 'undefined' && db) {
+        await db.ref(`staff_attendance/${date}/${staffId}`).remove();
+        return true;
+    }
+    throw new Error('No database connection available');
+}
+
+/**
+ * Ambil absensi staff dari Firebase (fallback)
+ */
+async function fetchStaffAttendanceFromFirebase(date) {
+    if (typeof db !== 'undefined' && db) {
+        const snapshot = await db.ref(`staff_attendance/${date}`).once('value');
         const data = snapshot.val();
-        console.log("📡 Force reload result:", JSON.stringify(data));
-        
-        if (data && typeof data === 'object') {
-            const configType = data.type || 'smp';
-            const configClasses = data.classes || [];
-            const configMajors = data.majors || [];
-            
-            console.log(`🏫 Reloaded config: type=${configType}, classes=${configClasses.length}, majors=${configMajors.length}`);
-            
-            currentSchoolConfig.type = configType;
-            currentSchoolConfig.majors = [...configMajors];
-            currentSchoolConfig.classes = [...configClasses];
-            
-            syncSchoolConfigToWindow();
-            updateSchoolTypeUI();
-            renderClassesList();
-            renderMajorsList();
-            
-            setTimeout(() => {
-                console.log("🔄 Force repopulating all dropdowns after force reload...");
-                if (typeof populateKelasOptions === 'function') populateKelasOptions();
-                if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-                if (typeof populateStudentFilters === 'function') populateStudentFilters();
-                if (typeof populateFilters === 'function') populateFilters();
-                if (typeof populateDateFilter === 'function') populateDateFilter();
-                if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
-            }, 100);
-            
-            if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
-                setTimeout(() => loadRekap(), 200);
-            }
-            
-            showToast("✅ Konfigurasi sekolah dimuat ulang!", "success");
-            
-            // LOG: Force reload config
-            if (typeof logActivity === 'function') {
-                logActivity('force_reload_school_config', `Memuat ulang konfigurasi sekolah: tipe=${configType}, kelas=${configClasses.length}, jurusan=${configMajors.length}`);
-            }
-        } else {
-            console.log("⚠️ No school config found in Firebase");
-            showToast("⚠️ Tidak ada konfigurasi di Firebase", "warning");
-        }
-    }).catch(err => {
-        console.error("Force reload error:", err);
-        showToast("❌ Gagal memuat ulang config: " + err.message, "error");
-    }).finally(() => {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '🔄 Refresh Config';
-        }
-    });
-}
-
-// Inisialisasi awal
-syncSchoolConfigToWindow();
-
-// ======================= EVENT LISTENER ========================
-
-function setupSettingDataReadyListener() {
-    if (settingDataReadyListenerAdded) return;
-    settingDataReadyListenerAdded = true;
-    console.log("📡 Setting up dataReady event listener for settings module");
-
-    window.addEventListener('dataReady', (e) => {
-        console.log("⚙️ setting.js: dataReady received, updating settings UI");
-        
-        if (!isSchoolConfigLoaded && window.currentSchoolConfig) {
-            currentSchoolConfig = {
-                type: window.currentSchoolConfig.type || 'smp',
-                majors: window.currentSchoolConfig.majors || [],
-                classes: window.currentSchoolConfig.classes || ['VII', 'VIII', 'IX']
-            };
-            updateSchoolTypeUI();
-            renderClassesList();
-            renderMajorsList();
-            syncSchoolConfigToWindow();
-        }
-        
-        const delaySpan = document.getElementById('globalDelayDisplay');
-        if (delaySpan && window.globalDelayValue !== undefined) {
-            delaySpan.textContent = formatDelayText(window.globalDelayValue);
-        }
-        
-        setTimeout(() => {
-            if (typeof populateKelasOptions === 'function') populateKelasOptions();
-            if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-            if (typeof populateStudentFilters === 'function') populateStudentFilters();
-            if (typeof populateFilters === 'function') populateFilters();
-            if (typeof populateDateFilter === 'function') populateDateFilter();
-        }, 100);
-    });
-}
-
-function setupSettingUiReadyListener() {
-    if (settingUiReadyListenerAdded) return;
-    settingUiReadyListenerAdded = true;
-    console.log("📡 Setting up uiReady event listener for sensor status");
-
-    window.addEventListener('uiReady', (e) => {
-        const user = e.detail.currentUser;
-        if (user && (user.role === 'admin' || user.role === 'developer')) {
-            console.log("🔍 uiReady: initializing sensor status for admin/developer");
-            initSensorStatusListener();
-        } else {
-            const panel = document.getElementById('sensorStatusPanel');
-            if (panel) panel.style.display = 'none';
-        }
-    });
-}
-
-// ======================= FUNGSI FORMAT DELAY =======================
-
-function formatDelayText(delayMinutes) {
-    if (!delayMinutes && delayMinutes !== 0) return '-';
-    const hours = Math.floor(delayMinutes / 60);
-    const minutes = delayMinutes % 60;
-    if (hours > 0 && minutes > 0) return `${hours} jam ${minutes} menit`;
-    if (hours > 0) return `${hours} jam`;
-    return `${minutes} menit`;
-}
-
-// ======================= DELAY GLOBAL (UI only, tanpa listener) =======================
-
-function toggleGlobalDelayInput() {
-    const unit = document.getElementById('globalDelayUnit');
-    if (!unit) return;
-    const minutesGroup = document.getElementById('globalDelayMinutesGroup');
-    const hoursGroup = document.getElementById('globalDelayHoursGroup');
-    const hiddenDelay = document.getElementById('globalDelayHidden');
-    if (unit.value === 'minutes') {
-        if (minutesGroup) minutesGroup.style.display = 'flex';
-        if (hoursGroup) hoursGroup.style.display = 'none';
-        const minutesValue = parseInt(document.getElementById('globalDelayMinutesValue')?.value) || 60;
-        if (hiddenDelay) hiddenDelay.value = minutesValue;
-    } else {
-        if (minutesGroup) minutesGroup.style.display = 'none';
-        if (hoursGroup) hoursGroup.style.display = 'flex';
-        const hoursValue = parseInt(document.getElementById('globalDelayHoursValue')?.value) || 1;
-        if (hiddenDelay) hiddenDelay.value = hoursValue * 60;
-    }
-}
-
-function updateGlobalDelayFromMinutes() {
-    const minutesValue = parseInt(document.getElementById('globalDelayMinutesValue')?.value) || 0;
-    const hiddenDelay = document.getElementById('globalDelayHidden');
-    if (hiddenDelay) hiddenDelay.value = minutesValue;
-}
-
-function updateGlobalDelayFromHours() {
-    const hoursValue = parseInt(document.getElementById('globalDelayHoursValue')?.value) || 0;
-    const hiddenDelay = document.getElementById('globalDelayHidden');
-    if (hiddenDelay) hiddenDelay.value = hoursValue * 60;
-}
-
-function getGlobalDelayFromForm() {
-    const unit = document.getElementById('globalDelayUnit')?.value;
-    if (unit === 'minutes') {
-        return parseInt(document.getElementById('globalDelayMinutesValue')?.value) || 60;
-    } else {
-        const hours = parseInt(document.getElementById('globalDelayHoursValue')?.value) || 1;
-        return hours * 60;
-    }
-}
-
-function setGlobalDelayFormValue(delayMinutes) {
-    if (!delayMinutes && delayMinutes !== 0) delayMinutes = 60;
-    const hours = Math.floor(delayMinutes / 60);
-    const minutes = delayMinutes % 60;
-    const unit = document.getElementById('globalDelayUnit');
-    const minutesInput = document.getElementById('globalDelayMinutesValue');
-    const hoursSelect = document.getElementById('globalDelayHoursValue');
-    if (hours > 0 && minutes === 0) {
-        if (unit) unit.value = 'hours';
-        if (hoursSelect) hoursSelect.value = hours;
-    } else {
-        if (unit) unit.value = 'minutes';
-        if (minutesInput) minutesInput.value = delayMinutes;
-    }
-    toggleGlobalDelayInput();
-}
-
-function saveGlobalDelay() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin dan developer yang dapat mengubah delay global.", "error");
-        return;
-    }
-    const delayMinutes = getGlobalDelayFromForm();
-    if (delayMinutes <= 0) {
-        showToast("⚠️ Delay harus lebih dari 0 menit!", "error");
-        return;
-    }
-    const oldDelay = window.globalDelayValue || 60;
-    const btn = document.getElementById('btnSaveGlobalDelay');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '💾 Menyimpan...';
-    }
-    db.ref('settings/delayOut').set(delayMinutes)
-        .then(() => {
-            showToast(`✅ Delay global berhasil diupdate menjadi ${formatDelayText(delayMinutes)}`);
-            const displaySpan = document.getElementById('globalDelayDisplay');
-            if (displaySpan) displaySpan.textContent = formatDelayText(delayMinutes);
-            
-            // LOG: Ubah delay global
-            if (typeof logActivity === 'function') {
-                logActivity('update_global_delay', `Mengubah delay pulang global dari ${formatDelayText(oldDelay)} menjadi ${formatDelayText(delayMinutes)}`);
-            }
-        })
-        .catch(err => showToast("❌ Gagal menyimpan: " + err.message, "error"))
-        .finally(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '💾 Simpan Delay Global';
-            }
-        });
-}
-
-function initGlobalDelayListeners() {
-    const unitSelect = document.getElementById('globalDelayUnit');
-    const minutesInput = document.getElementById('globalDelayMinutesValue');
-    const hoursSelect = document.getElementById('globalDelayHoursValue');
-    if (unitSelect) {
-        unitSelect.removeEventListener('change', toggleGlobalDelayInput);
-        unitSelect.addEventListener('change', toggleGlobalDelayInput);
-    }
-    if (minutesInput) {
-        minutesInput.removeEventListener('input', updateGlobalDelayFromMinutes);
-        minutesInput.addEventListener('input', updateGlobalDelayFromMinutes);
-    }
-    if (hoursSelect) {
-        hoursSelect.removeEventListener('change', updateGlobalDelayFromHours);
-        hoursSelect.addEventListener('change', updateGlobalDelayFromHours);
-    }
-    toggleGlobalDelayInput();
-}
-
-// ======================= MANAJEMEN KELAS =======================
-
-function renderClassesList() {
-    const container = document.getElementById('classesList');
-    if (!container) return;
-    const classes = currentSchoolConfig.classes || [];
-    if (classes.length === 0) {
-        container.innerHTML = '<p class="text-small" style="margin: 8px; color: #888;">📭 Belum ada kelas. Tambahkan di bawah.</p>';
-        return;
-    }
-    let html = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
-    classes.forEach((className, index) => {
-        html += `
-            <div style="background: #2c2c3a; padding: 8px 14px; border-radius: 25px; display: flex; align-items: center; gap: 10px; border-left: 3px solid #4caf50;">
-                <span>🏫 ${escapeHtmlStr(className)}</span>
-                <span class="btn-icon delete" style="font-size: 14px; cursor: pointer; color: #f44336;" onclick="removeClass(${index})">✖</span>
-            </div>
-        `;
-    });
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-function addClass() {
-    const input = document.getElementById('newClassInput');
-    if (!input) return;
-    let newClass = input.value.trim().toUpperCase();
-    if (!newClass) {
-        showToast("⚠️ Masukkan nama kelas!", "error");
-        return;
-    }
-    newClass = formatClassName(newClass);
-    if (currentSchoolConfig.classes.includes(newClass)) {
-        showToast("❌ Kelas sudah ada!", "error");
-        return;
-    }
-    currentSchoolConfig.classes.push(newClass);
-    syncSchoolConfigToWindow();
-    input.value = '';
-    renderClassesList();
-    showToast(`✅ Kelas "${newClass}" ditambahkan. Jangan lupa klik 'Simpan Semua Kelas'.`, "success");
-    input.focus();
-}
-
-function formatClassName(input) {
-    let result = input.toUpperCase();
-    const romanMap = {
-        '7': 'VII', 'VIII': 'VIII', '7A': 'VII A', '7B': 'VII B', '7C': 'VII C',
-        '8': 'VIII', '8A': 'VIII A', '8B': 'VIII B', '8C': 'VIII C',
-        '9': 'IX', '9A': 'IX A', '9B': 'IX B', '9C': 'IX C',
-        '10': 'X', '10A': 'X A', '10B': 'X B', '10C': 'X C',
-        '11': 'XI', '11A': 'XI A', '11B': 'XI B', '11C': 'XI C',
-        '12': 'XII', '12A': 'XII A', '12B': 'XII B', '12C': 'XII C'
-    };
-    if (romanMap[result]) return romanMap[result];
-    if (romanMap[result.replace(' ', '')]) return romanMap[result.replace(' ', '')];
-    const match = result.match(/^([0-9]+|[IVX]+)\s*([A-Z]+)?$/);
-    if (match) {
-        let num = match[1];
-        let suffix = match[2] || '';
-        const numToRoman = { '7': 'VII', '8': 'VIII', '9': 'IX', '10': 'X', '11': 'XI', '12': 'XII' };
-        if (numToRoman[num]) {
-            result = numToRoman[num];
-            if (suffix) result += ' ' + suffix;
-        }
-    }
-    return result;
-}
-
-function removeClass(index) {
-    if (index >= 0 && index < currentSchoolConfig.classes.length) {
-        const removed = currentSchoolConfig.classes[index];
-        currentSchoolConfig.classes.splice(index, 1);
-        syncSchoolConfigToWindow();
-        renderClassesList();
-        showToast(`🗑️ Kelas "${removed}" dihapus sementara.`, "warning");
-    }
-}
-
-function saveClasses() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin dan developer yang dapat mengubah daftar kelas.", "error");
-        return;
-    }
-    if (currentSchoolConfig.classes.length === 0) {
-        showToast("⚠️ Minimal harus ada 1 kelas!", "error");
-        return;
-    }
-    const oldClasses = [...(window.currentSchoolConfig?.classes || [])];
-    const btn = document.getElementById('btnSaveClasses');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '💾 Menyimpan...';
-    }
-    db.ref('school_config/classes').set(currentSchoolConfig.classes)
-        .then(() => {
-            showToast(`✅ Daftar kelas berhasil disimpan (${currentSchoolConfig.classes.length} kelas).`);
-            syncSchoolConfigToWindow();
-            
-            // LOG: Simpan daftar kelas
-            if (typeof logActivity === 'function') {
-                const added = currentSchoolConfig.classes.filter(c => !oldClasses.includes(c));
-                const removed = oldClasses.filter(c => !currentSchoolConfig.classes.includes(c));
-                let logDetail = `Jumlah kelas: ${currentSchoolConfig.classes.length}`;
-                if (added.length) logDetail += `, ditambah: ${added.join(', ')}`;
-                if (removed.length) logDetail += `, dihapus: ${removed.join(', ')}`;
-                logActivity('save_classes', logDetail);
-            }
-            
-            setTimeout(() => {
-                if (typeof populateKelasOptions === 'function') populateKelasOptions();
-                if (typeof populateStudentFilters === 'function') populateStudentFilters();
-                if (typeof populateFilters === 'function') populateFilters();
-            }, 100);
-        })
-        .catch(err => showToast("❌ Gagal: " + err.message, "error"))
-        .finally(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '💾 Simpan Semua Kelas';
-            }
-        });
-}
-
-// ======================= PENGATURAN JURUSAN =======================
-
-function updateSchoolTypeUI() {
-    const typeSelect = document.getElementById('schoolTypeSelect');
-    if (typeSelect && typeSelect.value !== currentSchoolConfig.type) {
-        typeSelect.value = currentSchoolConfig.type;
-        console.log(`📋 updateSchoolTypeUI set schoolTypeSelect to: ${currentSchoolConfig.type}`);
-    }
-    const majorsManager = document.getElementById('majorsManager');
-    if (majorsManager) {
-        const shouldShow = (currentSchoolConfig.type === 'smk' || currentSchoolConfig.type === 'both');
-        majorsManager.style.display = shouldShow ? 'block' : 'none';
-        console.log(`📋 Majors manager visibility: ${shouldShow ? 'show' : 'hide'}`);
-    }
-}
-
-function renderMajorsList() {
-    const container = document.getElementById('majorsList');
-    if (!container) return;
-    const majors = currentSchoolConfig.majors || [];
-    if (majors.length === 0) {
-        container.innerHTML = '<p class="text-small" style="margin: 8px; color: #888;">📭 Belum ada jurusan. Tambahkan di bawah.</p>';
-        return;
-    }
-    let html = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
-    majors.forEach((major, index) => {
-        html += `
-            <div style="background: #2c2c3a; padding: 8px 14px; border-radius: 25px; display: flex; align-items: center; gap: 10px; border-left: 3px solid #00bcd4;">
-                <span>📚 ${escapeHtmlStr(major)}</span>
-                <span class="btn-icon delete" style="font-size: 14px; cursor: pointer; color: #f44336;" onclick="removeMajor(${index})">✖</span>
-            </div>
-        `;
-    });
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-function escapeHtmlStr(str) {
-    if (!str) return '';
-    return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
-}
-
-function saveSchoolType() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin dan developer yang dapat mengubah tipe sekolah.", "error");
-        return;
-    }
-    
-    const oldType = currentSchoolConfig.type;
-    const newType = document.getElementById('schoolTypeSelect').value;
-    console.log("📝 saveSchoolType dipanggil dengan tipe:", newType);
-    
-    let newClasses;
-    if (newType === 'both') {
-        newClasses = ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-    } else if (newType === 'smp') {
-        newClasses = ['VII', 'VIII', 'IX'];
-    } else if (newType === 'smk') {
-        newClasses = ['X', 'XI', 'XII'];
-    } else {
-        newClasses = ['VII', 'VIII', 'IX'];
-    }
-    
-    let newMajors = [];
-    if (newType === 'smk' || newType === 'both') {
-        newMajors = currentSchoolConfig.majors;
-    }
-    
-    const btn = document.querySelector('#tab-config button[onclick="saveSchoolType()"]');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '💾 Menyimpan...';
-    }
-    
-    const updateData = {
-        type: newType,
-        classes: newClasses,
-        majors: newMajors
-    };
-    
-    console.log("📤 Saving to Firebase:", updateData);
-    
-    db.ref('school_config').update(updateData)
-        .then(() => {
-            console.log("✅ School config saved to Firebase:", updateData);
-            showToast("✅ Tipe sekolah berhasil disimpan ke Firebase!");
-            
-            currentSchoolConfig.type = newType;
-            currentSchoolConfig.classes = newClasses;
-            currentSchoolConfig.majors = newMajors;
-            
-            syncSchoolConfigToWindow();
-            updateSchoolTypeUI();
-            renderClassesList();
-            renderMajorsList();
-            
-            // LOG: Ubah tipe sekolah
-            if (typeof logActivity === 'function') {
-                logActivity('update_school_type', `Mengubah tipe sekolah dari ${oldType} menjadi ${newType}`);
-            }
-            
-            setTimeout(() => {
-                console.log("🔄 Populating all dropdowns after save...");
-                if (typeof populateKelasOptions === 'function') populateKelasOptions();
-                if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-                if (typeof populateStudentFilters === 'function') populateStudentFilters();
-                if (typeof populateFilters === 'function') populateFilters();
-                if (typeof populateDateFilter === 'function') populateDateFilter();
-                if (typeof populateStudentSelectForCode === 'function') populateStudentSelectForCode();
-            }, 100);
-            
-            setTimeout(() => {
-                if (typeof renderStudentsTable === 'function') renderStudentsTable();
-                if (typeof renderTable === 'function') renderTable();
-                if (typeof loadRekap === 'function' && document.getElementById('tab-rekap')?.classList.contains('active')) {
-                    loadRekap();
-                }
-            }, 200);
-        })
-        .catch(err => {
-            console.error("❌ Save school type error:", err);
-            showToast("❌ Gagal menyimpan: " + err.message, "error");
-        })
-        .finally(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = 'Simpan';
-            }
-        });
-}
-
-function addMajor() {
-    const input = document.getElementById('newMajorInput');
-    if (!input) return;
-    const newMajor = input.value.trim().toUpperCase();
-    if (!newMajor) {
-        showToast("⚠️ Masukkan nama jurusan!", "error");
-        return;
-    }
-    if (currentSchoolConfig.majors.includes(newMajor)) {
-        showToast("❌ Jurusan sudah ada!", "error");
-        return;
-    }
-    currentSchoolConfig.majors.push(newMajor);
-    syncSchoolConfigToWindow();
-    input.value = '';
-    renderMajorsList();
-    showToast(`✅ Jurusan "${newMajor}" ditambahkan. Jangan lupa klik 'Simpan Semua Jurusan'.`, "success");
-    input.focus();
-}
-
-function removeMajor(index) {
-    if (index >= 0 && index < currentSchoolConfig.majors.length) {
-        const removed = currentSchoolConfig.majors[index];
-        currentSchoolConfig.majors.splice(index, 1);
-        syncSchoolConfigToWindow();
-        renderMajorsList();
-        showToast(`🗑️ Jurusan "${removed}" dihapus sementara.`, "warning");
-    }
-}
-
-function saveMajors() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin dan developer yang dapat mengubah jurusan.", "error");
-        return;
-    }
-    const oldMajors = [...(window.currentSchoolConfig?.majors || [])];
-    const btn = document.getElementById('btnSaveMajors');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '💾 Menyimpan...';
-    }
-    db.ref('school_config/majors').set(currentSchoolConfig.majors)
-        .then(() => {
-            showToast(`✅ Daftar jurusan berhasil disimpan (${currentSchoolConfig.majors.length} jurusan).`);
-            syncSchoolConfigToWindow();
-            
-            // LOG: Simpan daftar jurusan
-            if (typeof logActivity === 'function') {
-                const added = currentSchoolConfig.majors.filter(m => !oldMajors.includes(m));
-                const removed = oldMajors.filter(m => !currentSchoolConfig.majors.includes(m));
-                let logDetail = `Jumlah jurusan: ${currentSchoolConfig.majors.length}`;
-                if (added.length) logDetail += `, ditambah: ${added.join(', ')}`;
-                if (removed.length) logDetail += `, dihapus: ${removed.join(', ')}`;
-                logActivity('save_majors', logDetail);
-            }
-            
-            setTimeout(() => {
-                if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-                if (typeof populateStudentFilters === 'function') populateStudentFilters();
-                if (typeof populateFilters === 'function') populateFilters();
-            }, 100);
-        })
-        .catch(err => showToast("❌ Gagal: " + err.message, "error"))
-        .finally(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '💾 Simpan Semua Jurusan';
-            }
-        });
-}
-
-function getDefaultClasses(schoolType) {
-    if (schoolType === 'smp') return ['VII', 'VIII', 'IX'];
-    if (schoolType === 'smk') return ['X', 'XI', 'XII'];
-    return ['VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-}
-
-// ======================= RESET, EXPORT, IMPORT =======================
-
-function resetAllSettings() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin dan developer yang dapat mereset pengaturan!", "error");
-        return;
-    }
-    if (!confirm("⚠️ Reset semua pengaturan ke default?\n\n- Delay global: 60 menit\n- Tipe sekolah: SMP\n- Kelas: VII, VIII, IX\n- Jurusan: kosong\n\nLanjutkan?")) return;
-    const defaultClasses = ['VII', 'VIII', 'IX'];
-    const btn = document.getElementById('btnResetSettings');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Mereset...';
-    }
-    Promise.all([
-        db.ref('settings/delayOut').set(60),
-        db.ref('school_config/type').set('smp'),
-        db.ref('school_config/majors').set([]),
-        db.ref('school_config/classes').set(defaultClasses)
-    ]).then(() => {
-        showToast("✅ Semua pengaturan berhasil direset!", "success");
-        currentSchoolConfig.type = 'smp';
-        currentSchoolConfig.majors = [];
-        currentSchoolConfig.classes = defaultClasses;
-        syncSchoolConfigToWindow();
-        renderClassesList();
-        renderMajorsList();
-        updateSchoolTypeUI();
-        const typeSelect = document.getElementById('schoolTypeSelect');
-        if (typeSelect) typeSelect.value = 'smp';
-        
-        // LOG: Reset semua pengaturan
-        if (typeof logActivity === 'function') {
-            logActivity('reset_all_settings', 'Meriset semua pengaturan ke default (delay global 60 menit, tipe SMP, kelas VII-IX, jurusan kosong)');
-        }
-        
-        setTimeout(() => {
-            if (typeof populateKelasOptions === 'function') populateKelasOptions();
-            if (typeof populateJurusanOptions === 'function') populateJurusanOptions();
-            if (typeof populateStudentFilters === 'function') populateStudentFilters();
-            if (typeof populateFilters === 'function') populateFilters();
-        }, 100);
-    })
-    .catch(err => showToast("❌ Gagal mereset: " + err.message, "error"))
-    .finally(() => { if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Reset ke Default'; } });
-}
-
-function exportSchoolConfig() {
-    const config = { 
-        schoolType: currentSchoolConfig.type, 
-        classes: currentSchoolConfig.classes,
-        majors: currentSchoolConfig.majors, 
-        exportDate: new Date().toISOString() 
-    };
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `school_config_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-    showToast("📥 Konfigurasi sekolah berhasil diekspor", "success");
-    
-    // LOG: Ekspor konfigurasi
-    if (typeof logActivity === 'function') {
-        logActivity('export_school_config', `Ekspor konfigurasi sekolah (tipe: ${currentSchoolConfig.type})`);
-    }
-}
-
-function importSchoolConfig(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const config = JSON.parse(e.target.result);
-            if (config.schoolType && ['smp','smk','both'].includes(config.schoolType)) {
-                const updates = {
-                    type: config.schoolType,
-                    majors: config.majors || [],
-                    classes: config.classes || getDefaultClasses(config.schoolType)
-                };
-                db.ref('school_config').update(updates);
-                showToast("✅ Konfigurasi sekolah berhasil diimpor!", "success");
-                
-                // LOG: Impor konfigurasi
-                if (typeof logActivity === 'function') {
-                    logActivity('import_school_config', `Impor konfigurasi sekolah (tipe: ${config.schoolType}, kelas: ${config.classes?.length || 0}, jurusan: ${config.majors?.length || 0})`);
-                }
-            } else {
-                showToast("❌ Format file tidak valid!", "error");
-            }
-        } catch(err) {
-            showToast("❌ Gagal membaca file: " + err.message, "error");
-        }
-    };
-    reader.readAsText(file);
-}
-
-// ======================= PENGATURAN JAM EFEKTIF & HARI LIBUR =======================
-
-// Load settings from Firebase
-function loadAttendanceSettings() {
-    db.ref('school_config/attendance_settings').on('value', (snapshot) => {
-        const data = snapshot.val();
+        const attendanceList = [];
         if (data) {
-            attendanceSettings = {
-                lateThreshold: data.lateThreshold || '07:30',
-                minOutTime: data.minOutTime || '14:00',
-                weeklyHolidays: data.weeklyHolidays || [0],
-                dateHolidays: data.dateHolidays || []
-            };
-        } else {
-            attendanceSettings = {
-                lateThreshold: '07:30',
-                minOutTime: '14:00',
-                weeklyHolidays: [0],
-                dateHolidays: []
-            };
+            Object.keys(data).forEach(key => {
+                attendanceList.push({ id: key, ...data[key] });
+            });
         }
-        const lateInput = document.getElementById('lateThresholdInput');
-        const minOutInput = document.getElementById('minOutTimeInput');
-        if (lateInput) lateInput.value = attendanceSettings.lateThreshold;
-        if (minOutInput) minOutInput.value = attendanceSettings.minOutTime;
-        
-        const checkboxes = document.querySelectorAll('#tab-config input[type="checkbox"][value]');
-        checkboxes.forEach(cb => {
-            const val = parseInt(cb.value);
-            cb.checked = attendanceSettings.weeklyHolidays.includes(val);
-        });
-        renderHolidayDatesList();
-        
-        window.attendanceSettings = attendanceSettings;
-    });
+        return attendanceList;
+    }
+    return [];
 }
 
-function renderHolidayDatesList() {
-    const container = document.getElementById('holidayDatesList');
-    if (!container) return;
-    if (!attendanceSettings.dateHolidays || attendanceSettings.dateHolidays.length === 0) {
-        container.innerHTML = '<small class="text-muted">Belum ada tanggal libur khusus</small>';
+// ======================= ROLE HELPER FUNCTIONS ========================
+
+function getRoleDisplayName(role) {
+    const names = {
+        developer: 'Developer',
+        admin: 'Kepala Sekolah',
+        wakil_kepala: 'Wakil Kepala Sekolah',
+        staff_tu: 'Staff TU',
+        guru: 'Guru',
+        siswa: 'Siswa'
+    };
+    return names[role] || role.toUpperCase();
+}
+
+function getRoleIcon(role) {
+    const icons = {
+        developer: '👨‍💻',
+        admin: '👑',
+        wakil_kepala: '👔',
+        staff_tu: '📋',
+        guru: '👨‍🏫',
+        siswa: '👨‍🎓'
+    };
+    return icons[role] || '👤';
+}
+
+function canManageStaffAttendance() {
+    if (!window.currentUser) return false;
+    const manageRoles = ['admin', 'developer', 'wakil_kepala', 'guru'];
+    return manageRoles.includes(window.currentUser.role);
+}
+
+function canViewStaffAttendance() {
+    if (!window.currentUser) return false;
+    const viewRoles = ['admin', 'developer', 'wakil_kepala', 'staff_tu', 'guru'];
+    return viewRoles.includes(window.currentUser.role);
+}
+
+function canDeleteStaffAttendance() {
+    if (!window.currentUser) return false;
+    const deleteRoles = ['admin', 'developer'];
+    return deleteRoles.includes(window.currentUser.role);
+}
+
+function isStaffAttendanceVisible() {
+    if (!window.currentUser) return false;
+    const visibleRoles = ['admin', 'developer', 'wakil_kepala', 'staff_tu', 'guru'];
+    return visibleRoles.includes(window.currentUser.role);
+}
+
+// ======================= NOTIFIKASI WHATSAPP UNTUK STAFF ========================
+
+async function sendStaffWhatsAppNotification(staffId, staffName, type, time, date = null) {
+    if (typeof window.WHATSAPP_CONFIG === 'undefined' || !window.WHATSAPP_CONFIG.enabled) {
+        console.log('📱 WhatsApp notification disabled for staff');
         return;
     }
-    let html = '';
-    attendanceSettings.dateHolidays.forEach(date => {
-        html += `<div style="background: #2c2c3a; padding: 4px 12px; border-radius: 20px; display: inline-flex; align-items: center; gap: 8px;">
-                    📅 ${formatIndonesianDate(date)}
-                    <span class="btn-icon delete" style="font-size: 12px; cursor: pointer;" onclick="removeHolidayDate('${date}')">✖</span>
-                </div>`;
-    });
-    container.innerHTML = html;
+    
+    if (type === 'check_in' && !window.WHATSAPP_CONFIG.sendOnCheckIn) return;
+    if (type === 'check_out' && !window.WHATSAPP_CONFIG.sendOnCheckOut) return;
+    
+    try {
+        let phoneNumber = null;
+        
+        if (typeof db !== 'undefined' && db) {
+            const staffContactSnapshot = await db.ref(`staff_contacts/${staffId}`).once('value');
+            const staffContactData = staffContactSnapshot.val();
+            
+            if (staffContactData && staffContactData.phoneNumber) {
+                phoneNumber = staffContactData.phoneNumber;
+            } else {
+                const staffSnapshot = await db.ref(`staff/${staffId}`).once('value');
+                const staffData = staffSnapshot.val();
+                if (staffData && staffData.noHp) {
+                    phoneNumber = staffData.noHp;
+                }
+            }
+        }
+        
+        if (!phoneNumber && window.dbData && window.dbData.users_auth) {
+            const userAuth = window.dbData.users_auth.find(u => u.uid === staffId || u.staffId === staffId);
+            if (userAuth && userAuth.noHp) {
+                phoneNumber = userAuth.noHp;
+            }
+        }
+        
+        if (!phoneNumber) {
+            console.log(`📱 No WhatsApp number for staff ${staffName} (ID: ${staffId})`);
+            return;
+        }
+        
+        let formattedNumber = phoneNumber.replace(/[^0-9]/g, '');
+        if (formattedNumber.startsWith('0')) formattedNumber = '62' + formattedNumber.substring(1);
+        if (!formattedNumber.startsWith('62')) formattedNumber = '62' + formattedNumber;
+        
+        const today = date || new Date().toISOString().split('T')[0];
+        const formattedDate = formatIndonesianDate(today);
+        
+        let title = '';
+        let message = '';
+        
+        switch(type) {
+            case 'check_in':
+                title = '✅ Absen Masuk Staff';
+                message = `*${staffName}* telah absen masuk pada pukul *${time}*.\n\n📅 Tanggal: ${formattedDate}\n\nSelamat bekerja! 👨‍🏫✨`;
+                break;
+            case 'check_out':
+                title = '🏠 Absen Pulang Staff';
+                message = `*${staffName}* telah absen pulang pada pukul *${time}*.\n\n📅 Tanggal: ${formattedDate}\n\nSemoga sampai rumah dengan selamat. 🏡`;
+                break;
+        }
+        
+        if (typeof sendViaFonnte === 'function') {
+            const fullMessage = `*📢 SISTEM ABSENSI SEKOLAH*\n\n*${title}*\n\n${message}\n\n---\n📱 Sistem Absensi IoT - Real-time`;
+            const result = await sendViaFonnte(formattedNumber, fullMessage);
+            if (result && typeof db !== 'undefined' && db) {
+                await db.ref(`staff_notifications_log/${staffId}/${Date.now()}`).set({
+                    type: type,
+                    phoneNumber: formattedNumber,
+                    time: time,
+                    date: today,
+                    sentAt: firebase.database.ServerValue.TIMESTAMP
+                });
+            }
+        }
+        
+    } catch (error) {
+        console.error('Send staff notification error:', error);
+    }
 }
 
 function formatIndonesianDate(dateStr) {
-    if (!dateStr) return dateStr;
+    if (!dateStr) return '';
     const parts = dateStr.split('-');
     if (parts.length !== 3) return dateStr;
     const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     return `${parts[2]} ${bulan[parseInt(parts[1]) - 1]} ${parts[0]}`;
 }
 
-function addHolidayDate() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin yang dapat mengubah hari libur!", "error");
-        return;
+async function saveStaffContact(staffId, staffName, phoneNumber, relation = 'staff') {
+    if (!window.currentUser || (window.currentUser.role !== 'admin' && window.currentUser.role !== 'developer')) {
+        if (window.showToast) window.showToast('⛔ Hanya Admin dan Developer yang dapat mengedit kontak staff!', 'error');
+        return false;
     }
-    const dateInput = document.getElementById('holidayDateInput');
-    const date = dateInput.value;
-    if (!date) {
-        showToast("Pilih tanggal terlebih dahulu!", "error");
-        return;
-    }
-    if (attendanceSettings.dateHolidays.includes(date)) {
-        showToast("Tanggal sudah ada dalam daftar libur!", "warning");
-        return;
-    }
-    attendanceSettings.dateHolidays.push(date);
-    saveAttendanceSettingsToFirebase();
-    dateInput.value = '';
     
-    // LOG: Tambah tanggal libur
-    if (typeof logActivity === 'function') {
-        logActivity('add_holiday_date', `Menambah tanggal libur: ${formatIndonesianDate(date)}`);
+    let formattedNumber = phoneNumber.replace(/[^0-9]/g, '');
+    if (formattedNumber.startsWith('0')) formattedNumber = '62' + formattedNumber.substring(1);
+    if (!formattedNumber.startsWith('62')) formattedNumber = '62' + formattedNumber;
+    
+    try {
+        if (typeof db !== 'undefined' && db) {
+            await db.ref(`staff_contacts/${staffId}`).set({
+                staffId: staffId,
+                staffName: staffName,
+                phoneNumber: formattedNumber,
+                rawNumber: phoneNumber,
+                relation: relation,
+                updatedBy: window.currentUser.nama || window.currentUser.email,
+                updatedAt: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            await db.ref(`staff/${staffId}/noHp`).set(formattedNumber);
+        }
+        
+        if (window.showToast) window.showToast(`✅ Nomor WhatsApp ${staffName} berhasil disimpan!`, 'success');
+        
+        if (typeof window.logActivity === 'function') {
+            window.logActivity('save_staff_contact', `Simpan kontak staff ${staffName} (ID: ${staffId}) - ${formattedNumber}`);
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Save staff contact error:', error);
+        if (window.showToast) window.showToast('❌ Gagal menyimpan nomor', 'error');
+        return false;
     }
 }
 
-function removeHolidayDate(date) {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin yang dapat mengubah hari libur!", "error");
-        return;
-    }
-    attendanceSettings.dateHolidays = attendanceSettings.dateHolidays.filter(d => d !== date);
-    saveAttendanceSettingsToFirebase();
+function openStaffContactModal(staffId, staffName) {
+    const modalId = 'modal-staff-contact';
+    let existingModal = document.getElementById(modalId);
+    if (existingModal) existingModal.remove();
     
-    // LOG: Hapus tanggal libur
-    if (typeof logActivity === 'function') {
-        logActivity('remove_holiday_date', `Menghapus tanggal libur: ${formatIndonesianDate(date)}`);
+    let existingNumber = '';
+    let existingRelation = 'staff';
+    
+    if (typeof db !== 'undefined' && db) {
+        db.ref(`staff_contacts/${staffId}`).once('value', (snapshot) => {
+            const contact = snapshot.val();
+            if (contact && contact.rawNumber) {
+                existingNumber = contact.rawNumber;
+                existingRelation = contact.relation || 'staff';
+            }
+            
+            const modalHtml = `
+                <div id="${modalId}" class="modal-overlay open" style="display:flex; align-items:center; justify-content:center; z-index:10000;">
+                    <div class="modal-box" style="max-width: 450px; background:var(--bg-card); border-radius:20px;">
+                        <div class="modal-title" style="display:flex; justify-content:space-between; align-items:center; padding:15px 20px; border-bottom:1px solid var(--border);">
+                            <span>📱 WhatsApp Staff - ${escapeHtml(staffName)}</span>
+                            <span onclick="window.closeModal('${modalId}')" style="cursor:pointer; font-size:24px;">✖</span>
+                        </div>
+                        <div style="padding: 20px;">
+                            <div class="form-group">
+                                <label>👤 Staff</label>
+                                <input type="text" id="staffContactName" value="${escapeHtml(staffName)}" readonly style="background: var(--bg-hover); width:100%; padding:10px; border-radius:8px;">
+                            </div>
+                            <div class="form-group">
+                                <label>📱 Nomor WhatsApp</label>
+                                <input type="tel" id="staffContactPhone" placeholder="Contoh: 08123456789 atau 628123456789" value="${escapeHtml(existingNumber)}" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-input);">
+                                <small class="text-small" style="color: var(--text-muted);">Format: 08xxxxxxxxx atau 628xxxxxxxxx</small>
+                            </div>
+                            <div class="form-group">
+                                <label>👤 Hubungan</label>
+                                <select id="staffContactRelation" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-input);">
+                                    <option value="staff" ${existingRelation === 'staff' ? 'selected' : ''}>Staff</option>
+                                    <option value="guru" ${existingRelation === 'guru' ? 'selected' : ''}>Guru</option>
+                                    <option value="karyawan" ${existingRelation === 'karyawan' ? 'selected' : ''}>Karyawan</option>
+                                    <option value="pribadi" ${existingRelation === 'pribadi' ? 'selected' : ''}>Pribadi</option>
+                                </select>
+                            </div>
+                            <div class="modal-actions" style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+                                <button class="btn-cancel" onclick="window.closeModal('${modalId}')" style="padding:8px 20px; border-radius:20px; border:none; cursor:pointer;">Batal</button>
+                                <button class="btn-save" onclick="saveStaffContactFromModal('${staffId}', '${escapeHtml(staffName)}')" style="padding:8px 20px; border-radius:20px; border:none; background:#4caf50; color:white; cursor:pointer;">💾 Simpan Nomor</button>
+                            </div>
+                            <div class="text-small" style="margin-top: 15px; text-align: center; color: var(--text-muted);">
+                                <hr>
+                                📱 <strong>Test Kirim Pesan</strong><br>
+                                <button class="btn-action btn-success" onclick="testSendStaffWhatsApp('${staffId}', '${escapeHtml(staffName)}')" style="margin-top: 8px; padding: 6px 12px; font-size: 0.75rem;">
+                                    🔔 Kirim Test WhatsApp
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        });
+    } else {
+        // Fallback jika db tidak tersedia
+        const modalHtml = `
+            <div id="${modalId}" class="modal-overlay open" style="display:flex; align-items:center; justify-content:center; z-index:10000;">
+                <div class="modal-box" style="max-width: 450px; background:var(--bg-card); border-radius:20px;">
+                    <div class="modal-title" style="display:flex; justify-content:space-between; align-items:center; padding:15px 20px; border-bottom:1px solid var(--border);">
+                        <span>📱 WhatsApp Staff - ${escapeHtml(staffName)}</span>
+                        <span onclick="window.closeModal('${modalId}')" style="cursor:pointer; font-size:24px;">✖</span>
+                    </div>
+                    <div style="padding: 20px;">
+                        <div class="form-group">
+                            <label>👤 Staff</label>
+                            <input type="text" id="staffContactName" value="${escapeHtml(staffName)}" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>📱 Nomor WhatsApp</label>
+                            <input type="tel" id="staffContactPhone" placeholder="Contoh: 08123456789">
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn-cancel" onclick="window.closeModal('${modalId}')">Batal</button>
+                            <button class="btn-save" onclick="saveStaffContactFromModal('${staffId}', '${escapeHtml(staffName)}')">Simpan</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
     }
 }
 
-function saveAttendanceSettingsToFirebase() {
-    const settings = {
-        lateThreshold: attendanceSettings.lateThreshold,
-        minOutTime: attendanceSettings.minOutTime,
-        weeklyHolidays: attendanceSettings.weeklyHolidays,
-        dateHolidays: attendanceSettings.dateHolidays
-    };
-    db.ref('school_config/attendance_settings').set(settings)
-        .then(() => {
-            showToast("✅ Pengaturan jam efektif & hari libur disimpan", "success");
-        })
-        .catch(err => showToast("❌ Gagal menyimpan: " + err.message, "error"));
-}
-
-function saveAttendanceSettings() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        showToast("⛔ Hanya admin yang dapat mengubah pengaturan!", "error");
+async function saveStaffContactFromModal(staffId, staffName) {
+    const phoneNumber = document.getElementById('staffContactPhone')?.value.trim();
+    const relation = document.getElementById('staffContactRelation')?.value;
+    
+    if (!phoneNumber) {
+        if (window.showToast) window.showToast('Masukkan nomor WhatsApp!', 'error');
         return;
     }
-    const oldLateThreshold = attendanceSettings.lateThreshold;
-    const oldMinOutTime = attendanceSettings.minOutTime;
-    const oldWeeklyHolidays = [...attendanceSettings.weeklyHolidays];
     
-    const lateThreshold = document.getElementById('lateThresholdInput').value;
-    const minOutTime = document.getElementById('minOutTimeInput').value;
-    const weeklyHolidays = [];
-    const checkboxes = document.querySelectorAll('#tab-config input[type="checkbox"][value]');
-    checkboxes.forEach(cb => {
-        if (cb.checked) weeklyHolidays.push(parseInt(cb.value));
-    });
-    attendanceSettings.lateThreshold = lateThreshold;
-    attendanceSettings.minOutTime = minOutTime;
-    attendanceSettings.weeklyHolidays = weeklyHolidays;
-    saveAttendanceSettingsToFirebase();
+    await saveStaffContact(staffId, staffName, phoneNumber, relation);
+    window.closeModal('modal-staff-contact');
+}
+
+async function testSendStaffWhatsApp(staffId, staffName) {
+    let phoneNumber = null;
     
-    // LOG: Simpan pengaturan jam efektif
-    if (typeof logActivity === 'function') {
-        const changes = [];
-        if (oldLateThreshold !== lateThreshold) changes.push(`batas terlambat: ${oldLateThreshold} → ${lateThreshold}`);
-        if (oldMinOutTime !== minOutTime) changes.push(`minimal pulang: ${oldMinOutTime} → ${minOutTime}`);
-        const addedHolidays = weeklyHolidays.filter(h => !oldWeeklyHolidays.includes(h));
-        const removedHolidays = oldWeeklyHolidays.filter(h => !weeklyHolidays.includes(h));
-        if (addedHolidays.length) changes.push(`libur mingguan tambah: ${addedHolidays.join(',')}`);
-        if (removedHolidays.length) changes.push(`libur mingguan hapus: ${removedHolidays.join(',')}`);
-        if (changes.length) {
-            logActivity('save_attendance_settings', `Perubahan pengaturan jam efektif: ${changes.join('; ')}`);
-        } else {
-            logActivity('save_attendance_settings', 'Menyimpan pengaturan jam efektif (tanpa perubahan)');
+    if (typeof db !== 'undefined' && db) {
+        const staffContactSnapshot = await db.ref(`staff_contacts/${staffId}`).once('value');
+        const staffContactData = staffContactSnapshot.val();
+        
+        if (staffContactData && staffContactData.phoneNumber) {
+            phoneNumber = staffContactData.phoneNumber;
+        }
+    }
+    
+    if (!phoneNumber) {
+        if (window.showToast) window.showToast(`❌ Nomor WhatsApp untuk ${staffName} belum diisi!`, 'error');
+        return;
+    }
+    
+    if (typeof sendViaFonnte !== 'function') {
+        if (window.showToast) window.showToast('❌ Fungsi WhatsApp tidak tersedia.', 'error');
+        return;
+    }
+    
+    const testMessage = `🧪 *TEST NOTIFIKASI WHATSAPP - STAFF*
+
+Halo *${staffName}*, ini adalah pesan test dari **Sistem Absensi Sekolah**.
+
+*Staff:* ${staffName}
+*Waktu Test:* ${new Date().toLocaleString('id-ID')}
+
+Jika Anda menerima pesan ini, berarti notifikasi WhatsApp untuk staff berhasil terintegrasi! ✅
+
+---
+📱 Sistem Absensi IoT - Real-time`;
+    
+    if (window.showToast) window.showToast('📤 Mengirim pesan test...', 'info');
+    
+    const result = await sendViaFonnte(phoneNumber, testMessage);
+    
+    if (result) {
+        if (window.showToast) window.showToast(`✅ Pesan test berhasil dikirim ke ${phoneNumber}`, 'success');
+        if (typeof window.logActivity === 'function') {
+            window.logActivity('test_staff_whatsapp', `Test WhatsApp ke staff ${staffName} (${phoneNumber}) - BERHASIL`);
+        }
+    } else {
+        if (window.showToast) window.showToast(`❌ Gagal mengirim ke ${phoneNumber}.`, 'error');
+        if (typeof window.logActivity === 'function') {
+            window.logActivity('test_staff_whatsapp', `Test WhatsApp ke staff ${staffName} (${phoneNumber}) - GAGAL`);
         }
     }
 }
 
-// Fungsi pengecekan hari libur (digunakan di attendance.js dan rekap.js)
-function isHoliday(dateStr) {
-    if (!attendanceSettings) return false;
-    const date = new Date(dateStr);
-    const dayOfWeek = date.getDay();
-    if (attendanceSettings.weeklyHolidays && attendanceSettings.weeklyHolidays.includes(dayOfWeek)) return true;
-    if (attendanceSettings.dateHolidays && attendanceSettings.dateHolidays.includes(dateStr)) return true;
-    return false;
-}
+// ======================= FUNGSI UNTUK MODAL ========================
 
-function filterAttendanceByHoliday(attendanceArray) {
-    if (!attendanceArray || !attendanceArray.length) return attendanceArray || [];
-    return attendanceArray.filter(record => !isHoliday(record.date));
-}
-
-function getHolidayCountInRange(startDate, endDate) {
-    let count = 0;
-    let current = new Date(startDate);
-    const end = new Date(endDate);
-    while (current <= end) {
-        const dateStr = current.toISOString().split('T')[0];
-        if (isHoliday(dateStr)) count++;
-        current.setDate(current.getDate() + 1);
-    }
-    return count;
-}
-
-// ======================= SENSOR STATUS =======================
-
-let sensorStatusListener = null;
-
-function initSensorStatusListener() {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'developer')) {
-        const panel = document.getElementById('sensorStatusPanel');
-        if (panel) panel.style.display = 'none';
+window.openSimulateStaffInModal = async function() {
+    console.log("🔓 openSimulateStaffInModal dipanggil");
+    
+    if (!canManageStaffAttendance()) {
+        const roleDisplay = getRoleDisplayName(window.currentUser?.role);
+        if (window.showToast) window.showToast(`⛔ ${roleDisplay} tidak dapat melakukan absen staff!`, "error");
         return;
     }
-    const panel = document.getElementById('sensorStatusPanel');
-    if (panel) panel.style.display = 'block';
-    if (sensorStatusListener) {
-        db.ref('status/esp32/sensors').off('value', sensorStatusListener);
-    }
-    sensorStatusListener = db.ref('status/esp32/sensors').on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            renderSensorGrid(data);
-            updateSensorHeaderInfo(data);
-        } else {
-            renderNoSensorData();
+    
+    const searchInput = document.getElementById('simulateStaffSearchInput');
+    if (searchInput) searchInput.value = '';
+    const warningSpan = document.getElementById('simulateStaffWarning');
+    if (warningSpan) warningSpan.innerHTML = '';
+    document.getElementById('selectedStaffId').value = '';
+    document.getElementById('selectedStaffName').value = '';
+    document.getElementById('selectedStaffJabatan').value = '';
+    
+    try {
+        const staffData = await fetchStaffFromAPI();
+        currentStaffListForAttendance = [...staffData];
+        
+        if (window.dbData && window.dbData.users_auth) {
+            const staffUsers = window.dbData.users_auth.filter(u => ['guru', 'developer', 'wakil_kepala', 'staff_tu', 'admin'].includes(u.role));
+            staffUsers.forEach(user => {
+                const existing = currentStaffListForAttendance.find(s => s.id === user.uid || s.id === user.staffId);
+                if (!existing) {
+                    let jabatan = 'Guru';
+                    if (user.role === 'developer') jabatan = 'Developer';
+                    else if (user.role === 'admin') jabatan = 'Kepala Sekolah';
+                    else if (user.role === 'wakil_kepala') jabatan = 'Wakil Kepala Sekolah';
+                    else if (user.role === 'staff_tu') jabatan = 'Staff TU';
+                    
+                    currentStaffListForAttendance.push({
+                        id: user.uid,
+                        nama: user.nama || user.email?.split('@')[0] || 'Unknown',
+                        jabatan: jabatan,
+                        email: user.email,
+                        source: 'user_auth'
+                    });
+                }
+            });
         }
-    });
-}
+        
+        if (currentStaffListForAttendance.length === 0) {
+            if (window.showToast) window.showToast("❌ Belum ada data staff! Silakan tambah staff terlebih dahulu.", "error");
+            return;
+        }
+        
+        renderStaffListForInModal();
+        
+        const modal = document.getElementById('modal-simulate-staff-in');
+        if (modal) modal.classList.add('open');
+    } catch (err) {
+        console.error("Error loading staff:", err);
+        if (window.showToast) window.showToast("❌ Gagal memuat data staff: " + err.message, "error");
+    }
+};
 
-function renderSensorGrid(data) {
-    const container = document.getElementById('sensorGrid');
-    if (!container) return;
-    if (!data.sensors || !Array.isArray(data.sensors)) {
-        container.innerHTML = '<div class="sensor-loading">📡 Menunggu data dari ESP32...</div>';
+function renderStaffListForInModal(filterText = '') {
+    const staffListDiv = document.getElementById('simulateStaffList');
+    if (!staffListDiv) return;
+    
+    const filtered = currentStaffListForAttendance.filter(s => 
+        s.nama && (s.nama.toLowerCase().includes(filterText.toLowerCase()) || 
+                   s.id.toString().includes(filterText))
+    );
+    
+    if (filtered.length === 0) {
+        staffListDiv.innerHTML = '<div style="padding: 10px; text-align:center; color:#888;">📭 Tidak ada staff yang cocok</div>';
         return;
     }
+    
     let html = '';
-    data.sensors.forEach(sensor => {
-        const isOnline = sensor.status === 'online';
-        const statusIcon = isOnline ? '✅' : '❌';
-        const statusText = isOnline ? 'ONLINE' : 'OFFLINE';
-        const statusClass = isOnline ? 'online' : 'offline';
-        const templates = sensor.templateCount || 0;
+    filtered.forEach(s => {
         html += `
-            <div class="sensor-card ${statusClass}">
-                <div class="sensor-number">#${sensor.id}</div>
-                <div class="sensor-status-icon">${statusIcon}</div>
-                <div class="sensor-status-text ${statusClass}">${statusText}</div>
-                <div class="sensor-templates">📁 ${templates} sidik</div>
-                ${sensor.error ? `<div class="sensor-error" style="font-size:10px;color:#f44336;margin-top:4px;">${escapeHtmlStr(sensor.error)}</div>` : ''}
+            <div class="staff-list-item" data-id="${escapeHtml(s.id)}" data-nama="${escapeHtml(s.nama)}" data-jabatan="${escapeHtml(s.jabatan || '')}" style="padding: 10px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s;" onmouseover="this.style.backgroundColor='var(--bg-hover)'" onmouseout="this.style.backgroundColor='transparent'">
+                <strong>${escapeHtml(s.id)}</strong> - ${escapeHtml(s.nama)} <span style="color: #888;">(${escapeHtml(s.jabatan || '-')})</span>
             </div>
         `;
     });
-    container.innerHTML = html;
+    staffListDiv.innerHTML = html;
+    
+    document.querySelectorAll('#simulateStaffList .staff-list-item').forEach(el => {
+        el.addEventListener('click', () => {
+            const id = el.getAttribute('data-id');
+            const nama = el.getAttribute('data-nama');
+            const jabatan = el.getAttribute('data-jabatan');
+            document.getElementById('selectedStaffId').value = id;
+            document.getElementById('selectedStaffName').value = nama;
+            document.getElementById('selectedStaffJabatan').value = jabatan;
+            const searchInput = document.getElementById('simulateStaffSearchInput');
+            if (searchInput) searchInput.value = `${id} - ${nama}`;
+            staffListDiv.innerHTML = `<div style="padding: 10px; color: #4caf50;">✅ Dipilih: ${nama} (ID: ${id})</div>`;
+            checkExistingStaffAttendance(id);
+        });
+    });
 }
 
-function updateSensorHeaderInfo(data) {
-    const onlineCount = data.onlineCount || 0;
-    const totalTemplates = data.totalTemplates || 0;
-    const timestamp = data.timestamp;
-    const badge = document.getElementById('sensorOnlineBadge');
-    if (badge) {
-        badge.textContent = `${onlineCount}/16 Online`;
-        if (onlineCount === 16) badge.className = 'badge-success';
-        else if (onlineCount >= 12) badge.className = 'badge-warning';
-        else badge.className = 'badge-danger';
-    }
-    const lastUpdateSpan = document.getElementById('sensorLastUpdate');
-    if (lastUpdateSpan && timestamp) {
-        const date = new Date(timestamp);
-        lastUpdateSpan.textContent = `🕐 ${date.toLocaleTimeString('id-ID')}`;
-        lastUpdateSpan.className = 'badge-info';
-    } else if (lastUpdateSpan) {
-        lastUpdateSpan.textContent = 'Menunggu data...';
-    }
-    const header = document.querySelector('#sensorStatusPanel .sensor-header h4');
-    if (header) header.setAttribute('title', `Total ${totalTemplates} sidik jari tersimpan di semua sensor`);
-}
-
-function renderNoSensorData() {
-    const container = document.getElementById('sensorGrid');
-    if (!container) return;
-    container.innerHTML = `<div class="sensor-loading">📡 Belum ada data dari ESP32<br><small>Pastikan ESP32 terhubung ke internet dan mengirim data status</small></div>`;
-    const badge = document.getElementById('sensorOnlineBadge');
-    if (badge) {
-        badge.textContent = 'Menunggu data';
-        badge.className = 'badge-warning';
+function checkExistingStaffAttendance(staffId) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const warningSpan = document.getElementById('simulateStaffWarning');
+    if (!warningSpan) return;
+    
+    if (typeof db !== 'undefined' && db) {
+        db.ref(`staff_attendance/${todayStr}/${staffId}`).once('value', (snapshot) => {
+            const existing = snapshot.val();
+            if (existing && existing.status !== 'pulang') {
+                warningSpan.innerHTML = `⚠️ Staff ini sudah absen masuk hari ini pukul ${existing.timeIn}. Jika tetap disimpan, akan mengganti data sebelumnya.`;
+                warningSpan.style.color = '#f44336';
+            } else {
+                warningSpan.innerHTML = '';
+            }
+        });
+    } else {
+        warningSpan.innerHTML = '';
     }
 }
 
-function refreshSensorStatus() {
-    if (typeof showToast === 'function') showToast("📡 Meminta refresh data sensor...", "info");
-    if (db) {
-        db.ref('commands/esp32/check_sensors').set({
-            requestedBy: currentUser?.nama || 'Admin',
-            timestamp: firebase.database.ServerValue.TIMESTAMP
-        }).then(() => {
-            if (typeof showToast === 'function') showToast("✅ Perintah refresh dikirim ke ESP32", "success");
-            setTimeout(() => db.ref('commands/esp32/check_sensors').remove(), 5000);
-        }).catch(err => {
-            console.error("Gagal kirim command:", err);
-            if (typeof showToast === 'function') showToast("❌ Gagal mengirim perintah", "error");
+window.executeSimulateStaffIn = async function() {
+    console.log("✅ executeSimulateStaffIn dipanggil");
+    const staffId = document.getElementById('selectedStaffId')?.value;
+    const nama = document.getElementById('selectedStaffName')?.value;
+    const jabatan = document.getElementById('selectedStaffJabatan')?.value;
+    
+    if (!staffId || !nama) {
+        if (window.showToast) window.showToast("❌ Pilih staff terlebih dahulu!", "error");
+        return;
+    }
+    
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+    const dateStr = now.toISOString().split('T')[0];
+    
+    const btn = document.querySelector('#modal-simulate-staff-in .btn-save');
+    const originalText = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Memproses...'; }
+    
+    try {
+        await saveStaffAttendanceToAPI(staffId, nama, jabatan, timeStr, dateStr);
+        
+        if (window.showToast) window.showToast(`✅ Absen masuk berhasil untuk ${nama} (${timeStr})`, "success");
+        
+        if (typeof window.logActivity === 'function') {
+            window.logActivity('simulate_staff_attendance_in', `Absen masuk staff: ${nama} (ID: ${staffId}) - Waktu: ${timeStr} por ${getRoleDisplayName(window.currentUser?.role)}`);
+        }
+        
+        await sendStaffWhatsAppNotification(staffId, nama, 'check_in', timeStr, dateStr);
+        
+        window.closeModal('modal-simulate-staff-in');
+        if (typeof window.renderStaffAttendanceTable === 'function') {
+            window.renderStaffAttendanceTable();
+        }
+        
+    } catch (err) {
+        console.error("Error:", err);
+        if (window.showToast) window.showToast("❌ Gagal: " + err.message, "error");
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+    }
+};
+
+// ======================= ABSEN PULANG STAFF ========================
+
+window.openSimulateStaffOutModal = function() {
+    console.log("🔓 openSimulateStaffOutModal dipanggil");
+    
+    if (!canManageStaffAttendance()) {
+        const roleDisplay = getRoleDisplayName(window.currentUser?.role);
+        if (window.showToast) window.showToast(`⛔ ${roleDisplay} tidak dapat melakukan absen pulang staff!`, "error");
+        return;
+    }
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    const searchInput = document.getElementById('simulateStaffOutSearchInput');
+    if (searchInput) searchInput.value = '';
+    document.getElementById('selectedStaffOutId').value = '';
+    document.getElementById('selectedStaffOutName').value = '';
+    document.getElementById('selectedStaffOutTimeIn').value = '';
+    
+    if (typeof db !== 'undefined' && db) {
+        db.ref(`staff_attendance/${todayStr}`).once('value', (snapshot) => {
+            const data = snapshot.val();
+            currentStaffListForOut = [];
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    const record = data[key];
+                    if (record && record.status !== 'pulang') {
+                        currentStaffListForOut.push({ id: key, ...record });
+                    }
+                });
+            }
+            
+            if (currentStaffListForOut.length === 0) {
+                if (window.showToast) window.showToast("⚠️ Tidak ada staff yang absen masuk hari ini!", "warning");
+                return;
+            }
+            
+            renderStaffListForOutModal();
+            
+            const modal = document.getElementById('modal-simulate-staff-out');
+            if (modal) modal.classList.add('open');
+        });
+    } else {
+        if (window.showToast) window.showToast("❌ Database tidak tersedia!", "error");
+    }
+};
+
+function renderStaffListForOutModal(filterText = '') {
+    const staffListDiv = document.getElementById('simulateStaffOutList');
+    if (!staffListDiv) return;
+    
+    const filtered = currentStaffListForOut.filter(s => 
+        s.nama && (s.nama.toLowerCase().includes(filterText.toLowerCase()) || 
+                   s.staffId?.toString().includes(filterText))
+    );
+    
+    if (filtered.length === 0) {
+        staffListDiv.innerHTML = '<div style="padding: 10px; text-align:center; color:#888;">📭 Tidak ada staff yang cocok</div>';
+        return;
+    }
+    
+    let html = '';
+    filtered.forEach(s => {
+        html += `
+            <div class="staff-list-item" data-id="${escapeHtml(s.staffId)}" data-nama="${escapeHtml(s.nama)}" data-timein="${escapeHtml(s.timeIn)}" style="padding: 10px; border-bottom: 1px solid var(--border); cursor: pointer;" onmouseover="this.style.backgroundColor='var(--bg-hover)'" onmouseout="this.style.backgroundColor='transparent'">
+                <strong>${escapeHtml(s.staffId)}</strong> - ${escapeHtml(s.nama)} <span style="color: #888;">Masuk: ${escapeHtml(s.timeIn)}</span>
+            </div>
+        `;
+    });
+    staffListDiv.innerHTML = html;
+    
+    document.querySelectorAll('#simulateStaffOutList .staff-list-item').forEach(el => {
+        el.addEventListener('click', () => {
+            const id = el.getAttribute('data-id');
+            const nama = el.getAttribute('data-nama');
+            const timeIn = el.getAttribute('data-timein');
+            document.getElementById('selectedStaffOutId').value = id;
+            document.getElementById('selectedStaffOutName').value = nama;
+            document.getElementById('selectedStaffOutTimeIn').value = timeIn;
+            const searchInput = document.getElementById('simulateStaffOutSearchInput');
+            if (searchInput) searchInput.value = `${id} - ${nama}`;
+            staffListDiv.innerHTML = `<div style="padding: 10px; color: #4caf50;">✅ Dipilih: ${nama} (ID: ${id})</div>`;
+        });
+    });
+}
+
+window.executeSimulateStaffOut = async function() {
+    console.log("✅ executeSimulateStaffOut dipanggil");
+    const staffId = document.getElementById('selectedStaffOutId')?.value;
+    const nama = document.getElementById('selectedStaffOutName')?.value;
+    
+    if (!staffId || !nama) {
+        if (window.showToast) window.showToast("❌ Pilih staff terlebih dahulu!", "error");
+        return;
+    }
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const timeOutStr = now.toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'});
+    
+    const btn = document.querySelector('#modal-simulate-staff-out .btn-save');
+    const originalText = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Memproses...'; }
+    
+    try {
+        await updateStaffAttendanceOutToAPI(staffId, timeOutStr, todayStr);
+        
+        if (window.showToast) window.showToast(`✅ ${nama} berhasil absen pulang pukul ${timeOutStr}`, "success");
+        
+        if (typeof window.logActivity === 'function') {
+            window.logActivity('simulate_staff_attendance_out', `Absen pulang staff: ${nama} (ID: ${staffId}) - Waktu: ${timeOutStr} oleh ${getRoleDisplayName(window.currentUser?.role)}`);
+        }
+        
+        await sendStaffWhatsAppNotification(staffId, nama, 'check_out', timeOutStr, todayStr);
+        
+        window.closeModal('modal-simulate-staff-out');
+        if (typeof window.renderStaffAttendanceTable === 'function') {
+            window.renderStaffAttendanceTable();
+        }
+        
+    } catch (err) {
+        console.error("Error:", err);
+        if (window.showToast) window.showToast("❌ Gagal: " + err.message, "error");
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+    }
+};
+
+// ======================= RENDER TABEL ABSENSI STAFF ========================
+
+window.renderStaffAttendanceTable = async function() {
+    console.log("📊 renderStaffAttendanceTable dipanggil");
+    
+    if (!isStaffAttendanceVisible()) {
+        const tbody = document.getElementById('tbody-staff-attendance');
+        if (tbody) {
+            const roleDisplay = getRoleDisplayName(window.currentUser?.role);
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px;">🔒 ${roleDisplay} tidak memiliki akses ke halaman ini.<\/td><\/tr>`;
+        }
+        return;
+    }
+    
+    let tbody = document.getElementById('tbody-staff-attendance');
+    if (!tbody) {
+        console.error("❌ tbody-staff-attendance not found");
+        return;
+    }
+    
+    const filterDate = document.getElementById('filterStaffDate')?.value || 'today';
+    const todayStr = new Date().toISOString().split('T')[0];
+    let targetDate = filterDate === 'today' ? todayStr : filterDate;
+    
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px;"><div style="display:inline-block; width:30px; height:30px; border:3px solid var(--border); border-top-color:#00bcd4; border-radius:50%; animation: spin 1s linear infinite;"></div><div>⏳ Memuat data...</div><\/td><\/tr>`;
+    
+    try {
+        const attendanceList = await fetchStaffAttendanceFromFirebase(targetDate);
+        
+        attendanceList.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        
+        if (attendanceList.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px;">📭 Belum ada data absensi staff pada tanggal ${targetDate}<\/td><\/tr>`;
+            return;
+        }
+        
+        const canDelete = canDeleteStaffAttendance();
+        const isStaffTU = window.currentUser?.role === 'staff_tu';
+        
+        tbody.innerHTML = '';
+        
+        for (const row of attendanceList) {
+            const photoUrl = getStaffPhotoUrl(row.staffId, row.nama);
+            const initial = row.nama ? row.nama.charAt(0).toUpperCase() : 'G';
+            
+            let statusHtml = '';
+            if (row.status === 'pulang') {
+                statusHtml = `<span style="color:#f44336;">🏠 Pulang (${row.timeOut || '-'})</span>`;
+            } else {
+                statusHtml = `<span style="color:#4caf50;">✅ ${row.timeIn || '-'}</span>`;
+            }
+            
+            let actionButtons = '';
+            if (canDelete) {
+                actionButtons = `<button onclick="window.deleteStaffAttendance('${targetDate}', '${row.staffId}')" style="background:#f44336; border:none; border-radius:8px; padding:5px 10px; cursor:pointer; color:white;">🗑️</button>`;
+            } else if (isStaffTU) {
+                actionButtons = '<span style="color:#888;">🔒 Read only</span>';
+            } else {
+                actionButtons = '-';
+            }
+            
+            let waButton = '';
+            if (window.currentUser && (window.currentUser.role === 'admin' || window.currentUser.role === 'developer')) {
+                waButton = `<button onclick="openStaffContactModal('${row.staffId}', '${escapeHtml(row.nama)}')" style="background:#25D366; border:none; border-radius:8px; padding:5px 10px; margin-left:5px; cursor:pointer; color:white;" title="Set WhatsApp">📱</button>`;
+            }
+            
+            tbody.innerHTML += `
+                <tr>
+                    <td><img src="${photoUrl}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;" onerror="this.src='https://ui-avatars.com/api/?name=${initial}&background=ff9800&color=fff'"></td>
+                    <td>${escapeHtml(row.timeIn || '-')}<br><small>${row.date || targetDate}</small></td>
+                    <td><strong>${escapeHtml(row.staffId)}</strong></td>
+                    <td>${escapeHtml(row.nama)}</td>
+                    <td>${escapeHtml(row.jabatan || '-')}</td>
+                    <td>${statusHtml}</td>
+                    <td>${actionButtons}${waButton}</td>
+                </tr>
+            `;
+        }
+    } catch (err) {
+        console.error("Error:", err);
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:#f44336;">❌ Gagal memuat data: ${err.message}<\/td><\/tr>`;
+    }
+};
+
+function getStaffPhotoUrl(staffId, staffName) {
+    if (!staffId) {
+        return `https://ui-avatars.com/api/?name=${encodeURIComponent(staffName?.charAt(0) || 'G')}&background=ff9800&color=fff`;
+    }
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(staffName?.charAt(0) || 'G')}&background=ff9800&color=fff`;
+}
+
+// ======================= HAPUS ABSENSI ========================
+
+window.deleteStaffAttendance = async function(date, staffId) {
+    if (!canDeleteStaffAttendance()) {
+        if (window.showToast) window.showToast("⛔ Hanya Kepala Sekolah dan Developer yang dapat menghapus absensi staff!", "error");
+        return;
+    }
+    
+    if (!confirm("⚠️ Hapus data absensi staff ini?")) return;
+    
+    try {
+        await deleteStaffAttendanceFromAPI(date, staffId);
+        if (window.showToast) window.showToast("✅ Data absensi berhasil dihapus!", "success");
+        window.renderStaffAttendanceTable();
+    } catch (err) {
+        if (window.showToast) window.showToast("❌ Gagal: " + err.message, "error");
+    }
+};
+
+// ======================= EXPORT EXCEL ========================
+
+window.exportStaffAttendanceToExcel = async function() {
+    if (!canViewStaffAttendance()) {
+        if (window.showToast) window.showToast("⛔ Anda tidak memiliki akses!", "error");
+        return;
+    }
+    
+    const filterDate = document.getElementById('filterStaffDate')?.value || 'today';
+    const targetDate = filterDate === 'today' ? new Date().toISOString().split('T')[0] : filterDate;
+    
+    try {
+        const attendanceList = await fetchStaffAttendanceFromFirebase(targetDate);
+        
+        if (attendanceList.length === 0) {
+            if (window.showToast) window.showToast("❌ Tidak ada data untuk diekspor!", "error");
+            return;
+        }
+        
+        let csv = "\uFEFFID,Nama,Jabatan,Waktu Masuk,Waktu Pulang,Status,Tanggal\n";
+        attendanceList.forEach(a => {
+            csv += `"${a.staffId}","${a.nama}","${a.jabatan || '-'}","${a.timeIn || '-'}","${a.timeOut || '-'}","${a.status === 'pulang' ? 'Pulang' : 'Hadir'}","${targetDate}"\n`;
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `absensi_staff_${targetDate}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        if (window.showToast) window.showToast("📥 Laporan berhasil diunduh!", "success");
+    } catch (err) {
+        if (window.showToast) window.showToast("❌ Gagal mengekspor: " + err.message, "error");
+    }
+};
+
+// ======================= INITIALIZATION ========================
+
+function initStaffAttendance() {
+    if (staffAttendanceInitialized) return;
+    
+    console.log("📊 Initializing Staff Attendance system with API integration...");
+    
+    if (!window.currentUser) {
+        setTimeout(initStaffAttendance, 500);
+        return;
+    }
+    
+    if (!isStaffAttendanceVisible()) {
+        console.log("🔒 Staff Attendance: No access for role:", window.currentUser?.role);
+        return;
+    }
+    
+    if (typeof db === 'undefined' || !db) {
+        console.log("⏳ Menunggu Firebase...");
+        setTimeout(initStaffAttendance, 500);
+        return;
+    }
+    
+    const searchInputIn = document.getElementById('simulateStaffSearchInput');
+    if (searchInputIn && !searchInputIn._listenerAdded) {
+        searchInputIn.addEventListener('input', (e) => renderStaffListForInModal(e.target.value));
+        searchInputIn._listenerAdded = true;
+    }
+    
+    const searchInputOut = document.getElementById('simulateStaffOutSearchInput');
+    if (searchInputOut && !searchInputOut._listenerAdded) {
+        searchInputOut.addEventListener('input', (e) => renderStaffListForOutModal(e.target.value));
+        searchInputOut._listenerAdded = true;
+    }
+    
+    if (!staffAttendanceListener) {
+        staffAttendanceListener = true;
+        db.ref('staff_attendance').on('value', () => {
+            if (document.getElementById('tab-staff-attendance')?.classList.contains('active')) {
+                window.renderStaffAttendanceTable();
+            }
         });
     }
-    if (sensorStatusListener) {
-        db.ref('status/esp32/sensors').once('value').then(snapshot => {
-            const data = snapshot.val();
-            if (data) { renderSensorGrid(data); updateSensorHeaderInfo(data); }
-        }).catch(err => console.warn("Refresh error:", err));
-    }
+    
+    staffAttendanceInitialized = true;
+    window.renderStaffAttendanceTable();
 }
 
-function cleanupSensorStatus() {
-    if (sensorStatusListener) {
-        db.ref('status/esp32/sensors').off('value', sensorStatusListener);
-        sensorStatusListener = null;
-    }
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
 }
 
-// ======================= CLEANUP =======================
-
-function cleanupSettingsSystem() {
-    cleanupSensorStatus();
-    settingDataReadyListenerAdded = false;
-    settingUiReadyListenerAdded = false;
-    isSchoolConfigLoaded = false;
-    console.log("🧹 Settings system cleaned up");
+if (!document.querySelector('#staff-attendance-spinner-style')) {
+    const style = document.createElement('style');
+    style.id = 'staff-attendance-spinner-style';
+    style.textContent = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
+    document.head.appendChild(style);
 }
 
-// ======================= INISIALISASI =======================
+window.initStaffAttendance = initStaffAttendance;
+window.isStaffAttendanceVisible = isStaffAttendanceVisible;
+window.canManageStaffAttendance = canManageStaffAttendance;
+window.getRoleDisplayName = getRoleDisplayName;
+window.sendStaffWhatsAppNotification = sendStaffWhatsAppNotification;
+window.saveStaffContact = saveStaffContact;
+window.openStaffContactModal = openStaffContactModal;
+window.saveStaffContactFromModal = saveStaffContactFromModal;
+window.testSendStaffWhatsApp = testSendStaffWhatsApp;
+window.fetchStaffFromAPI = fetchStaffFromAPI;
 
-function initAllSettings() {
-    console.log("🚀 initAllSettings - Memulai inisialisasi UI settings...");
-    initGlobalDelayListeners();
-    const globalHoursSelect = document.getElementById('globalDelayHoursValue');
-    if (globalHoursSelect && globalHoursSelect.options.length <= 1) {
-        for (let i = 1; i <= 24; i++) {
-            globalHoursSelect.innerHTML += `<option value="${i}">${i} jam</option>`;
-        }
-    }
-    const studentHoursSelect = document.getElementById('delayHoursValue');
-    if (studentHoursSelect && studentHoursSelect.options.length <= 1) {
-        for (let i = 1; i <= 24; i++) {
-            studentHoursSelect.innerHTML += `<option value="${i}">${i} jam</option>`;
-        }
-    }
-    db.ref('settings/delayOut').once('value').then(snapshot => {
-        const delay = snapshot.val();
-        setGlobalDelayFormValue(delay || 60);
-        const displaySpan = document.getElementById('globalDelayDisplay');
-        if (displaySpan) displaySpan.textContent = formatDelayText(delay || 60);
-    });
-    loadAttendanceSettings();
-    console.log("✅ initAllSettings - Selesai");
-}
+console.log("✅ staff-attendance.js V3.0 loaded - Terintegrasi dengan API Backend Vercel!");
 
-setupSettingDataReadyListener();
-setupSettingUiReadyListener();
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(initAllSettings, 100));
-} else {
-    setTimeout(initAllSettings, 100);
-}
-
-// ======================= EKSPOR KE GLOBAL =======================
-window.formatDelayText = formatDelayText;
-window.toggleGlobalDelayInput = toggleGlobalDelayInput;
-window.updateGlobalDelayFromMinutes = updateGlobalDelayFromMinutes;
-window.updateGlobalDelayFromHours = updateGlobalDelayFromHours;
-window.saveGlobalDelay = saveGlobalDelay;
-window.initGlobalDelayListeners = initGlobalDelayListeners;
-window.renderClassesList = renderClassesList;
-window.addClass = addClass;
-window.removeClass = removeClass;
-window.saveClasses = saveClasses;
-window.renderMajorsList = renderMajorsList;
-window.saveSchoolType = saveSchoolType;
-window.addMajor = addMajor;
-window.removeMajor = removeMajor;
-window.saveMajors = saveMajors;
-window.resetAllSettings = resetAllSettings;
-window.exportSchoolConfig = exportSchoolConfig;
-window.importSchoolConfig = importSchoolConfig;
-window.initAllSettings = initAllSettings;
-window.cleanupSettingsSystem = cleanupSettingsSystem;
-window.initSensorStatusListener = initSensorStatusListener;
-window.refreshSensorStatus = refreshSensorStatus;
-window.cleanupSensorStatus = cleanupSensorStatus;
-window.syncSchoolConfigToWindow = syncSchoolConfigToWindow;
-window.forceReloadSchoolConfig = forceReloadSchoolConfig;
-
-window.loadAttendanceSettings = loadAttendanceSettings;
-window.addHolidayDate = addHolidayDate;
-window.removeHolidayDate = removeHolidayDate;
-window.saveAttendanceSettings = saveAttendanceSettings;
-window.isHoliday = isHoliday;
-window.filterAttendanceByHoliday = filterAttendanceByHoliday;
-window.getHolidayCountInRange = getHolidayCountInRange;
-window.renderHolidayDatesList = renderHolidayDatesList;
-
-console.log("✅ setting.js V3.7 loaded - Dengan log aktivitas untuk pengaturan");
+setTimeout(initStaffAttendance, 500);
