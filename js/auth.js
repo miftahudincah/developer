@@ -85,10 +85,24 @@ window.auth = {
     },
     
     logout() {
-        authToken = null;
-        currentUser = null;
-        localStorage.clear();
-        location.reload();
+        // Tampilkan konfirmasi
+        if (confirm('Apakah Anda yakin ingin logout?')) {
+            // Hapus semua data session
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentUser');
+            
+            // Reset tampilan ke halaman login
+            document.getElementById('loginCard').style.display = 'block';
+            document.getElementById('mainApp').style.display = 'none';
+            
+            // Reset form login
+            document.getElementById('loginPassword').value = '';
+            
+            // Tampilkan pesan
+            Utils.showStatus('loginStatus', '✅ Logout berhasil!', 'success');
+        }
     },
     
     showRegisterModal() {
@@ -139,6 +153,128 @@ window.auth = {
             }
         } catch (error) {
             Utils.showStatus('registerStatus', error.message, 'error');
+        }
+    },
+
+    // ============ FORGOT PASSWORD ============
+    
+    showForgotPasswordModal() {
+        // Reset form
+        document.getElementById('forgotStep1').style.display = 'block';
+        document.getElementById('forgotStep2').style.display = 'none';
+        document.getElementById('forgotEmail').value = '';
+        document.getElementById('resetToken').value = '';
+        document.getElementById('resetNewPassword').value = '';
+        document.getElementById('resetConfirmPassword').value = '';
+        document.getElementById('forgotStatus').className = 'status';
+        
+        const modal = document.getElementById('forgotPasswordModal');
+        if (modal) modal.style.display = 'flex';
+    },
+    
+    closeForgotPasswordModal() {
+        const modal = document.getElementById('forgotPasswordModal');
+        if (modal) modal.style.display = 'none';
+    },
+    
+    backToForgotStep1() {
+        document.getElementById('forgotStep1').style.display = 'block';
+        document.getElementById('forgotStep2').style.display = 'none';
+        document.getElementById('forgotStatus').className = 'status';
+        document.getElementById('resetToken').value = '';
+    },
+    
+    async requestResetPassword() {
+        const email = document.getElementById('forgotEmail').value;
+        
+        if (!email) {
+            Utils.showStatus('forgotStatus', 'Masukkan email Anda', 'error');
+            return;
+        }
+        
+        const btn = event.target;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mengirim...';
+        
+        try {
+            const response = await fetch(`${CONFIG.API_BASE}/auth/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                Utils.showStatus('forgotStatus', 
+                    '✅ Link reset password telah dikirim. Cek email Anda untuk mendapatkan token reset.\n\n' +
+                    (data.resetToken ? `(Development Mode - Token: ${data.resetToken})` : ''), 
+                    'success');
+                
+                setTimeout(() => {
+                    document.getElementById('forgotStep1').style.display = 'none';
+                    document.getElementById('forgotStep2').style.display = 'block';
+                    document.getElementById('forgotStatus').className = 'status';
+                }, 2000);
+            } else {
+                Utils.showStatus('forgotStatus', data.message || 'Gagal mengirim link reset', 'error');
+            }
+        } catch (error) {
+            Utils.showStatus('forgotStatus', `❌ Error: ${error.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Kirim Link Reset';
+        }
+    },
+    
+    async resetPassword() {
+        const token = document.getElementById('resetToken').value;
+        const newPassword = document.getElementById('resetNewPassword').value;
+        const confirmPassword = document.getElementById('resetConfirmPassword').value;
+        
+        if (!token || !newPassword || !confirmPassword) {
+            Utils.showStatus('forgotStatus', 'Semua field wajib diisi', 'error');
+            return;
+        }
+        
+        if (newPassword !== confirmPassword) {
+            Utils.showStatus('forgotStatus', 'Password baru tidak cocok', 'error');
+            return;
+        }
+        
+        if (newPassword.length < 6) {
+            Utils.showStatus('forgotStatus', 'Password minimal 6 karakter', 'error');
+            return;
+        }
+        
+        const btn = event.target;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mereset...';
+        
+        try {
+            const response = await fetch(`${CONFIG.API_BASE}/auth/reset-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, newPassword, confirmPassword })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                Utils.showStatus('forgotStatus', '✅ Password berhasil direset! Silakan login dengan password baru.', 'success');
+                
+                setTimeout(() => {
+                    window.auth.closeForgotPasswordModal();
+                    document.getElementById('loginPassword').value = '';
+                }, 2000);
+            } else {
+                Utils.showStatus('forgotStatus', data.message || 'Gagal mereset password', 'error');
+            }
+        } catch (error) {
+            Utils.showStatus('forgotStatus', `❌ Error: ${error.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-key"></i> Reset Password';
         }
     }
 };

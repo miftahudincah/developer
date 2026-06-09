@@ -63,5 +63,14 @@ window.onclick = function(e) {
     }
 };
 
+// Close modal with Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.style.display = 'none';
+        });
+    }
+});
+
 // Start application
 checkSavedLogin();
