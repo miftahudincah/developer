@@ -56,6 +56,11 @@
                         <i class="fas fa-user-plus"></i> Register Baru
                     </button>
                 </div>
+                <div class="forgot-password-link">
+                    <a href="#" onclick="window.auth.showForgotPasswordModal()">
+                        <i class="fas fa-question-circle"></i> Lupa Password?
+                    </a>
+                </div>
                 <div id="loginStatus" class="status"></div>
             </div>
         </div>
@@ -75,6 +80,13 @@
                 </button>
                 <button class="nav-tab" data-tab="users" id="adminTabBtn" style="display: none;">
                     <i class="fas fa-users-cog"></i> Manajemen User
+                </button>
+            </div>
+
+            <!-- Logout Button Row -->
+            <div class="logout-row">
+                <button onclick="window.auth.logout()" class="btn-danger logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> Logout
                 </button>
             </div>
 
@@ -205,7 +217,7 @@
                                 </tr>
                             </thead>
                             <tbody id="usersTableBody">
-                                <tr><td colspan="6" class="loading">Loading users...</td></tr>
+                                <tr><td colspan="6" class="loading">Loading users...<\/td><\/tr>
                             </tbody>
                         </table>
                     </div>
@@ -245,6 +257,46 @@
             </div>
             <button onclick="window.auth.register()" class="btn-primary">Daftar</button>
             <div id="registerStatus" class="status"></div>
+        </div>
+    </div>
+
+    <!-- Forgot Password Modal -->
+    <div id="forgotPasswordModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-question-circle"></i> Lupa Password</h3>
+                <span class="close-modal" onclick="window.auth.closeForgotPasswordModal()">&times;</span>
+            </div>
+            <div id="forgotStep1">
+                <div class="form-group">
+                    <label>Masukkan Email Anda:</label>
+                    <input type="email" id="forgotEmail" placeholder="Email terdaftar">
+                </div>
+                <button onclick="window.auth.requestResetPassword()" class="btn-primary">
+                    <i class="fas fa-paper-plane"></i> Kirim Link Reset
+                </button>
+            </div>
+            <div id="forgotStep2" style="display: none;">
+                <div class="form-group">
+                    <label>Token Reset:</label>
+                    <input type="text" id="resetToken" placeholder="Masukkan token dari email">
+                </div>
+                <div class="form-group">
+                    <label>Password Baru:</label>
+                    <input type="password" id="resetNewPassword" placeholder="Minimal 6 karakter">
+                </div>
+                <div class="form-group">
+                    <label>Konfirmasi Password:</label>
+                    <input type="password" id="resetConfirmPassword" placeholder="Ulangi password baru">
+                </div>
+                <button onclick="window.auth.resetPassword()" class="btn-primary">
+                    <i class="fas fa-key"></i> Reset Password
+                </button>
+                <button onclick="window.auth.backToForgotStep1()" class="btn-secondary" style="margin-top: 10px;">
+                    <i class="fas fa-arrow-left"></i> Kembali
+                </button>
+            </div>
+            <div id="forgotStatus" class="status"></div>
         </div>
     </div>
 
