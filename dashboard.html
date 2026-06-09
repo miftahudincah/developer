@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Sistem Absensi Sekolah</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #f3f4f6;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100%;
+            background: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%);
+            color: white;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 25px 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .sidebar-header h2 {
+            font-size: 20px;
+        }
+
+        .sidebar-header p {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .nav-menu {
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .nav-item span:first-child {
+            font-size: 20px;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            padding: 20px;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            background: white;
+            border-radius: 15px;
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            cursor: pointer;
+            object-fit: cover;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .user-name {
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .user-role-badge {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: #e5e7eb;
+            color: #4b5563;
+            margin-left: 8px;
+        }
+
+        .user-role-badge.developer {
+            background: #8b5cf6;
+            color: white;
+        }
+
+        .user-role-badge.admin {
+            background: #ef4444;
+            color: white;
+        }
+
+        .user-role-badge.guru {
+            background: #10b981;
+            color: white;
+        }
+
+        .user-role-badge.siswa {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .logout-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        /* Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #374151;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            font-size: 14px;
+            color: #4b5563;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        /* Tables */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        /* User Grid untuk Manajemen User */
+        .user-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .user-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+
+        .user-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+
+        .user-card-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            padding: 20px;
+            text-align: center;
+            color: white;
+        }
+
+        .user-card-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            overflow: hidden;
+        }
+
+        .user-card-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .user-card-avatar span {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .user-card-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .user-card-email {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .user-card-body {
+            padding: 15px;
+        }
+
+        .user-card-info {
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #4b5563;
+        }
+
+        .user-card-actions {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .user-card-actions button {
+            flex: 1;
+            padding: 8px;
+            font-size: 13px;
+        }
+
+        /* Attendance */
+        .attendance-buttons {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .attendance-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            background: white;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .attendance-btn.selected {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-color: transparent;
+        }
+
+        .preview-img {
+            max-width: 150px;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+
+        .upload-area {
+            border: 2px dashed #e5e7eb;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f9fafb;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-developer { background: #ede9fe; color: #6d28d9; }
+        .badge-admin { background: #fee2e2; color: #991b1b; }
+        .badge-guru { background: #d1fae5; color: #065f46; }
+        .badge-siswa { background: #dbeafe; color: #1e40af; }
+        .badge-hadir { background: #d1fae5; color: #065f46; }
+        .badge-terlambat { background: #fed7aa; color: #92400e; }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 3px solid #e5e7eb;
+            border-radius: 50%;
+            border-top: 3px solid #667eea;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+            }
+            .menu-toggle {
+                display: block;
+                position: fixed;
+                top: 15px;
+                left: 15px;
+                z-index: 101;
+                background: white;
+                border: none;
+                padding: 10px;
+                border-radius: 10px;
+                cursor: pointer;
+            }
+            .user-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .menu-toggle {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+    
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>📚 Absensi</h2>
+            <p>Sistem Absensi Sekolah</p>
+        </div>
+        <div class="nav-menu">
+            <div class="nav-item" data-page="dashboard">
+                <span>📊</span> Dashboard
+            </div>
+            <div class="nav-item" data-page="attendance">
+                <span>📝</span> Absensi
+            </div>
+            <div class="nav-item" data-page="history">
+                <span>📅</span> Riwayat
+            </div>
+            <div class="nav-item" data-page="profile">
+                <span>👤</span> Profil
+            </div>
+            <div class="nav-item" data-page="users" id="usersMenu" style="display: none;">
+                <span>👥</span> Manajemen User
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <h1 class="page-title" id="pageTitle">Dashboard</h1>
+            <div class="user-info">
+                <div class="user-name" id="userName">Loading...</div>
+                <div class="user-avatar" id="userAvatar">U</div>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </div>
+        <div id="pageContent">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Memuat...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ CONFIGURATION ============
+        const BACKEND_URL = 'https://backend9.vercel.app';
+        let authToken = localStorage.getItem('token');
+        let currentUser = null;
+
+        // ============ HELPER FUNCTIONS ============
+        async function apiRequest(endpoint, method = 'GET', body = null) {
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            };
+            
+            const options = { method, headers };
+            if (body) options.body = JSON.stringify(body);
+            
+            const response = await fetch(`${BACKEND_URL}${endpoint}`, options);
+            const data = await response.json();
+            
+            if (!response.ok) throw new Error(data.message || data.error || 'Request failed');
+            return data;
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+            });
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.textContent = message;
+            toast.style.position = 'fixed';
+            toast.style.bottom = '20px';
+            toast.style.right = '20px';
+            toast.style.backgroundColor = isError ? '#ef4444' : '#10b981';
+            toast.style.color = 'white';
+            toast.style.padding = '12px 20px';
+            toast.style.borderRadius = '10px';
+            toast.style.zIndex = '1000';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function isAdminOrDev() {
+            return currentUser?.role === 'admin' || currentUser?.role === 'developer';
+        }
+
+        // ============ AUTH ============
+        async function checkAuth() {
+            if (!authToken) {
+                window.location.href = 'index.html';
+                return false;
+            }
+            
+            try {
+                const data = await apiRequest('/auth/me');
+                currentUser = data.data;
+                updateUserUI();
+                return true;
+            } catch (error) {
+                console.error('Auth error:', error);
+                localStorage.removeItem('token');
+                window.location.href = 'index.html';
+                return false;
+            }
+        }
+
+        function updateUserUI() {
+            if (!currentUser) return;
+            
+            const userNameSpan = document.getElementById('userName');
+            userNameSpan.innerHTML = `${escapeHtml(currentUser.nama || currentUser.email)} <span class="user-role-badge ${currentUser.role || 'siswa'}">${(currentUser.role || 'siswa').toUpperCase()}</span>`;
+            
+            const avatar = document.getElementById('userAvatar');
+            if (currentUser.photoURL) {
+                avatar.innerHTML = `<img src="${currentUser.photoURL}" alt="Avatar">`;
+            } else {
+                avatar.textContent = (currentUser.nama?.charAt(0) || 'U').toUpperCase();
+            }
+            
+            const usersMenu = document.getElementById('usersMenu');
+            if (usersMenu) {
+                usersMenu.style.display = isAdminOrDev() ? 'flex' : 'none';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = 'index.html';
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        // ============ NAVIGATION ============
+        function loadPage(pageName) {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.page === pageName) item.classList.add('active');
+            });
+            
+            document.getElementById('pageTitle').textContent = getPageTitle(pageName);
+            
+            switch(pageName) {
+                case 'dashboard': renderDashboard(); break;
+                case 'attendance': renderAttendance(); break;
+                case 'history': renderHistory(); break;
+                case 'profile': renderProfile(); break;
+                case 'users': renderUserManagement(); break;
+                default: renderDashboard();
+            }
+        }
+
+        function getPageTitle(page) {
+            const titles = {
+                dashboard: '📊 Dashboard',
+                attendance: '📝 Absensi Hari Ini',
+                history: '📅 Riwayat Absensi',
+                profile: '👤 Profil Saya',
+                users: '👥 Manajemen User'
+            };
+            return titles[page] || 'Dashboard';
+        }
+
+        // ============ DASHBOARD ============
+        async function renderDashboard() {
+            const content = document.getElementById('pageContent');
+            content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Memuat data...</p></div>';
+            
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const [todayAbsen, allAbsen] = await Promise.all([
+                    apiRequest(`/absensi/date/${today}`),
+                    apiRequest('/absensi/all?limit=100')
+                ]);
+                
+                const absensiData = allAbsen.data || [];
+                const stats = {
+                    total: absensiData.length,
+                    hadir: absensiData.filter(a => a.status === 'masuk').length,
+                    terlambat: absensiData.filter(a => a.statusJam === 'terlambat').length
+                };
+                
+                const todayStatus = todayAbsen.data && todayAbsen.data.length > 0 ? todayAbsen.data[0] : null;
+                
+                content.innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>📊 Total Absensi</h3>
+                            <div class="stat-value">${stats.total}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>✅ Total Hadir</h3>
+                            <div class="stat-value">${stats.hadir}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>⚠️ Terlambat</h3>
+                            <div class="stat-value">${stats.terlambat}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-title">📌 Status Hari Ini</div>
+                        ${todayStatus ? `
+                            <p>✅ Anda sudah absen pada pukul ${todayStatus.jam_masuk || '-'}</p>
+                            <p>📌 Status: ${todayStatus.statusJam || 'Hadir'}</p>
+                            ${todayStatus.foto_url ? `<p>📸 <a href="${todayStatus.foto_url}" target="_blank">Lihat Foto</a></p>` : ''}
+                            ${todayStatus.status !== 'pulang' ? `
+                                <button class="btn-success" onclick="checkoutAttendance('${todayStatus.id}')" style="margin-top:15px;">🏠 Absen Pulang</button>
+                            ` : `
+                                <p>🏠 Jam Pulang: ${todayStatus.jam_pulang || '-'}</p>
+                            `}
+                        ` : '<p>⏳ Belum melakukan absensi hari ini</p>'}
+                        <button class="btn-primary" onclick="loadPage('attendance')" style="margin-top:15px;">📝 Absen Sekarang</button>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-title">ℹ️ Informasi Akun</div>
+                        <p><strong>Nama:</strong> ${currentUser?.nama || '-'}</p>
+                        <p><strong>Email:</strong> ${currentUser?.email || '-'}</p>
+                        <p><strong>Role:</strong> <span class="badge badge-${currentUser?.role || 'siswa'}">${currentUser?.role || 'siswa'}</span></p>
+                        ${currentUser?.jabatan ? `<p><strong>Jabatan:</strong> ${currentUser.jabatan}</p>` : ''}
+                        ${currentUser?.departemen ? `<p><strong>Departemen:</strong> ${currentUser.departemen}</p>` : ''}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Dashboard error:', error);
+                content.innerHTML = `<div class="card">❌ Gagal memuat dashboard: ${error.message}</div>`;
+            }
+        }
+
+        // ============ ATTENDANCE ============
+        let selectedType = 'masuk';
+        let selectedFile = null;
+
+        async function renderAttendance() {
+            const today = new Date().toISOString().split('T')[0];
+            let todayAbsen = null;
+            
+            try {
+                const data = await apiRequest(`/absensi/date/${today}`);
+                if (data.data && data.data.length > 0) todayAbsen = data.data[0];
+            } catch(e) {
+                console.log('No attendance today');
+            }
+            
+            const content = document.getElementById('pageContent');
+            
+            if (todayAbsen && todayAbsen.status === 'masuk') {
+                content.innerHTML = `
+                    <div class="card">
+                        <div class="card-title">✅ Anda Sudah Absen Hari Ini</div>
+                        <p>⏰ Jam Masuk: ${todayAbsen.jam_masuk || '-'}</p>
+                        <p>📌 Status: ${todayAbsen.statusJam || 'Hadir'}</p>
+                        ${todayAbsen.foto_url ? `<p>📸 <a href="${todayAbsen.foto_url}" target="_blank">Lihat Foto</a></p>` : ''}
+                        ${todayAbsen.status !== 'pulang' ? `
+                            <button class="btn-success" onclick="checkoutAttendance('${todayAbsen.id}')" style="margin-top:15px;">🏠 Absen Pulang</button>
+                        ` : `
+                            <p>🏠 Jam Pulang: ${todayAbsen.jam_pulang || '-'}</p>
+                        `}
+                    </div>
+                `;
+                return;
+            }
+            
+            content.innerHTML = `
+                <div class="card">
+                    <div class="card-title">📝 Absensi Hari Ini</div>
+                    <div class="attendance-buttons">
+                        <button class="attendance-btn selected" data-type="masuk">✅ Absen Masuk</button>
+                        <button class="attendance-btn" data-type="izin">📝 Izin/Sakit</button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📍 Lokasi</label>
+                        <input type="text" id="location" placeholder="Ruang kelas, Kantor, dll">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📸 Foto Bukti (wajib)</label>
+                        <div id="uploadArea" class="upload-area">
+                            📸 Klik atau drag & drop foto di sini
+                            <input type="file" id="photoInput" accept="image/*" style="display:none">
+                            <img id="preview" class="preview-img" style="display:none">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📝 Keterangan</label>
+                        <textarea id="keterangan" rows="2" placeholder="Keterangan tambahan..."></textarea>
+                    </div>
+                    
+                    <button class="btn-primary" id="submitBtn">✅ Submit Absensi</button>
+                </div>
+            `;
+            
+            // Setup attendance buttons
+            document.querySelectorAll('.attendance-btn').forEach(btn => {
+                btn.onclick = () => {
+                    document.querySelectorAll('.attendance-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedType = btn.dataset.type;
+                };
+            });
+            
+            // Setup upload
+            const uploadArea = document.getElementById('uploadArea');
+            const photoInput = document.getElementById('photoInput');
+            const preview = document.getElementById('preview');
+            
+            uploadArea.onclick = () => photoInput.click();
+            uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.style.borderColor = '#667eea'; };
+            uploadArea.ondragleave = () => uploadArea.style.borderColor = '#e5e7eb';
+            uploadArea.ondrop = (e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+            };
+            photoInput.onchange = (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+            
+            function handleFile(file) {
+                if (!file.type.startsWith('image/')) {
+                    showToast('Harap pilih file gambar!', true);
+                    return;
+                }
+                selectedFile = file;
+                const reader = new FileReader();
+                reader.onload = (ev) => { preview.src = ev.target.result; preview.style.display = 'block'; };
+                reader.readAsDataURL(file);
+            }
+            
+            document.getElementById('submitBtn').onclick = async () => {
+                if (!selectedFile) {
+                    showToast('Harap upload foto bukti!', true);
+                    return;
+                }
+                
+                const submitBtn = document.getElementById('submitBtn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = '⏳ Memproses...';
+                
+                try {
+                    const base64 = await fileToBase64(selectedFile);
+                    const location = document.getElementById('location').value;
+                    const keterangan = document.getElementById('keterangan').value;
+                    
+                    const response = await fetch(`${BACKEND_URL}/absensi/masuk`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({
+                            lokasi: location || 'Sekolah',
+                            keterangan: keterangan || `Absen ${selectedType}`,
+                            foto_base64: base64
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showToast(`✅ Absensi ${selectedType} berhasil!`);
+                        selectedFile = null;
+                        preview.style.display = 'none';
+                        document.getElementById('location').value = '';
+                        document.getElementById('keterangan').value = '';
+                        renderAttendance();
+                    } else {
+                        showToast(data.message || 'Gagal absen', true);
+                    }
+                } catch (error) {
+                    showToast('Gagal: ' + error.message, true);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '✅ Submit Absensi';
+                }
+            };
+        }
+        
+        async function checkoutAttendance(id) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/absensi/pulang/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ keterangan: 'Pulang' })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showToast('✅ Absen pulang berhasil!');
+                    renderAttendance();
+                } else {
+                    showToast(data.message || 'Gagal absen pulang', true);
+                }
+            } catch (error) {
+                showToast('Gagal: ' + error.message, true);
+            }
+        }
+
+        // ============ HISTORY ============
+        async function renderHistory() {
+            const content = document.getElementById('pageContent');
+            content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Memuat riwayat...</p></div>';
+            
+            try {
+                const data = await apiRequest('/absensi/all?limit=50');
+                const records = data.data || [];
+                
+                if (records.length === 0) {
+                    content.innerHTML = `<div class="card"><div class="card-title">📅 Riwayat Absensi</div><p>Belum ada riwayat absensi</p></div>`;
+                    return;
+                }
+                
+                content.innerHTML = `
+                    <div class="card">
+                        <div class="card-title">📅 Riwayat Absensi</div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Tanggal</th>
+                                        <th>Jam Masuk</th>
+                                        <th>Jam Pulang</th>
+                                        <th>Status</th>
+                                        <th>Foto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${records.map(record => `
+                                        <tr>
+                                            <td>${record.tanggal || '-'}</td>
+                                            <td>${record.jam_masuk || '-'}</td>
+                                            <td>${record.jam_pulang || '-'}</td>
+                                            <td><span class="badge ${record.statusJam === 'terlambat' ? 'badge-terlambat' : 'badge-hadir'}">${record.statusJam || record.status || '-'}</span></td>
+                                            <td>${record.foto_url ? `<a href="${record.foto_url}" target="_blank">📸 Lihat</a>` : '-'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('History error:', error);
+                content.innerHTML = `<div class="card">❌ Gagal memuat riwayat: ${error.message}</div>`;
+            }
+        }
+
+        // ============ PROFILE ============
+        async function renderProfile() {
+            const content = document.getElementById('pageContent');
+            
+            content.innerHTML = `
+                <div class="card">
+                    <div class="card-title">👤 Profil Saya</div>
+                    <div class="form-group">
+                        <label>Foto Profil</label>
+                        <div id="profileUploadArea" class="upload-area" style="text-align:center">
+                            📸 Klik untuk upload foto
+                            <input type="file" id="profilePhoto" accept="image/*" style="display:none">
+                            <img id="profilePreview" src="" class="preview-img" style="display:none">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Nama Lengkap</label>
+                        <input type="text" id="profileNama" value="${escapeHtml(currentUser?.nama || '')}">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="profileEmail" value="${escapeHtml(currentUser?.email || '')}" disabled style="background:#f3f4f6">
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <input type="text" id="profileRole" value="${currentUser?.role || 'siswa'}" disabled style="background:#f3f4f6">
+                    </div>
+                    <div class="form-group">
+                        <label>No. Telepon</label>
+                        <input type="tel" id="profilePhone" value="${escapeHtml(currentUser?.noHp || '')}">
+                    </div>
+                    <div class="form-group">
+                        <label>Alamat</label>
+                        <textarea id="profileAlamat" rows="3">${escapeHtml(currentUser?.alamat || '')}</textarea>
+                    </div>
+                    <button class="btn-primary" onclick="updateProfile()">💾 Update Profil</button>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">🔒 Ganti Password</div>
+                    <div class="form-group">
+                        <label>Password Saat Ini</label>
+                        <input type="password" id="currentPassword">
+                    </div>
+                    <div class="form-group">
+                        <label>Password Baru</label>
+                        <input type="password" id="newPassword">
+                    </div>
+                    <div class="form-group">
+                        <label>Konfirmasi Password Baru</label>
+                        <input type="password" id="confirmPassword">
+                    </div>
+                    <button class="btn-primary" onclick="changePassword()">🔒 Ganti Password</button>
+                </div>
+            `;
+            
+            // Setup profile photo upload
+            const uploadArea = document.getElementById('profileUploadArea');
+            const photoInput = document.getElementById('profilePhoto');
+            const preview = document.getElementById('profilePreview');
+            
+            if (currentUser?.photoURL) {
+                preview.src = currentUser.photoURL;
+                preview.style.display = 'block';
+            }
+            
+            uploadArea.onclick = () => photoInput.click();
+            photoInput.onchange = async (e) => {
+                if (e.target.files[0]) {
+                    const file = e.target.files[0];
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        preview.src = ev.target.result;
+                        preview.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                    
+                    const base64 = await fileToBase64(file);
+                    try {
+                        const data = await apiRequest('/api/photos/upload', 'POST', {
+                            image: base64,
+                            title: `profile_${currentUser.id}`
+                        });
+                        if (data.data?.url) {
+                            await updateProfilePhoto(data.data.url);
+                        }
+                    } catch (error) {
+                        showToast('Gagal upload foto: ' + error.message, true);
+                    }
+                }
+            };
+        }
+        
+        async function updateProfilePhoto(photoURL) {
+            try {
+                await apiRequest(`/admin/users/${currentUser.id}`, 'PUT', { photoURL });
+                currentUser.photoURL = photoURL;
+                updateUserUI();
+                showToast('Foto profil berhasil diupdate');
+            } catch (error) {
+                showToast('Gagal update foto: ' + error.message, true);
+            }
+        }
+        
+        async function updateProfile() {
+            const nama = document.getElementById('profileNama').value;
+            const noHp = document.getElementById('profilePhone').value;
+            const alamat = document.getElementById('profileAlamat').value;
+            
+            try {
+                await apiRequest(`/admin/users/${currentUser.id}`, 'PUT', { nama, noHp, alamat });
+                currentUser.nama = nama;
+                currentUser.noHp = noHp;
+                currentUser.alamat = alamat;
+                updateUserUI();
+                showToast('Profil berhasil diupdate');
+            } catch (error) {
+                showToast('Gagal update profil: ' + error.message, true);
+            }
+        }
+        
+        async function changePassword() {
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (!currentPassword || !newPassword) {
+                showToast('Harap isi semua field password', true);
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                showToast('Password baru tidak cocok', true);
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                showToast('Password minimal 6 karakter', true);
+                return;
+            }
+            
+            try {
+                await apiRequest('/auth/change-password', 'POST', { 
+                    currentPassword, 
+                    newPassword, 
+                    confirmNewPassword: confirmPassword 
+                });
+                showToast('Password berhasil diubah');
+                document.getElementById('currentPassword').value = '';
+                document.getElementById('newPassword').value = '';
+                document.getElementById('confirmPassword').value = '';
+            } catch (error) {
+                showToast(error.message, true);
+            }
+        }
+
+        // ============ USER MANAGEMENT (ADMIN/DEVELOPER ONLY) ============
+        let editingUserId = null;
+        let allUsers = [];
+
+        async function renderUserManagement() {
+            if (!isAdminOrDev()) {
+                document.getElementById('pageContent').innerHTML = '<div class="card">⛔ Akses ditolak. Hanya admin/developer.</div>';
+                return;
+            }
+            
+            const content = document.getElementById('pageContent');
+            content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Memuat data user...</p></div>';
+            
+            try {
+                const data = await apiRequest('/admin/users');
+                allUsers = data.data || [];
+                
+                content.innerHTML = `
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+                            <div class="card-title">👥 Daftar User (${allUsers.length} user)</div>
+                            <button class="btn-primary" onclick="showUserModal()">+ Tambah User</button>
+                        </div>
+                        <div class="user-grid">
+                            ${allUsers.map(user => `
+                                <div class="user-card">
+                                    <div class="user-card-header">
+                                        <div class="user-card-avatar">
+                                            ${user.photoURL ? 
+                                                `<img src="${user.photoURL}" alt="${escapeHtml(user.nama || 'User')}">` : 
+                                                `<span>${(user.nama?.charAt(0) || 'U').toUpperCase()}</span>`
+                                            }
+                                        </div>
+                                        <div class="user-card-name">${escapeHtml(user.nama || '-')}</div>
+                                        <div class="user-card-email">${escapeHtml(user.email || '-')}</div>
+                                    </div>
+                                    <div class="user-card-body">
+                                        <div class="user-card-info">
+                                            <strong>Role:</strong> 
+                                            <span class="badge badge-${user.role || 'siswa'}">${user.role || 'siswa'}</span>
+                                        </div>
+                                        <div class="user-card-info">
+                                            <strong>No. Telepon:</strong> ${escapeHtml(user.noHp || '-')}
+                                        </div>
+                                        <div class="user-card-info">
+                                            <strong>Alamat:</strong> ${escapeHtml(user.alamat || '-')}
+                                        </div>
+                                        <div class="user-card-info">
+                                            <strong>Status:</strong> ${user.isActive !== false ? '✅ Aktif' : '❌ Nonaktif'}
+                                        </div>
+                                        ${user.jabatan ? `<div class="user-card-info"><strong>Jabatan:</strong> ${escapeHtml(user.jabatan)}</div>` : ''}
+                                        ${user.departemen ? `<div class="user-card-info"><strong>Departemen:</strong> ${escapeHtml(user.departemen)}</div>` : ''}
+                                    </div>
+                                    <div class="user-card-actions">
+                                        <button class="btn-primary" onclick="editUser('${user.id}')">✏️ Edit</button>
+                                        <button class="btn-danger" onclick="deleteUser('${user.id}')">🗑️ Hapus</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div id="userModal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3 id="modalTitle">Tambah User</h3>
+                                <button class="close-modal" onclick="closeUserModal()">&times;</button>
+                            </div>
+                            <form id="userForm">
+                                <div class="form-group">
+                                    <label>Foto Profil</label>
+                                    <div id="modalUploadArea" class="upload-area" style="padding:10px; text-align:center">
+                                        📸 Klik untuk upload foto
+                                        <input type="file" id="modalPhoto" accept="image/*" style="display:none">
+                                        <img id="modalPreview" class="preview-img" style="display:none">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Nama Lengkap *</label>
+                                    <input type="text" id="userNama" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Email *</label>
+                                    <input type="email" id="userEmail" required>
+                                </div>
+                                <div class="form-group" id="passwordGroup">
+                                    <label>Password *</label>
+                                    <input type="password" id="userPassword" placeholder="Minimal 6 karakter">
+                                </div>
+                                <div class="form-group">
+                                    <label>Role</label>
+                                    <select id="userRole">
+                                        <option value="siswa">Siswa</option>
+                                        <option value="guru">Guru</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="developer">Developer</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>No. Telepon</label>
+                                    <input type="tel" id="userPhone">
+                                </div>
+                                <div class="form-group">
+                                    <label>Alamat</label>
+                                    <textarea id="userAlamat" rows="2"></textarea>
+                                </div>
+                                <button type="submit" class="btn-primary">💾 Simpan</button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+                
+                // Setup modal upload
+                const modalUploadArea = document.getElementById('modalUploadArea');
+                const modalPhoto = document.getElementById('modalPhoto');
+                const modalPreview = document.getElementById('modalPreview');
+                
+                if (modalUploadArea) {
+                    modalUploadArea.onclick = () => modalPhoto.click();
+                    modalPhoto.onchange = (e) => {
+                        if (e.target.files[0]) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                                modalPreview.src = ev.target.result;
+                                modalPreview.style.display = 'block';
+                            };
+                            reader.readAsDataURL(e.target.files[0]);
+                        }
+                    };
+                }
+                
+                window.userModal = document.getElementById('userModal');
+                document.getElementById('userForm').onsubmit = handleUserSubmit;
+            } catch (error) {
+                console.error('User management error:', error);
+                content.innerHTML = `<div class="card">❌ Gagal memuat user: ${error.message}</div>`;
+            }
+        }
+        
+        let modalSelectedFile = null;
+        
+        function showUserModal(user = null) {
+            editingUserId = user?.id || null;
+            const modal = document.getElementById('userModal');
+            const title = document.getElementById('modalTitle');
+            const passwordGroup = document.getElementById('passwordGroup');
+            const modalPreview = document.getElementById('modalPreview');
+            
+            modalSelectedFile = null;
+            if (modalPreview) modalPreview.style.display = 'none';
+            
+            if (editingUserId) {
+                title.textContent = 'Edit User';
+                passwordGroup.style.display = 'none';
+                const userData = allUsers.find(u => u.id === editingUserId) || {};
+                document.getElementById('userNama').value = userData.nama || '';
+                document.getElementById('userEmail').value = userData.email || '';
+                document.getElementById('userRole').value = userData.role || 'siswa';
+                document.getElementById('userPhone').value = userData.noHp || '';
+                document.getElementById('userAlamat').value = userData.alamat || '';
+                if (userData.photoURL && modalPreview) {
+                    modalPreview.src = userData.photoURL;
+                    modalPreview.style.display = 'block';
+                }
+            } else {
+                title.textContent = 'Tambah User';
+                passwordGroup.style.display = 'block';
+                document.getElementById('userForm').reset();
+                document.getElementById('userPassword').required = true;
+                document.getElementById('userRole').value = 'siswa';
+            }
+            modal.style.display = 'flex';
+        }
+        
+        function closeUserModal() {
+            document.getElementById('userModal').style.display = 'none';
+            editingUserId = null;
+            modalSelectedFile = null;
+        }
+        
+        async function handleUserSubmit(e) {
+            e.preventDefault();
+            
+            const userData = {
+                nama: document.getElementById('userNama').value,
+                email: document.getElementById('userEmail').value,
+                role: document.getElementById('userRole').value,
+                noHp: document.getElementById('userPhone').value,
+                alamat: document.getElementById('userAlamat').value
+            };
+            
+            // Handle photo upload if exists
+            const modalPhoto = document.getElementById('modalPhoto');
+            if (modalPhoto && modalPhoto.files.length > 0) {
+                const file = modalPhoto.files[0];
+                const base64 = await fileToBase64(file);
+                try {
+                    const photoData = await apiRequest('/api/photos/upload', 'POST', {
+                        image: base64,
+                        title: `profile_${userData.email}`
+                    });
+                    if (photoData.data?.url) {
+                        userData.photoURL = photoData.data.url;
+                    }
+                } catch (error) {
+                    console.error('Photo upload error:', error);
+                }
+            }
+            
+            try {
+                if (editingUserId) {
+                    await apiRequest(`/admin/users/${editingUserId}`, 'PUT', userData);
+                    showToast('User berhasil diupdate');
+                } else {
+                    const password = document.getElementById('userPassword').value;
+                    if (!password || password.length < 6) {
+                        showToast('Password minimal 6 karakter', true);
+                        return;
+                    }
+                    userData.password = password;
+                    
+                    const response = await fetch(`${BACKEND_URL}/auth/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(userData)
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.message || 'Register failed');
+                    showToast('User berhasil ditambahkan');
+                }
+                closeUserModal();
+                await renderUserManagement();
+            } catch (error) {
+                showToast(error.message, true);
+            }
+        }
+        
+        function editUser(userId) {
+            const user = allUsers.find(u => u.id === userId);
+            if (user) {
+                showUserModal(user);
+            } else {
+                showUserModal({ id: userId });
+            }
+        }
+        
+        async function deleteUser(userId) {
+            if (!confirm('⚠️ Yakin ingin menghapus user ini? Data absensi juga akan terhapus!')) return;
+            
+            try {
+                await apiRequest(`/admin/users/${userId}`, 'DELETE');
+                showToast('User berhasil dihapus');
+                await renderUserManagement();
+            } catch (error) {
+                showToast(error.message, true);
+            }
+        }
+        
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+        }
+
+        // ============ INIT ============
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', () => loadPage(item.dataset.page));
+        });
+        
+        // Make functions global
+        window.loadPage = loadPage;
+        window.logout = logout;
+        window.toggleSidebar = toggleSidebar;
+        window.checkoutAttendance = checkoutAttendance;
+        window.updateProfile = updateProfile;
+        window.changePassword = changePassword;
+        window.showUserModal = showUserModal;
+        window.closeUserModal = closeUserModal;
+        window.editUser = editUser;
+        window.deleteUser = deleteUser;
+        
+        // Start app
+        (async () => {
+            if (await checkAuth()) {
+                loadPage('dashboard');
+            }
+        })();
+    </script>
+</body>
+</html>

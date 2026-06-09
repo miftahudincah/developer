@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daftar - Sistem Absensi Sekolah</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: white;
+            font-size: 28px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 30px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            text-align: center;
+            color: #4a5568;
+            margin-bottom: 25px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #4a5568;
+            font-size: 14px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .error-msg {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: none;
+            font-size: 13px;
+        }
+
+        .login-link {
+            text-align: center;
+            margin-top: 20px;
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .login-link a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .row .form-group {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>📝 Daftar Akun</h1>
+        </div>
+        <div class="card">
+            <h2>Registrasi</h2>
+            <div id="errorMsg" class="error-msg"></div>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label>Nama Lengkap *</label>
+                    <input type="text" id="nama" required placeholder="Masukkan nama lengkap">
+                </div>
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" id="email" required placeholder="contoh@email.com">
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>Password *</label>
+                        <input type="password" id="password" required placeholder="Min 6 karakter">
+                    </div>
+                    <div class="form-group">
+                        <label>Konfirmasi *</label>
+                        <input type="password" id="confirmPassword" required placeholder="Ulangi password">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select id="role">
+                            <option value="siswa">Siswa</option>
+                            <option value="guru">Guru</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="kelasGroup">
+                        <label>Kelas</label>
+                        <input type="text" id="kelas" placeholder="Contoh: XII RPL 1">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>No. Telepon</label>
+                        <input type="tel" id="noHp" placeholder="08123456789">
+                    </div>
+                    <div class="form-group">
+                        <label>NIP/NISN</label>
+                        <input type="text" id="nik" placeholder="NIP/NISN">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Alamat</label>
+                    <textarea id="alamat" rows="2" style="width:100%; padding:10px; border:2px solid #e2e8f0; border-radius:10px;"></textarea>
+                </div>
+                <button type="submit" class="btn-primary" id="registerBtn">📝 Daftar</button>
+            </form>
+            <div class="login-link">
+                Sudah punya akun? <a href="index.html">Login di sini</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'https://backend9.vercel.app';
+
+        // Toggle kelas field based on role
+        const roleSelect = document.getElementById('role');
+        const kelasGroup = document.getElementById('kelasGroup');
+        
+        roleSelect.addEventListener('change', () => {
+            if (roleSelect.value === 'siswa') {
+                kelasGroup.style.display = 'block';
+            } else {
+                kelasGroup.style.display = 'none';
+            }
+        });
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const nama = document.getElementById('nama').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const role = document.getElementById('role').value;
+            const kelas = document.getElementById('kelas').value;
+            const noHp = document.getElementById('noHp').value;
+            const nik = document.getElementById('nik').value;
+            const alamat = document.getElementById('alamat').value;
+            const registerBtn = document.getElementById('registerBtn');
+            const errorMsg = document.getElementById('errorMsg');
+            
+            errorMsg.style.display = 'none';
+            
+            if (password !== confirmPassword) {
+                errorMsg.textContent = 'Password tidak cocok!';
+                errorMsg.style.display = 'block';
+                return;
+            }
+            
+            if (password.length < 6) {
+                errorMsg.textContent = 'Password minimal 6 karakter!';
+                errorMsg.style.display = 'block';
+                return;
+            }
+            
+            registerBtn.disabled = true;
+            registerBtn.innerHTML = '<span class="spinner"></span> Mendaftar...';
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email,
+                        password,
+                        nama,
+                        nik,
+                        role,
+                        noHp,
+                        alamat,
+                        jabatan: role === 'guru' ? 'Guru' : 'Siswa',
+                        departemen: role === 'guru' ? 'Pendidikan' : 'Siswa'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.data?.token) {
+                    localStorage.setItem('token', data.data.token);
+                    localStorage.setItem('user', JSON.stringify(data.data.user));
+                    window.location.href = 'dashboard.html';
+                } else {
+                    errorMsg.textContent = data.message || 'Registrasi gagal';
+                    errorMsg.style.display = 'block';
+                }
+            } catch (error) {
+                errorMsg.textContent = 'Gagal terhubung ke server';
+                errorMsg.style.display = 'block';
+            } finally {
+                registerBtn.disabled = false;
+                registerBtn.innerHTML = '📝 Daftar';
+            }
+        });
+    </script>
+</body>
+</html>
