@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Sekolah - Complete System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Navigation */
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .nav-tab.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .nav-tab:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        h2 {
+            color: #555;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        h3 {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .badge-admin {
+            background: #ef4444;
+        }
+
+        .badge-user {
+            background: #3b82f6;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .login-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .user-info {
+            background: linear-gradient(135deg, #e8f4f8 0%, #d1ecf1 100%);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .profile-photo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .profile-photo img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #667eea;
+        }
+
+        .image-preview {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .image-preview img {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+
+        /* User Table */
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow-x: auto;
+            display: block;
+        }
+
+        .user-table th, .user-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .user-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .user-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .role-admin { background: #ef4444; color: white; }
+        .role-developer { background: #8b5cf6; color: white; }
+        .role-guru { background: #3b82f6; color: white; }
+        .role-siswa { background: #10b981; color: white; }
+        .role-kepala_sekolah { background: #f59e0b; color: white; }
+        .role-staff_tu { background: #06b6d4; color: white; }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close-modal {
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .flex-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .gallery-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+
+        .gallery-item-info {
+            padding: 10px;
+            font-size: 12px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .card { padding: 20px; }
+            .user-table th, .user-table td { padding: 8px; font-size: 12px; }
+            .flex-row { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="card" id="headerCard">
+            <h1>
+                📱 Sistem Absensi Sekolah 
+                <span class="badge" id="systemStatus">Online</span>
+            </h1>
+            <p>Backend: <strong>https://backend9.vercel.app</strong> | Storage: <strong>ImgBB + Supabase</strong></p>
+        </div>
+
+        <!-- Login Section -->
+        <div class="card" id="loginCard">
+            <h2>🔐 Login / Register</h2>
+            <div class="login-section">
+                <div class="flex-row" style="margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <label>Email:</label>
+                        <input type="email" id="loginEmail" placeholder="Email" value="admin@sekolah.com">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>Password:</label>
+                        <input type="password" id="loginPassword" placeholder="Password" value="admin123">
+                    </div>
+                </div>
+                <div class="flex-row">
+                    <button onclick="login()" id="loginBtn">🚀 Login</button>
+                    <button onclick="showRegisterModal()" class="btn-secondary">📝 Register Baru</button>
+                </div>
+                <div id="loginStatus" class="status"></div>
+            </div>
+        </div>
+
+        <!-- Main App (Hidden until login) -->
+        <div id="mainApp" style="display: none;">
+            <!-- Navigation -->
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="showTab('profile')">👤 Profil Saya</button>
+                <button class="nav-tab" onclick="showTab('absensi')">📋 Absensi</button>
+                <button class="nav-tab" onclick="showTab('gallery')">🖼️ Gallery</button>
+                <button class="nav-tab" id="adminTabBtn" onclick="showTab('users')" style="display: none;">👥 Manajemen User</button>
+            </div>
+
+            <!-- Profile Tab -->
+            <div id="profileTab" class="tab-content">
+                <div class="card">
+                    <div class="user-info">
+                        <div class="profile-photo">
+                            <img id="profilePhoto" src="https://ui-avatars.com/api/?background=667eea&color=fff" alt="Profile">
+                            <div>
+                                <h3 id="profileName">Loading...</h3>
+                                <p id="profileEmail"></p>
+                                <p id="profileRole"></p>
+                            </div>
+                        </div>
+                        <button onclick="showEditProfileModal()" class="btn-secondary btn-sm">✏️ Edit Profil</button>
+                    </div>
+
+                    <h2>📸 Update Foto Profil</h2>
+                    <div class="form-group">
+                        <label>Pilih Foto Profil (JPG/PNG, max 4.5MB):</label>
+                        <input type="file" id="profilePhotoInput" accept="image/jpeg,image/png,image/jpg" onchange="previewProfilePhoto(this)">
+                        <div class="image-preview" id="profilePhotoPreview"></div>
+                    </div>
+                    <button onclick="updateProfilePhoto()" id="updatePhotoBtn">📤 Upload Foto Profil</button>
+                    <div id="profilePhotoStatus" class="status"></div>
+                </div>
+
+                <div class="card">
+                    <h2>🔐 Ganti Password</h2>
+                    <div class="form-group">
+                        <label>Password Saat Ini:</label>
+                        <input type="password" id="currentPassword" placeholder="Masukkan password saat ini">
+                    </div>
+                    <div class="form-group">
+                        <label>Password Baru:</label>
+                        <input type="password" id="newPassword" placeholder="Minimal 6 karakter">
+                    </div>
+                    <div class="form-group">
+                        <label>Konfirmasi Password Baru:</label>
+                        <input type="password" id="confirmPassword" placeholder="Ulangi password baru">
+                    </div>
+                    <button onclick="changePassword()">🔄 Ganti Password</button>
+                    <div id="passwordStatus" class="status"></div>
+                </div>
+            </div>
+
+            <!-- Absensi Tab -->
+            <div id="absensiTab" class="tab-content" style="display: none;">
+                <div class="card">
+                    <h2>📋 Absensi Hari Ini</h2>
+                    <div class="flex-row" style="gap: 15px; margin-bottom: 20px;">
+                        <button onclick="doAbsenMasuk()" id="absenMasukBtn" class="btn-success" style="background: #10b981;">✅ Absen Masuk</button>
+                        <button onclick="doAbsenPulang()" id="absenPulangBtn" class="btn-warning" style="background: #f59e0b;">🏠 Absen Pulang</button>
+                    </div>
+                    <div id="todayAbsenStatus" class="status info"></div>
+                    
+                    <h2>📜 Riwayat Absensi</h2>
+                    <div id="riwayatAbsensi" class="loading">Loading riwayat...</div>
+                </div>
+            </div>
+
+            <!-- Gallery Tab -->
+            <div id="galleryTab" class="tab-content" style="display: none;">
+                <div class="card">
+                    <h2>📤 Upload Gambar Baru</h2>
+                    <div class="form-group">
+                        <label>Pilih Gambar:</label>
+                        <input type="file" id="galleryFileInput" accept="image/jpeg,image/png,image/jpg" onchange="previewGalleryImage(this)">
+                        <div class="image-preview" id="galleryPreview"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Judul Gambar:</label>
+                        <input type="text" id="galleryTitle" placeholder="Judul gambar">
+                    </div>
+                    <button onclick="uploadGalleryImage()" id="galleryUploadBtn">🚀 Upload ke Gallery</button>
+                    <div id="galleryUploadStatus" class="status"></div>
+                </div>
+
+                <div class="card">
+                    <h2>🖼️ Gallery Foto Saya</h2>
+                    <button onclick="loadGallery()" class="btn-secondary btn-sm" style="margin-bottom: 15px;">🔄 Refresh Gallery</button>
+                    <div id="galleryContainer" class="loading">Loading gallery...</div>
+                </div>
+            </div>
+
+            <!-- Users Management Tab (Admin only) -->
+            <div id="usersTab" class="tab-content" style="display: none;">
+                <div class="card">
+                    <div class="flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2>👥 Manajemen User</h2>
+                        <button onclick="showAddUserModal()" class="btn-secondary">➕ Tambah User</button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="user-table">
+                            <thead>
+                                <tr><th>Foto</th><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Aksi</th</tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr><td colspan="6" class="loading">Loading users...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📝 Registrasi User Baru</h3>
+                <span class="close-modal" onclick="closeRegisterModal()">&times;</span>
+            </div>
+            <div class="form-group">
+                <label>Nama Lengkap:</label>
+                <input type="text" id="regName" placeholder="Nama lengkap">
+            </div>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="regEmail" placeholder="Email">
+            </div>
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" id="regPassword" placeholder="Minimal 6 karakter">
+            </div>
+            <div class="form-group">
+                <label>Role:</label>
+                <select id="regRole">
+                    <option value="siswa">Siswa</option>
+                    <option value="guru">Guru</option>
+                    <option value="staff_tu">Staff TU</option>
+                    <option value="kepala_sekolah">Kepala Sekolah</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <button onclick="registerUser()">Daftar</button>
+            <div id="registerStatus" class="status"></div>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div id="editProfileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ Edit Profil</h3>
+                <span class="close-modal" onclick="closeEditProfileModal()">&times;</span>
+            </div>
+            <div class="form-group">
+                <label>Nama Lengkap:</label>
+                <input type="text" id="editName" placeholder="Nama lengkap">
+            </div>
+            <div class="form-group">
+                <label>No. HP:</label>
+                <input type="text" id="editNoHp" placeholder="No. Handphone">
+            </div>
+            <div class="form-group">
+                <label>Alamat:</label>
+                <textarea id="editAlamat" rows="3" placeholder="Alamat lengkap"></textarea>
+            </div>
+            <button onclick="updateProfile()">Simpan Perubahan</button>
+            <div id="editProfileStatus" class="status"></div>
+        </div>
+    </div>
+
+    <!-- Edit User Modal (Admin) -->
+    <div id="editUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ Edit User</h3>
+                <span class="close-modal" onclick="closeEditUserModal()">&times;</span>
+            </div>
+            <input type="hidden" id="editUserId">
+            <div class="form-group">
+                <label>Nama:</label>
+                <input type="text" id="editUserName">
+            </div>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" id="editUserEmail">
+            </div>
+            <div class="form-group">
+                <label>Role:</label>
+                <select id="editUserRole">
+                    <option value="siswa">Siswa</option>
+                    <option value="guru">Guru</option>
+                    <option value="staff_tu">Staff TU</option>
+                    <option value="kepala_sekolah">Kepala Sekolah</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Status:</label>
+                <select id="editUserStatus">
+                    <option value="true">Aktif</option>
+                    <option value="false">Nonaktif</option>
+                </select>
+            </div>
+            <button onclick="updateUserByAdmin()">Simpan</button>
+            <div id="editUserStatusMsg" class="status"></div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = null;
+        let currentUser = null;
+        let allUsers = [];
+        const API_BASE = 'https://backend9.vercel.app';
+
+        // ============ INITIALIZATION ============
+        function checkSavedLogin() {
+            const savedToken = localStorage.getItem('authToken');
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedToken && savedUser) {
+                authToken = savedToken;
+                currentUser = JSON.parse(savedUser);
+                showMainApp();
+            }
+        }
+
+        function showMainApp() {
+            document.getElementById('loginCard').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            
+            // Tampilkan tab admin jika role admin/developer
+            if (currentUser.role === 'admin' || currentUser.role === 'developer') {
+                document.getElementById('adminTabBtn').style.display = 'block';
+            }
+            
+            loadProfile();
+            loadTodayAbsensi();
+            loadRiwayatAbsensi();
+            loadGallery();
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
+            document.getElementById(`${tabName}Tab`).style.display = 'block';
+            
+            document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (tabName === 'users') loadUsers();
+            if (tabName === 'gallery') loadGallery();
+        }
+
+        // ============ AUTHENTICATION ============
+        async function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.data.token;
+                    currentUser = data.data.user;
+                    localStorage.setItem('authToken', authToken);
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    showMainApp();
+                } else {
+                    showStatus('loginStatus', data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('loginStatus', error.message, 'error');
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            currentUser = null;
+            localStorage.clear();
+            location.reload();
+        }
+
+        async function registerUser() {
+            const name = document.getElementById('regName').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            const role = document.getElementById('regRole').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nama: name, email, password, role })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('registerStatus', 'Registrasi berhasil! Silakan login.', 'success');
+                    setTimeout(() => {
+                        closeRegisterModal();
+                        document.getElementById('loginEmail').value = email;
+                    }, 1500);
+                } else {
+                    showStatus('registerStatus', data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('registerStatus', error.message, 'error');
+            }
+        }
+
+        // ============ PROFILE ============
+        async function loadProfile() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    currentUser = data.data;
+                    document.getElementById('profileName').textContent = currentUser.nama;
+                    document.getElementById('profileEmail').textContent = currentUser.email;
+                    document.getElementById('profileRole').textContent = `Role: ${currentUser.role}`;
+                    
+                    const photoUrl = currentUser.photoURL || `https://ui-avatars.com/api/?background=667eea&color=fff&name=${encodeURIComponent(currentUser.nama)}`;
+                    document.getElementById('profilePhoto').src = photoUrl;
+                }
+            } catch (error) {
+                console.error('Load profile error:', error);
+            }
+        }
+
+        function previewProfilePhoto(input) {
+            const preview = document.getElementById('profilePhotoPreview');
+            preview.innerHTML = '';
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    preview.appendChild(img);
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        async function updateProfilePhoto() {
+            const file = document.getElementById('profilePhotoInput').files[0];
+            if (!file) {
+                showStatus('profilePhotoStatus', 'Pilih file foto terlebih dahulu', 'error');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onloadend = async function() {
+                let base64 = reader.result;
+                if (base64.includes(',')) base64 = base64.split(',')[1];
+                
+                try {
+                    const uploadRes = await fetch(`${API_BASE}/api/photos/upload`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ image: base64, title: 'profile_photo' })
+                    });
+                    const uploadData = await uploadRes.json();
+                    
+                    if (uploadRes.ok) {
+                        const photoURL = uploadData.data.url;
+                        const updateRes = await fetch(`${API_BASE}/api/users/update-photo`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${authToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ photoURL })
+                        });
+                        
+                        if (updateRes.ok) {
+                            showStatus('profilePhotoStatus', 'Foto profil berhasil diupdate!', 'success');
+                            loadProfile();
+                            document.getElementById('profilePhotoInput').value = '';
+                            document.getElementById('profilePhotoPreview').innerHTML = '';
+                        }
+                    }
+                } catch (error) {
+                    showStatus('profilePhotoStatus', error.message, 'error');
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function changePassword() {
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                showStatus('passwordStatus', 'Password baru tidak cocok', 'error');
+                return;
+            }
+            if (newPassword.length < 6) {
+                showStatus('passwordStatus', 'Password minimal 6 karakter', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/change-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ currentPassword, newPassword, confirmNewPassword: confirmPassword })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('passwordStatus', 'Password berhasil diubah!', 'success');
+                    document.getElementById('currentPassword').value = '';
+                    document.getElementById('newPassword').value = '';
+                    document.getElementById('confirmPassword').value = '';
+                } else {
+                    showStatus('passwordStatus', data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('passwordStatus', error.message, 'error');
+            }
+        }
+
+        async function updateProfile() {
+            const name = document.getElementById('editName').value;
+            const noHp = document.getElementById('editNoHp').value;
+            const alamat = document.getElementById('editAlamat').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${currentUser.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ nama: name, noHp, alamat })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('editProfileStatus', 'Profil berhasil diupdate!', 'success');
+                    closeEditProfileModal();
+                    loadProfile();
+                } else {
+                    showStatus('editProfileStatus', data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('editProfileStatus', error.message, 'error');
+            }
+        }
+
+        // ============ ABSENSI ============
+        async function doAbsenMasuk() {
+            const now = new Date();
+            const jam = now.getHours();
+            const menit = now.getMinutes();
+            const statusJam = jam < 9 ? 'Tepat Waktu' : 'Terlambat';
+            
+            try {
+                const response = await fetch(`${API_BASE}/absensi/masuk`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ lokasi: 'Sekolah', keterangan: 'Hadir' })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('todayAbsenStatus', `✅ Absen Masuk: ${statusJam} (${jam}:${menit.toString().padStart(2,'0')})`, 'success');
+                    loadTodayAbsensi();
+                    loadRiwayatAbsensi();
+                } else {
+                    showStatus('todayAbsenStatus', data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('todayAbsenStatus', error.message, 'error');
+            }
+        }
+
+        async function doAbsenPulang() {
+            try {
+                // Cari absensi hari ini
+                const today = new Date().toISOString().split('T')[0];
+                const absenRes = await fetch(`${API_BASE}/absensi/all?limit=10`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const absenData = await absenRes.json();
+                const todayAbsen = absenData.data?.find(a => a.tanggal === today);
+                
+                if (!todayAbsen) {
+                    showStatus('todayAbsenStatus', 'Belum melakukan absen masuk hari ini', 'error');
+                    return;
+                }
+                
+                const response = await fetch(`${API_BASE}/absensi/pulang/${todayAbsen.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ keterangan: 'Pulang' })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('todayAbsenStatus', '✅ Absen Pulang berhasil!', 'success');
+                    loadTodayAbsensi();
+                    loadRiwayatAbsensi();
+                } else {
+                    showStatus('todayAbsenStatus', data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('todayAbsenStatus', error.message, 'error');
+            }
+        }
+
+        async function loadTodayAbsensi() {
+            const today = new Date().toISOString().split('T')[0];
+            try {
+                const response = await fetch(`${API_BASE}/absensi/date/${today}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+                const absen = data.data?.find(a => a.userId === currentUser.id);
+                
+                if (absen) {
+                    document.getElementById('todayAbsenStatus').innerHTML = `
+                        📅 ${today}<br>
+                        ✅ Masuk: ${absen.jam_masuk || '-'}<br>
+                        ${absen.jam_pulang ? `🏠 Pulang: ${absen.jam_pulang}` : '⏳ Belum pulang'}
+                    `;
+                    document.getElementById('todayAbsenStatus').className = 'status info';
+                } else {
+                    document.getElementById('todayAbsenStatus').innerHTML = 'Belum melakukan absensi hari ini';
+                    document.getElementById('todayAbsenStatus').className = 'status info';
+                }
+            } catch (error) {
+                console.error('Load today absen error:', error);
+            }
+        }
+
+        async function loadRiwayatAbsensi() {
+            try {
+                const response = await fetch(`${API_BASE}/absensi/user/${currentUser.id}?limit=20`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+                const riwayat = data.data || [];
+                
+                if (riwayat.length === 0) {
+                    document.getElementById('riwayatAbsensi').innerHTML = '<div class="loading">Belum ada riwayat absensi</div>';
+                    return;
+                }
+                
+                let html = '<div class="gallery">';
+                riwayat.forEach(a => {
+                    html += `
+                        <div class="gallery-item">
+                            <div class="gallery-item-info">
+                                <strong>📅 ${a.tanggal}</strong><br>
+                                ✅ Masuk: ${a.jam_masuk || '-'}<br>
+                                ${a.jam_pulang ? `🏠 Pulang: ${a.jam_pulang}` : '⏳ Belum pulang'}<br>
+                                <span class="badge ${a.statusJam === 'tepat waktu' ? 'badge-user' : 'badge-admin'}">${a.statusJam || 'Normal'}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                document.getElementById('riwayatAbsensi').innerHTML = html;
+            } catch (error) {
+                document.getElementById('riwayatAbsensi').innerHTML = `<div class="loading">Error: ${error.message}</div>`;
+            }
+        }
+
+        // ============ GALLERY ============
+        function previewGalleryImage(input) {
+            const preview = document.getElementById('galleryPreview');
+            preview.innerHTML = '';
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    preview.appendChild(img);
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        async function uploadGalleryImage() {
+            const file = document.getElementById('galleryFileInput').files[0];
+            const title = document.getElementById('galleryTitle').value;
+            
+            if (!file) {
+                showStatus('galleryUploadStatus', 'Pilih file gambar', 'error');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onloadend = async function() {
+                let base64 = reader.result;
+                if (base64.includes(',')) base64 = base64.split(',')[1];
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/photos/upload`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ image: base64, title: title || 'Gallery Image' })
+                    });
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showStatus('galleryUploadStatus', '✅ Upload berhasil!', 'success');
+                        document.getElementById('galleryFileInput').value = '';
+                        document.getElementById('galleryTitle').value = '';
+                        document.getElementById('galleryPreview').innerHTML = '';
+                        loadGallery();
+                    } else {
+                        showStatus('galleryUploadStatus', data.message, 'error');
+                    }
+                } catch (error) {
+                    showStatus('galleryUploadStatus', error.message, 'error');
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function loadGallery() {
+            const container = document.getElementById('galleryContainer');
+            container.innerHTML = '<div class="loading">📥 Memuat gallery...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/photos?limit=50`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+                
+                if (response.ok && data.data) {
+                    if (data.data.length === 0) {
+                        container.innerHTML = '<div class="loading">📭 Belum ada foto. Upload gambar dulu yuk!</div>';
+                        return;
+                    }
+                    
+                    let html = '<div class="gallery">';
+                    data.data.forEach(photo => {
+                        html += `
+                            <div class="gallery-item">
+                                <img src="${photo.url}" onerror="this.src='https://placehold.co/300x200?text=Error'">
+                                <div class="gallery-item-info">
+                                    <strong>${photo.title || 'Tanpa judul'}</strong><br>
+                                    <small>${photo.createdAt ? new Date(photo.createdAt).toLocaleDateString() : ''}</small><br>
+                                    <button class="btn-danger btn-sm" onclick="deleteGalleryImage('${photo.id}')" style="margin-top:5px;">🗑️ Hapus</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    container.innerHTML = html;
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="loading">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function deleteGalleryImage(photoId) {
+            if (!confirm('Hapus gambar ini?')) return;
+            try {
+                const response = await fetch(`${API_BASE}/api/photos/${photoId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (response.ok) {
+                    loadGallery();
+                }
+            } catch (error) {
+                alert('Gagal menghapus: ' + error.message);
+            }
+        }
+
+        // ============ USER MANAGEMENT (ADMIN) ============
+        async function loadUsers() {
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading users...</td></tr>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/users`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await response.json();
+                
+                if (response.ok && data.data) {
+                    allUsers = data.data;
+                    let html = '';
+                    allUsers.forEach(user => {
+                        const roleClass = `role-${user.role}`;
+                        const photoUrl = user.photoURL || `https://ui-avatars.com/api/?background=667eea&color=fff&name=${encodeURIComponent(user.nama)}`;
+                        html += `
+                            <tr>
+                                <td><img src="${photoUrl}" class="user-avatar" onerror="this.src='https://ui-avatars.com/api/?background=667eea&color=fff&name=${encodeURIComponent(user.nama)}'"></td>
+                                <td>${user.nama}</td>
+                                <td>${user.email}</td>
+                                <td><span class="role-badge ${roleClass}">${user.role}</span></td>
+                                <td>${user.isActive !== false ? '✅ Aktif' : '❌ Nonaktif'}</td>
+                                <td>
+                                    <button class="btn-secondary btn-sm" onclick="openEditUserModal('${user.id}')">✏️ Edit</button>
+                                    <button class="btn-danger btn-sm" onclick="deleteUser('${user.id}')">🗑️ Hapus</button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                }
+            } catch (error) {
+                tbody.innerHTML = `<tr><td colspan="6" class="loading">Error: ${error.message}</td></tr>`;
+            }
+        }
+
+        function openEditUserModal(userId) {
+            const user = allUsers.find(u => u.id === userId);
+            if (user) {
+                document.getElementById('editUserId').value = user.id;
+                document.getElementById('editUserName').value = user.nama;
+                document.getElementById('editUserEmail').value = user.email;
+                document.getElementById('editUserRole').value = user.role;
+                document.getElementById('editUserStatus').value = user.isActive !== false ? 'true' : 'false';
+                document.getElementById('editUserModal').style.display = 'flex';
+            }
+        }
+
+        async function updateUserByAdmin() {
+            const userId = document.getElementById('editUserId').value;
+            const nama = document.getElementById('editUserName').value;
+            const role = document.getElementById('editUserRole').value;
+            const isActive = document.getElementById('editUserStatus').value === 'true';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ nama, role, isActive })
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('editUserStatusMsg', 'User berhasil diupdate!', 'success');
+                    setTimeout(() => {
+                        closeEditUserModal();
+                        loadUsers();
+                    }, 1000);
+                } else {
+                    showStatus('editUserStatusMsg', data.message, 'error');
+                }
+            } catch (error) {
+                showStatus('editUserStatusMsg', error.message, 'error');
+            }
+        }
+
+        async function deleteUser(userId) {
+            if (!confirm('Yakin ingin menghapus user ini? Semua data absensi akan terhapus!')) return;
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (response.ok) {
+                    loadUsers();
+                } else {
+                    const data = await response.json();
+                    alert(data.message);
+                }
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // ============ MODALS ============
+        function showRegisterModal() {
+            document.getElementById('registerModal').style.display = 'flex';
+        }
+        function closeRegisterModal() {
+            document.getElementById('registerModal').style.display = 'none';
+            document.getElementById('registerStatus').className = 'status';
+        }
+        function showEditProfileModal() {
+            document.getElementById('editName').value = currentUser.nama || '';
+            document.getElementById('editNoHp').value = currentUser.noHp || '';
+            document.getElementById('editAlamat').value = currentUser.alamat || '';
+            document.getElementById('editProfileModal').style.display = 'flex';
+        }
+        function closeEditProfileModal() {
+            document.getElementById('editProfileModal').style.display = 'none';
+        }
+        function closeEditUserModal() {
+            document.getElementById('editUserModal').style.display = 'none';
+        }
+
+        function showStatus(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = `status ${type}`;
+            setTimeout(() => {
+                el.className = 'status';
+                el.style.display = 'none';
+                setTimeout(() => el.style.display = '', 300);
+            }, 5000);
+        }
+
+        // Close modals on outside click
+        window.onclick = function(e) {
+            if (e.target.classList.contains('modal')) e.target.style.display = 'none';
+        };
+
+        checkSavedLogin();
+    </script>
+</body>
+</html>
